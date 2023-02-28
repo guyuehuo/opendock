@@ -34,6 +34,7 @@ After 100 steps of the sampling, the ligand poses are output.
 In this example, the `lbfgs_minimizer` is a minimizer function that could be used to
 finely control the ligand or receptor conformations guided by the scoring function object.
 
+    ```
     from opendock.core.conformation import ReceptorConformation
     from opendock.core.conformation import LigandConformation
     from opendock.scorer.vina import VinaSF
@@ -74,11 +75,12 @@ finely control the ligand or receptor conformations guided by the scoring functi
     
     # save ligand conformations
     mc.save_traj("traj_saved_100.pdb")
+    ```
 
 2. In the following example, a `GeneticAlgorithmSampler` is used for sampling. Similarly, 
 the ligand and receptor objects are required. Here, 100 chromosomes are created and the 
 scoring function is `VinaSF` class. 
-
+    ```
     from opendock.core.conformation import ReceptorConformation
     from opendock.core.conformation import LigandConformation
     from opendock.scorer.vina import VinaSF
@@ -112,7 +114,7 @@ scoring function is `VinaSF` class.
     _lcnfrs, _rcnfrs = GA._variables2cnfrs(_vars)
 
     print("Last Ligand Cnfrs ", _lcnfrs)
-
+    ```
 
 
 # Performance
