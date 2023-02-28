@@ -1,0 +1,112 @@
+
+
+def write_ligand_traj(cnfrs: list, 
+                      ligand: None, 
+                      output: str, 
+                      information: dict = None):
+    """
+    Write lignad trajectory.
+
+    Args:
+    -----
+    ligand: LigandConformation, 
+    output: str, the trajectory file path.
+    information: dict, the information for output if any.
+    """
+
+    origin_heavy_atoms_lines = ligand.origin_heavy_atoms_lines
+    #print(cnfrs)
+    lines = []
+    for _idx, cnfr in enumerate(cnfrs):
+        # convert cnfr to xyz, coords shape (1, N, 3)
+        coord = ligand.cnfr2xyz([cnfr, ])[0]
+        lines.append('MODEL%9s' % str(_idx + 1))
+
+        if information is not None:
+            for key in list(information.keys()):
+                try:
+                    lines.append(f"REMARK {key} {information[key][_idx]}")
+                except:
+                    lines.append(f"REMARK {key} {information[key][0]}")
+
+        # make output atom lines
+        for num, line in enumerate(origin_heavy_atoms_lines):
+            x = coord[num][0].detach().numpy()
+            y = coord[num][1].detach().numpy()
+            z = coord[num][2].detach().numpy()
+
+            atom_type = line.split()[2]
+            pre_element = line.split()[2]
+            if pre_element[:2] == "CL":
+                element = "Cl"
+            elif pre_element[:2] == "BR":
+                element = "Br"
+            else:
+                element = pre_element[0]
+
+            line = "ATOM%7s%5s%4s%2s%4s%12s%8s%8s%6s%6s%12s" % (
+                str(num + 1), atom_type, "LIG", "A", "1", "%.3f" % x, "%.3f" % y, "%.3f" % z, "1.00", "0.00", element)
+            lines.append(line)
+        
+        lines.append("TER\nENDMDL")
+
+    with open(output, 'w') as f:
+        for line in lines:
+            f.writelines(line + '\n')
+
+
+def write_receptor_traj(cnfrs,
+                        receptor: None, 
+                        output: str = None):
+    """
+    Write the receptor trajectory if considering sidechain flexibility.
+
+    Args:
+    ----- 
+    receptor: the receptor object. 
+    output: str, the output file name.
+    """
+    # obtain the original receptor pdbqt file lines
+    rec_original_lines = receptor.receptor_original_lines
+
+    lines = []
+
+    for (idx, cnfr_list) in enumerate(cnfrs):
+        lines.append("MODEL%9s" % (str(idx+1)))
+        new_rec_ha_xyz = receptor.cnfr2xyz(cnfr_list)
+        num = 0
+        for line in rec_original_lines:
+            ad4_type = line.split()[-1]
+            if ad4_type.endswith("H") or ad4_type.endswith("HD") \
+                or (not line.startswith("ATOM")):
+                continue
+            
+            num += 1
+            atom_type = line.split()[2]
+            if atom_type[:2] == "CL":
+                element = "Cl"
+            elif atom_type[:2] == "BR":
+                element = "Br"
+            else:
+                element = atom_type[0]
+
+            try:
+                #print(num, line)
+                x = new_rec_ha_xyz[num-1][0].detach().numpy()
+                y = new_rec_ha_xyz[num-1][1].detach().numpy()
+                z = new_rec_ha_xyz[num-1][2].detach().numpy()
+                
+                line = "ATOM%7s%16s%11s%8s%8s%12s%12s" % (
+                    str(num), line[11:27], "%.3f" % x, 
+                    "%.3f" % y, "%.3f" % z, line[54:66], element)
+                
+                lines.append(line)
+                
+            except:
+                pass
+        lines.append("ENDMDL")
+
+    with open(output, "w") as tf:
+        for line in lines:
+            tf.write(line + "\n")
+

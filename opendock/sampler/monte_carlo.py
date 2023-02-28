@@ -1,0 +1,166 @@
+
+import random
+import numpy as np
+import pandas as pd
+import os, sys
+import random
+import torch
+from opendock.sampler.base import BaseSampler
+from opendock.sampler.minimizer import lbfgs_minimizer
+from opendock.core.io import write_ligand_traj
+
+
+class MonteCarloSampler(BaseSampler):
+
+    def __init__(self, 
+                 ligand, 
+                 receptor, 
+                 scoring_function, 
+                 **kwargs):
+        super(MonteCarloSampler, self).__init__(ligand, receptor, scoring_function)
+
+        self.nsteps_ = kwargs.pop('nsteps', (ligand.number_of_frames + 1) * 100)
+        self.kt_     = kwargs.pop('kt', 1.0)
+        self.minimizer = kwargs.pop('minimizer', None)
+        self.output_fpath = kwargs.pop('output_fpath', 'output.pdb')
+        self.box_center = kwargs.pop('box_center', None)
+        self.box_size   = kwargs.pop('box_size', None)
+        self.random_start = kwargs.pop('random_start', False)
+
+        self.index_ = 0
+        self.best_cnfrs_ = [None, None]
+        self.history_ = []
+        self.ligand_cnfrs_history_ = []
+        self.initialized_ = False
+        #self._initialize()
+
+    def _initialize(self):
+
+        if self.random_start:
+            print("Initial Vector: ", self.ligand.cnfrs_, self.receptor.cnfrs_)
+            (self.ligand.cnfrs_, self.receptor.cnfrs_) = \
+                 self._mutate(self.ligand.cnfrs_, 
+                              self.receptor.cnfrs_, 
+                              10, np.pi * 0.1)
+            print("Random Start: ", self.ligand.cnfrs_, self.receptor.cnfrs_)
+
+        self.init_score = self._score() 
+        # score, prob, is_accept
+        self.history_.append([self.init_score.detach()[0].numpy()[0], 1., 1.])
+        self.best   = self.history_[-1]
+        self.best_cnfrs_ = [[self.ligand.init_cnfrs, ], self.receptor.init_cnfrs]
+        #print("self.ligand.cnfrs_ ", self.ligand.cnfrs_)
+        self.ligand_cnfrs_history_.append(self.ligand.cnfrs_[0].clone().detach()) 
+
+        self.initialized_ = True
+        return self
+    
+    def _step(self):
+        # make mutations
+        _lig_cnfrs, _rec_cnfrs = self._mutate(self.ligand.cnfrs_, self.receptor.cnfrs_)
+        #self.ligand.cnfrs_, self.receptor.cnfrs_ = self._mutate(self.ligand.cnfrs_, self.receptor.cnfrs_)
+
+        # calculate score 
+        score = self._score(_lig_cnfrs, _rec_cnfrs).detach()[0].numpy()[0]
+        # delta score
+        delta_score = score - self.history_[-1][0]
+        print(f'#{self.index_} {self.__class__.__name__} curr {score:.2f} prev {self.history_[-1][0]:.2f} dG {delta_score:.2f}')
+
+        # metropolis
+        if delta_score < 0:
+            # accept now
+            prob = 1.0 
+        else:
+            prob = np.power(np.e, -1.0 * delta_score / self.kt_)
+
+        rnd_num = random.random()
+        if prob >= rnd_num:
+            if self.ligand_is_flexible_:
+                self.ligand.cnfrs_ = _lig_cnfrs
+            if self.receptor_is_flexible_:
+                self.receptor.cnfrs_ = _rec_cnfrs
+
+            self.history_.append([score, prob, 1.])
+            print(f'[INFO] iter#{self.index_} {self.__class__.__name__} accept prob {prob:.2f} and rnd_num {rnd_num:.2f}')
+            self.ligand_cnfrs_history_.append(self.ligand.cnfrs_[0].clone().detach())
+        else:
+            print(f'[INFO] iter#{self.index_} {self.__class__.__name__} reject prob {prob:.2f} and rnd_num {rnd_num:.2f}')
+
+        # compare cnfrs
+        print("Cnfrs ", self.ligand.cnfrs_, self.receptor.cnfrs_)
+
+        if score < self.best[0]:
+            self.best = [score, 1, prob]
+            self.best_cnfrs_ = [_lig_cnfrs, _rec_cnfrs]
+        
+        return self
+    
+    def _save_history(self):
+        df = pd.DataFrame(self.history_, columns=['score', 'is_accept', 'probability'])
+        df.to_csv(self.results_fpath_, header=True, index=True, float_format="%.3f")
+
+        return self
+
+    def sampling(self, nsteps=None):
+        # initialize the parameters
+        if not self.initialized_:
+            self._initialize()
+
+        if nsteps is not None:
+            self.nsteps_ = nsteps
+
+        for step in range(self.nsteps_):
+            self.kt_ = (self.nsteps_ - step) / self.nsteps_
+            self.index_ = step
+            self._step()
+    
+    def save_traj(self, output_fpath_ligand=None, output_fpath_receptor=None):
+        if output_fpath_ligand is not None:
+            write_ligand_traj(self.ligand_cnfrs_history_, self.ligand, output_fpath_ligand,
+            {f'{self.scoring_function.__class__.__name__}': [x[0] for x in self.history_]})
+        
+        return self.best_cnfrs_
+
+
+if __name__ == "__main__":
+
+    from opendock.core.conformation import ReceptorConformation
+    from opendock.core.conformation import LigandConformation
+    from opendock.scorer.vina import VinaSF
+    from opendock.scorer.deeprmsd import DeepRmsdSF, CNN, DRmsdVinaSF
+    from opendock.scorer.constraints import rmsd_to_reference
+    from opendock.core import io
+
+    # define a flexible ligand object 
+    ligand = LigandConformation(sys.argv[1])
+    receptor = ReceptorConformation(sys.argv[2], 
+                                    ligand.init_heavy_atoms_coords)
+    receptor.init_sidechain_cnfrs()
+    
+    # define scoring function
+    sf = VinaSF(receptor, ligand)
+    vs = sf.scoring()
+    print("Vina Score ", vs)
+
+    # ligand center
+    xyz_center = ligand._get_geo_center().detach().numpy()[0]
+    print("Ligand XYZ COM", xyz_center)
+
+    # define sampler
+    print("Cnfrs: ",ligand.cnfrs_, receptor.cnfrs_)
+    mc = MonteCarloSampler(ligand, receptor, sf, 
+                           box_center=xyz_center, 
+                           box_size=[20, 20, 20], 
+                           random_start=True,
+                           minimizer=lbfgs_minimizer,
+                           )
+    init_score = mc._score(ligand.cnfrs_, receptor.cnfrs_)
+    print("Initial Score", init_score)
+
+    # run mc sampling
+    for _ in range(4):
+        mc._random_move()
+        mc.sampling(100)
+    
+    mc.save_traj("traj_saved_100.pdb")
+
