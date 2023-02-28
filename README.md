@@ -80,20 +80,10 @@ finely control the ligand or receptor conformations guided by the scoring functi
 2. In the following example, a `GeneticAlgorithmSampler` is used for sampling. Similarly, 
 the ligand and receptor objects are required. Here, 100 chromosomes are created and the 
 scoring function is `VinaSF` class. 
-    ```
-    from opendock.core.conformation import ReceptorConformation
-    from opendock.core.conformation import LigandConformation
-    from opendock.scorer.vina import VinaSF
-    from opendock.scorer.deeprmsd import DeepRmsdSF, CNN, DRmsdVinaSF
-    from opendock.scorer.constraints import rmsd_to_reference
-    from opendock.core import io
 
-    # define a flexible ligand object 
-    ligand = LigandConformation(sys.argv[1])
-    receptor = ReceptorConformation(sys.argv[2], 
-                                    ligand.init_heavy_atoms_coords)
-    #receptor.init_sidechain_cnfrs()
-    
+    ```
+    from opendock.sampler.ga import GeneticAlgorithmSampler
+
     # define scoring function
     sf = VinaSF(receptor, ligand)
     vs = sf.scoring()
@@ -116,6 +106,50 @@ scoring function is `VinaSF` class.
     print("Last Ligand Cnfrs ", _lcnfrs)
     ```
 
+3. Sometimes, it could be better to define some hybrid scoring functions for 
+more accurate sampling and docking. In the following example, two scoring functions
+`VinaSF` and `DeepRmsdSF` are implemented and combined together by different
+weights. This scoring function (hybrid scoring function by `VinaSF` and `DeepRmsdSF`)
+could be used to guide pose optimization or global docking.  
+
+    ```
+    # define scoring function
+    sf1 = VinaSF(receptor, ligand)
+    vs = sf1.scoring()
+    print("Vina Score ", vs)
+
+    # define scoring function
+    sf2 = DeepRmsdSF(receptor, ligand)
+    vs = sf2.scoring()
+    print("DeepRMSD Score ", vs)
+
+    # combined scoring function
+    sf = HybridSF(receptor, ligand, scorers=[sf1, sf2], weights=[0.8, 0.2])
+    vs = sf.scoring()
+    print("HybridSF Score ", vs)
+    ```
+
+The following hybrid scoring function could be used for samplign. 
+
+    ```
+    # sf is the hybrid scoring function
+    sf = HybridSF(receptor, ligand, scorers=[sf1, sf2], weights=[0.8, 0.2])
+
+    # ligand center of the initial input ligand pose
+    xyz_center = ligand._get_geo_center().detach().numpy()[0]
+    print("Ligand XYZ COM", xyz_center)
+
+    # define sampler
+    print("Cnfrs: ",ligand.cnfrs_, receptor.cnfrs_)
+    mc = MonteCarloSampler(ligand, receptor, sf, 
+                           box_center=xyz_center, 
+                           box_size=[20, 20, 20], 
+                           random_start=True,
+                           minimizer=lbfgs_minimizer,
+                           )
+    init_score = mc._score(ligand.cnfrs_, receptor.cnfrs_)
+    print("Initial Score", init_score)
+    ```
 
 # Performance
 
