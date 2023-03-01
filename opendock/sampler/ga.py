@@ -29,8 +29,8 @@ class GeneticAlgorithmSampler(BaseSampler):
     _cnfrs2veriables: convert the conformation vectors to the variables for optimization. 
     objective_func: the function for chromosome scoring. 
 
-    Args:
-    ----- 
+    Attributes:
+    ----------- 
     ligand: opendock.core.conformation.LigandConformation, 
         The ligand conformation object.
     receptor: opendock.core.conformation.ReceptorConformation, 
@@ -64,7 +64,7 @@ class GeneticAlgorithmSampler(BaseSampler):
         #self._random_move()
         self._init_variables = self._cnfrs2variables(self.ligand.cnfrs_, 
                                                      self.receptor.cnfrs_)
-        print("Initializing variables ", self._init_variables, self.scoring_function.scoring())
+        #print("Initializing variables ", self._init_variables, self.scoring_function.scoring())
 
         self.n_var = int(len(self._init_variables))
         self.n_gen = kwargs.pop("n_gen", 100)
@@ -136,7 +136,7 @@ class GeneticAlgorithmSampler(BaseSampler):
         _encoding_codes = self.decode_entire_chrom(np.array(_init_chrom))
         _fitness = self.objective_func(_encoding_codes)
         _pop = [_init_chrom, ]
-        print("First Chrom fitness score", _fitness)
+        #print("First Chrom fitness score", _fitness)
 
         for i in range(self.n_pop - 1):
 

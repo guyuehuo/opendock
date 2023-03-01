@@ -6,7 +6,38 @@ import numpy as np
 
 
 class BaseSampler(object):
+    """
+    Base class for sampling. In this class, the ligand and receptor objects are
+    required, and the scoring function should be provided. Minimizer could be 
+    defined if the scoring function is differentiable. Meanwhile, to restrict the 
+    sampling region, the docking box center and box size should be defined through 
+    kwargs. 
 
+    Methods
+    ------- 
+    _score: ```Ligand```, ```Receptor```,  
+        given the ligand and receptor objects (with their updated conformation vectors
+        if any), the scoring function is called to calculate the the binding or interaction
+        score. 
+    _minimize: minimize the ligand and/or receptor conformation vectors using minimizers
+        such as LBFGS, Adam, or SGD. 
+    _out_of_box_check: given a ligand conformation vector, evaluate whether the ligand is
+        out of docking box. 
+    _mutate: modify the ligand and/or receptor conformation vectors to change the binding pose
+        or protein sidechain orientations. 
+    _random_move: make random movement to change ligand poses or sidechain orientations. 
+    
+    Attributes
+    ---------- 
+    ligand: ```Ligand``` object 
+    receptor: ```Receptor``` object 
+    scoring_function: ```BaseScoringFunction``` object
+    minimizer: the minimizer function for pose optimization 
+    output_fpath (str): the output file path 
+    box_center (list): list of floats (in Angstrom) that define the binding pocket center
+    box_szie (list): list of floats (in Angstrom) that define the binding pocket size
+    
+    """
     def __init__(self, ligand, receptor, scoring_function, **kwargs):
         self.ligand = ligand
         self.receptor = receptor
@@ -96,12 +127,12 @@ class BaseSampler(object):
     
     def _random_move(self):
         # make a random move
-        print("Initial Vector: ", self.ligand.cnfrs_, self.receptor.cnfrs_)
+        print("[INFO] Initial Vector: ", self.ligand.cnfrs_, self.receptor.cnfrs_)
         self.ligand.cnfrs_, self.receptor.cnfrs_ = \
                 self._mutate(self.ligand.cnfrs_, 
                              self.receptor.cnfrs_, 
                              10, np.pi * 0.1)
-        print("Random Start: ", self.ligand.cnfrs_, self.receptor.cnfrs_)
+        print("[INFO] Random Start: ", self.ligand.cnfrs_, self.receptor.cnfrs_)
     
         return self
 
@@ -147,7 +178,7 @@ class BaseSampler(object):
                                                    None, is_ligand=True, 
                                                    is_receptor=False)
             except:
-                print("[Warning] minimize failed, skipping")
+                print("[WARNING] minimize failed, skipping")
         
         if self.receptor_is_flexible_ :
             _new_receptor_cnfrs = []
@@ -165,6 +196,6 @@ class BaseSampler(object):
                 _, _new_receptor_cnfrs = self._minimize(None, _new_receptor_cnfrs, 
                                                         is_receptor=True, is_ligand=False)
             except:
-                print("[Warning] minimize failed, skipping")
+                print("[WARNING] minimize failed, skipping")
 
         return _new_ligand_cnfrs, _new_receptor_cnfrs
