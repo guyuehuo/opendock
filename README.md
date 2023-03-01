@@ -129,9 +129,11 @@ could be used to guide pose optimization or global docking.
     print("HybridSF Score ", vs)
     ```
 
-The following hybrid scoring function could be used for samplign. 
+4. The following hybrid scoring function could be used for sampling. 
 
     ```
+    from opendock.scorer.hybrid import HybridSF
+
     # sf is the hybrid scoring function
     sf = HybridSF(receptor, ligand, scorers=[sf1, sf2], weights=[0.8, 0.2])
 
@@ -141,7 +143,7 @@ The following hybrid scoring function could be used for samplign.
 
     # define sampler
     print("Cnfrs: ",ligand.cnfrs_, receptor.cnfrs_)
-    mc = MonteCarloSampler(ligand, receptor, sf, 
+    mc = MonteCarloSampler(ligand, receptor, scoring_function=sf, 
                            box_center=xyz_center, 
                            box_size=[20, 20, 20], 
                            random_start=True,
@@ -149,6 +151,18 @@ The following hybrid scoring function could be used for samplign.
                            )
     init_score = mc._score(ligand.cnfrs_, receptor.cnfrs_)
     print("Initial Score", init_score)
+    ```
+
+5. Atom selection example. In the following example, the heavy atom 
+indices of residue GLU5 in chain A are determined. 
+
+    ```
+    from opendock.core.asl import AtomSelection 
+
+    asl = AtomSelection(molecule=receptor)
+    indices = asl.select_atom(atomnames=['OE1,OE2',], chains=['A'], residx=['5'], resnames=['GLU'])
+    print(indices)
+
     ```
 
 # Performance

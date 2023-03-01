@@ -69,7 +69,7 @@ class Receptor(object):
         self.dataframe_ = pd.DataFrame([])
         self.dataframe_['ad4_types'] = self.rec_all_atoms_ad4_types
         self.dataframe_['xs_types'] = self.rec_all_atoms_xs_types
-        self.dataframe_['pdb_types'] = self.rec_all_atoms_pdb_types
+        self.dataframe_['atomname'] = self.rec_all_atoms_pdb_types
         self.dataframe_['element'] = self.rec_all_atoms_element
         self.dataframe_['atomIndex'] = self.rec_all_atoms_indices
         
@@ -79,7 +79,7 @@ class Receptor(object):
             chain = [x[4] for x in self.rec_all_atoms_resid]
             resSeq = [int(x[5:].strip()) for x in self.rec_all_atoms_resid]
         except:
-            print("WARNING: parse receptor resname, chain, resSeq error ...")
+            print("[WARNING] parse receptor resname, chain, resSeq error ...")
             resnames = [""] * self.dataframe_.shape[0]
             chain = [""] * self.dataframe_.shape[0]
             resSeq = [0, ] * self.dataframe_.shape[0]
@@ -92,6 +92,9 @@ class Receptor(object):
         self.dataframe_['x'] = [x.numpy()[0] for x in self.init_rec_all_atoms_xyz]
         self.dataframe_['y'] = [x.numpy()[1] for x in self.init_rec_all_atoms_xyz]
         self.dataframe_['z'] = [x.numpy()[2] for x in self.init_rec_all_atoms_xyz]
+
+        self.dataframe_ha_ = self.dataframe_[self.dataframe_['element'] != "dummy"]
+        self.dataframe_ha_.index = np.arange(self.dataframe_ha_.shape[0])
 
         return self.dataframe_
 
@@ -141,7 +144,7 @@ class Receptor(object):
             atom_indice = int(line.split()[1])
 
             pdb_type = line[12:16].strip()
-            res_name = line[17:20]
+            res_name = line[17:20].strip()
             # the residue index, eg. 'ILE A 347', 'ALA A 474'
             resid_symbol = line[17:27].strip()
 
