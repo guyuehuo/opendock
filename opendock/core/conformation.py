@@ -416,3 +416,4 @@ if __name__ == "__main__":
     #sc_cnfrs = torch.cat(sc_list)
     #print(sc_cnfrs)
     print(receptor.cnfr2xyz(sc_list))
+

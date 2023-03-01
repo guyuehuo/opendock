@@ -1,6 +1,7 @@
 
 from turtle import pos
 import numpy as np
+import pandas as pd
 import torch
 import itertools
 import os, sys
@@ -76,8 +77,8 @@ class Ligand(object):
         self._parse_frame(self.pose_fpath)
         self.pose_files = [self.pose_fpath, ]
 
-        for num, f in enumerate(self.pose_files[1:]):
-            self._get_xyz(num+1, f)
+        #for num, f in enumerate(self.pose_files[1:]):
+        #    self._get_xyz(num+1, f)
 
         self.update_heavy_atoms_xs_types()
         self.update_ligand_bonded_information()
@@ -111,9 +112,7 @@ class Ligand(object):
         ha_xyz = []
         all_xyz = []
         for line in lines:
-            x = float(line[30:38].strip())
-            y = float(line[38:46].strip())
-            z = float(line[46:54].strip())
+            x, y, z = self._get_xyz_from_line(line)
             _xyz = np.c_[x, y, z][0]
             all_xyz.append(_xyz)
         
@@ -133,13 +132,28 @@ class Ligand(object):
         #print("self.lig_all_atoms_xyz ", self.lig_all_atoms_xyz.shape)
         return self
 
+    def _get_xyz_from_line(self, line):
+        # xyz of each heavy atom
+        x = float(line[30:38].strip())
+        y = float(line[38:46].strip())
+        z = float(line[46:54].strip())
+
+        return (x, y, z)
+
     def _parse_frame(self, pose_fpath):
+
+        self.dataframe_ha_ = pd.DataFrame()
 
         with open(pose_fpath) as f:
             lines = [x.strip() for x in f.readlines()]
 
         init_lig_heavy_atoms_xyz = []
         lig_all_atoms_xyz = []
+        atomnames_heavy_atoms = []
+        chains_heavy_atoms = []
+        residue_names_heavy_atoms = []
+        residue_index_heavy_atoms = []
+        charges = []
 
         branch_start_numbers = []
         for num, line in enumerate(lines):
@@ -162,9 +176,7 @@ class Ligand(object):
             self.lig_all_atoms_xs_types.append(atom_xs_type)
 
             # xyz of each heavy atom
-            x = float(line[30:38].strip())
-            y = float(line[38:46].strip())
-            z = float(line[46:54].strip())
+            x, y, z = self._get_xyz_from_line(line)
 
             atom_xyz = np.c_[x, y, z][0]
             lig_all_atoms_xyz.append(atom_xyz)
@@ -181,6 +193,16 @@ class Ligand(object):
                 self.lig_heavy_atoms_ad4_types.append(atom_ad4_type)
                 self.lig_heavy_atoms_xs_types.append(atom_xs_type)
                 self.origin_heavy_atoms_lines.append(line)
+
+                # atom selection related 
+                atomnames_heavy_atoms.append(line[12:16].strip())
+                chains_heavy_atoms.append(line[21])
+                residue_names_heavy_atoms.append(line[17:20].strip())
+                residue_index_heavy_atoms.append(line[22:26].strip())
+                try:
+                    charges.append(float(line[70:76].strip()))
+                except:
+                    charges.append(0.0)
             else:
                 self.number_of_H += 1
 
@@ -218,9 +240,7 @@ class Ligand(object):
                 self.lig_all_atoms_xs_types.append(atom_xs_type)
 
                 # xyz of each atom
-                x = float(line[30:38].strip())
-                y = float(line[38:46].strip())
-                z = float(line[46:54].strip())
+                x, y, z = self._get_xyz_from_line(line)
 
                 atom_xyz = np.c_[x, y, z][0]
                 lig_all_atoms_xyz.append(atom_xyz)
@@ -242,6 +262,15 @@ class Ligand(object):
                     self.lig_heavy_atoms_xs_types.append(atom_xs_type)
                     self.origin_heavy_atoms_lines.append(line)
 
+                    # atom selection related 
+                    atomnames_heavy_atoms.append(line[12:16].strip())
+                    chains_heavy_atoms.append(line[21])
+                    residue_names_heavy_atoms.append(line[17:20].strip())
+                    residue_index_heavy_atoms.append(line[22:26].strip())
+                    try:
+                        charges.append(float(line[70:76].strip()))
+                    except:
+                        charges.append(0.0)
                 else:
                     self.number_of_H += 1
 
@@ -265,6 +294,19 @@ class Ligand(object):
         self.ligand_center[0] = ligand_center
 
         self.lig_all_atoms_indices = [x for x in range(len(lig_all_atoms_xyz))]
+
+        # prepare the ligand dataframe
+        self.dataframe_ha_["ad4_types"] = self.lig_heavy_atoms_ad4_types
+        self.dataframe_ha_["xs_types"] = self.lig_heavy_atoms_xs_types
+        self.dataframe_ha_["atomname"] = atomnames_heavy_atoms
+        self.dataframe_ha_["element"] = self.lig_heavy_atoms_element
+        self.dataframe_ha_["chain"] = chains_heavy_atoms
+        self.dataframe_ha_["resname"] = residue_names_heavy_atoms 
+        self.dataframe_ha_["resSeq"] = residue_index_heavy_atoms
+        self.dataframe_ha_["x"] = init_lig_heavy_atoms_xyz[:, 0]
+        self.dataframe_ha_["y"] = init_lig_heavy_atoms_xyz[:, 1]
+        self.dataframe_ha_["z"] = init_lig_heavy_atoms_xyz[:, 2]
+        self.dataframe_ha_["charge"] = charges
 
         return self
 

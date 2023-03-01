@@ -178,7 +178,7 @@ if __name__ == "__main__":
 
     from opendock.core.receptor import Receptor
     from opendock.core.conformation import LigandConformation
-    from opendock.scorer.vina import VinaSF
+    from opendock.scorer.constraints import DistanceConstraintSF
 
     ligand = LigandConformation(sys.argv[1])
     ligand.parse_ligand()
@@ -187,5 +187,17 @@ if __name__ == "__main__":
     receptor.parse_receptor()
 
     asl = AtomSelection(molecule=receptor)
-    indices = asl.select_atom(atomnames=['OE1,OE2',], chains=['A'], residx=['5'], resnames=['GLU'])
-    print(indices)
+    indices_r = asl.select_atom(atomnames=['C,O,N,CA',], chains=['A'], residx=['120-122'])
+    print(indices_r, receptor.dataframe_ha_.head())
+
+    asl = AtomSelection(molecule=ligand)
+    indices_l = asl.select_atom(atomnames=['N2,C13',])
+    print(indices_l, ligand.dataframe_ha_.head())
+
+    # constraints
+    cnstr = DistanceConstraintSF(receptor, ligand, 
+                                 grpA_ha_indices=indices_r, 
+                                 grpB_ha_indices=indices_l, 
+                                 )
+    print(cnstr.scoring())
+    

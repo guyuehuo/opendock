@@ -62,7 +62,7 @@ def wall(x, upper_bound=1.0, lower_bound=0.5, k=1.0, exponent=1.0):
         return 0
 
     
-def harmonic(x, reference, k=1.0, exponent=1.0):
+def harmonic(x, reference=5.0, k=1.0, exponent=2.0):
 
     return torch.pow((reference - x), exponent) * k
 
@@ -89,7 +89,7 @@ class ConstraintSF(BaseScoringFunction):
 
     def _distance(self, x, y):
 
-        return torch.sqrt(torch.sum(torch.pow((x - ref), 2)))
+        return torch.sqrt(torch.sum(torch.pow((x - y), 2)))
     
     def _angle(self, x, y, z):
         return NotImplemented
@@ -113,41 +113,106 @@ class DistanceConstraintSF(ConstraintSF):
         self.constraint_type_ = kwargs.pop('constraint', 'harmonic')
         self.force_constant_ = kwargs.pop('force', 1.0)
         #self.constraint_reference_ = kwargs.pop('reference', None)
-        self.bounds_ = kwargs.pop('bounds', [None, None])
+        # distance boundary, unit is angstrom
+        self.bounds_ = kwargs.pop('bounds', [3.0, 8.0])
 
-        assert (len(self.grpA_mol) > 0 and len(self.grpB_mol) > 0)
+        assert (len(self.grpA_idx_) > 0 and len(self.grpB_idx_) > 0)
 
     def scoring(self):
 
         if self.grpA_mol_.lower() in ['receptor', 'protein']:
             _grpA_xyz = self.receptor.rec_heavy_atoms_xyz
         elif self.grpA_mol_.lower() in ['ligand', 'molecule']:
-            _grpA_xyz = self.ligand.pose_heavy_atoms_coords
+            _grpA_xyz = self.ligand.pose_heavy_atoms_coords[0]
+        
+        #print("_grpA_xyz ", _grpA_xyz.shape)
 
         if self.grpB_mol_.lower() in ['receptor', 'protein']:
             _grpB_xyz = self.receptor.rec_heavy_atoms_xyz
         elif self.grpB_mol_.lower() in ['ligand', 'molecule']:
-            _grpB_xyz = self.ligand.pose_heavy_atoms_coords
+            _grpB_xyz = self.ligand.pose_heavy_atoms_coords[0]
+        #print("_grpB_xyz ",_grpB_xyz, _grpB_xyz.shape)
         
-        distances = []
-        for (atm1, atm2) in itertools.product(self.grpA_idx_, self.grpB_idx_):
-            _dist = self._distance(_grpA_xyz[0][atm1], _grpB_xyz[0][atm2])
+        pairs = list(itertools.product(self.grpA_idx_, self.grpB_idx_))
+        self.distances_paired_ = []
+        for i, (atm1, atm2) in enumerate(pairs):
+            _d = self._distance(_grpA_xyz[atm1], _grpB_xyz[atm2])
+            self.distances_paired_.append(_d)
 
-            distances.append(_dist)
+        self.distances_paired_ = torch.stack(self.distances_paired_)
+        #print("Paired Distances", self.distances_paired_)
 
         if self.constraint_type_ in ['harmonic', 'HARMONIC']:
-            return harmonic(torch.mean(distances), self.bounds_[0], 
-                            self.force_constant_, 2)
+            score= harmonic(torch.mean(self.distances_paired_), self.bounds_[0], 
+                             self.force_constant_, 2)
         elif self.constraint_type_ in ['UPPER', 'upper_wall', 'upper']:
-            return upper_wall(torch.mean(distances), self.bounds[0], 
+            score= upper_wall(torch.mean(self.distances_paired_), self.bounds[0], 
                               self.force_constant_, 2)
         elif self.constraint_type_ in ['LOWER', 'lower_wall', 'lower']:
-            return lower_wall(torch.mean(distances), self.bounds[0], 
+            score= lower_wall(torch.mean(self.distances_paired_), self.bounds[0], 
                               self.force_constant_, 2)
         elif self.constraint_type_ in ['WALL', 'wall']:
-            return lower_wall(torch.mean(distances), self.bounds[0], self.bounds[1], 
+            score= lower_wall(torch.mean(self.distances_paired_), self.bounds[0], self.bounds[1], 
                               self.force_constant_, 2)
         else:
-            return torch.mean(distances)
-    
+            score= torch.mean(self.distances_paired_)
 
+        return score.reshape((1, -1))
+
+if __name__ == '__main__':
+    import os, sys
+    from opendock.core.receptor import Receptor
+    from opendock.core.conformation import LigandConformation
+    from opendock.sampler.minimizer import lbfgs_minimizer
+    from opendock.sampler.monte_carlo import MonteCarloSampler
+    from opendock.core.asl import AtomSelection
+    from opendock.scorer.vina import VinaSF 
+    from opendock.scorer.hybrid import HybridSF 
+
+    ligand = LigandConformation(sys.argv[1])
+    ligand.parse_ligand()
+
+    receptor = Receptor(sys.argv[2])
+    receptor.parse_receptor()
+
+    asl = AtomSelection(molecule=receptor)
+    indices_r = asl.select_atom(atomnames=['C,O,N,CA',], chains=['A'], residx=['120-122'])
+    print(indices_r, receptor.dataframe_ha_.head())
+
+    asl = AtomSelection(molecule=ligand)
+    indices_l = asl.select_atom(atomnames=['N2,C13',])
+    print(indices_l, ligand.dataframe_ha_.head())
+
+    xyz_center = ligand._get_geo_center().detach().numpy()[0]
+    print("Ligand XYZ COM", xyz_center)
+
+    # constraints
+    cnstr = DistanceConstraintSF(receptor, ligand, 
+                                 grpA_ha_indices=indices_r, 
+                                 grpB_ha_indices=indices_l, 
+                                 )
+    print(cnstr.scoring())
+
+    # vina scoring function
+    sf1 = VinaSF(receptor, ligand)
+    vs = sf1.scoring()
+    print("Vina Score ", vs)
+
+    # combined scoring function
+    sf = HybridSF(receptor, ligand, scorers=[sf1, cnstr], weights=[1.2, -0.2])
+    vs = sf.scoring()
+    print("HybridSF Score ", vs)
+    
+    # monte carlo 
+    print("Cnfrs: ",ligand.cnfrs_, receptor.cnfrs_)
+    mc = MonteCarloSampler(ligand, receptor, sf, 
+                           box_center=xyz_center, 
+                           box_size=[20, 20, 20], 
+                           random_start=True,
+                           minimizer=lbfgs_minimizer,
+                           )
+    init_score = mc._score(ligand.cnfrs_, receptor.cnfrs_)
+    print("Initial Score", init_score)
+    mc._random_move()
+    mc.sampling(100)
+    

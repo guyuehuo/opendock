@@ -92,7 +92,7 @@ class Receptor(object):
         self.dataframe_['x'] = [x.numpy()[0] for x in self.init_rec_all_atoms_xyz]
         self.dataframe_['y'] = [x.numpy()[1] for x in self.init_rec_all_atoms_xyz]
         self.dataframe_['z'] = [x.numpy()[2] for x in self.init_rec_all_atoms_xyz]
-
+        self.dataframe_['charge'] = self.charges
         self.dataframe_ha_ = self.dataframe_[self.dataframe_['element'] != "dummy"]
         self.dataframe_ha_.index = np.arange(self.dataframe_ha_.shape[0])
 
@@ -135,6 +135,7 @@ class Receptor(object):
         temp_heavy_atoms_indices = []  # the indices of heavy atoms in each residue
         temp_heavy_atoms_pdb_types = []
         heavy_atom_num = -1 # the index of heavy atoms
+        charges = []
 
         num = -1 # the index of atoms including H
         for _num_line, line in enumerate(self.rec_lines):
@@ -147,6 +148,11 @@ class Receptor(object):
             res_name = line[17:20].strip()
             # the residue index, eg. 'ILE A 347', 'ALA A 474'
             resid_symbol = line[17:27].strip()
+
+            try:
+                charges.append(float(line[70:76].strip()))
+            except:
+                charges.append(0.0)
 
             # Water or HETATM
             if res_name[:2] == "WA" or res_name == "HEM" or res_name == "NAD" or res_name == "NAP" or res_name == "UMP" \
@@ -170,6 +176,7 @@ class Receptor(object):
             self.rec_all_atoms_resid.append(resid_symbol)
             self.rec_all_atoms_pdb_types.append(pdb_type)
             self.rec_all_atoms_indices.append(atom_indice) 
+            self.charges = charges
 
             # the coordinates of the atom
             x, y, z = self._obtain_xyz(line)
