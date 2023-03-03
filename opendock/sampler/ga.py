@@ -42,7 +42,7 @@ class GeneticAlgorithmSampler(BaseSampler):
     def __init__(self,
                  ligand = None, 
                  receptor = None, 
-                 scoring_function: None, 
+                 scoring_function = None, 
                  **kwargs):
         
         super(GeneticAlgorithmSampler, self).__init__(ligand, receptor, scoring_function)
@@ -50,7 +50,8 @@ class GeneticAlgorithmSampler(BaseSampler):
         self.scores = {}
         self.best_chrom_history = []
         self.chrom_library = []
-        self.best_seqs_df = None
+
+        self.scoring_function = scoring_function
 
         self.minimizer = kwargs.pop('minimizer', None)
         self.output_fpath = kwargs.pop('output_fpath', 'output.pdb')
@@ -58,8 +59,10 @@ class GeneticAlgorithmSampler(BaseSampler):
         self.box_size   = kwargs.pop('box_size', None)
 
         self.initialized_ = False
+        self.ligand_is_flexible = False
+        self.receptor_is_flexible = False
 
-    def _initialize(self, **kwargs):
+    #def _initialize(self, **kwargs):
 
         #self._random_move()
         self._init_variables = self._cnfrs2variables(self.ligand.cnfrs_, 
@@ -190,6 +193,11 @@ class GeneticAlgorithmSampler(BaseSampler):
         self.num_dec_var = 3
         self.num_dec_fit = 3
 
+        if self.ligand.cnfrs_ is not None:
+            self.ligand_is_flexible = True
+        if self.receptor.cnfrs_ is not None:
+            self.receptor_is_flexible = True
+
         self.initialized_ = True
 
     def _variables2cnfrs(self, variables):
@@ -268,8 +276,22 @@ class GeneticAlgorithmSampler(BaseSampler):
         ind_sel = np.random.choice(self.n_pop, tournament_k, replace=False)
         ind_best_from_sel = np.argmax(self.fit_vals[ind_sel])
         return ind_sel[ind_best_from_sel]
+    
+    def _minimize_chromosome(self, chrom):
+        if self.minimizer is not None:
+            # convert chromosome to conformation 
+            variables = self.decode_entire_chrom(np.array(chrom))
+            _lig_cnfrs, _rec_cnfrs = self._variables2cnfrs(variables)
+            #print("Variable to Cnfrs ", _lig_cnfrs, _rec_cnfrs)
+            _lig_cnfrs, _rec_cnfrs = self._minimize(_lig_cnfrs, _rec_cnfrs, 
+                                                    is_receptor=self.receptor_is_flexible, 
+                                                    is_ligand=self.ligand_is_flexible)
+            variables = self._cnfrs2variables(_lig_cnfrs, _rec_cnfrs)
+            return list(self.encode2chrom(variables))
+        else:
+            return chrom
 
-    def run(self, n_gen=None, verbose=True, output=None):
+    def sampling(self, n_gen=None, verbose=True, output=None):
         """
         Evolution for a given number of iterations/generations
 
@@ -289,9 +311,9 @@ class GeneticAlgorithmSampler(BaseSampler):
         if not self.initialized_:
             self._initialize()
 
-        if output is not None:
+        """if output is not None:
             os.makedirs(output, exist_ok=True)
-            self.output_dpath = output
+            self.output_dpath = output"""
 
         #------------------------------------------------
         #number of generations is set from object if not given
@@ -326,13 +348,21 @@ class GeneticAlgorithmSampler(BaseSampler):
             for sn_pair in range(0, self.n_pop, 2):
                 p1 = self.chrom_pop[ind_parents[sn_pair]]
                 p2 = self.chrom_pop[ind_parents[sn_pair+1]]
-                self.chrom_pop2[sn_pair], self.chrom_pop2[sn_pair+1] = self.crossover(p1, p2, p_c=self.p_c)
+
+                # cnfr to chrom
+                # minimize p1 
+                _p1, _p2 = self.crossover(p1, p2, p_c=self.p_c)
+                self.chrom_pop2[sn_pair] = self._minimize_chromosome(_p1)
+                self.chrom_pop2[sn_pair+1] = self._minimize_chromosome(_p2)
+                #self.chrom_pop2[sn_pair], self.chrom_pop2[sn_pair+1] = self.crossover(p1, p2, p_c=self.p_c)
 
             #--------------------------------------------
             #mutation
             #--------------------------------------------
             for sn_chrom, chrom in enumerate(self.chrom_pop2):
-                self.chrom_pop2[sn_chrom] = self.mutate(chrom)
+                _p = self.mutate(chrom)
+                self.chrom_pop2[sn_chrom] = self._minimize_chromosome(_p)
+                #self.chrom_pop2[sn_chrom] = self.mutate(chrom)
 
             #--------------------------------------------
             #replacing the population
@@ -457,7 +487,7 @@ class GeneticAlgorithmSampler(BaseSampler):
         """
         # decoding the chromosome
         x = self.decode_entire_chrom(chrom)
-        # codes to codons
+        # variable to fitness
         _fitness = self.objective_func(x)
 
         return _fitness
@@ -657,6 +687,7 @@ if __name__ == "__main__":
     from opendock.scorer.vina import VinaSF
     from opendock.scorer.deeprmsd import DeepRmsdSF, CNN, DRmsdVinaSF
     from opendock.scorer.constraints import rmsd_to_reference
+    from opendock.sampler.minimizer import lbfgs_minimizer
     from opendock.core import io
 
     # define a flexible ligand object 
@@ -675,10 +706,12 @@ if __name__ == "__main__":
     print("Ligand XYZ COM", xyz_center)
 
     # initialize GA
-    GA = GeneticAlgorithmSampler(ligand, receptor, sf, box_center=xyz_center, 
-                                 box_size=[20, 20, 20], )
-    GA._initialize()
-    GA.run(n_gen=4)
+    GA = GeneticAlgorithmSampler(ligand, receptor, sf, 
+                                 box_center=xyz_center, 
+                                 box_size=[20, 20, 20], 
+                                 minimizer=lbfgs_minimizer)
+    #GA._initialize()
+    GA.sampling(n_gen=4, n_pop=10)
 
     _vars = GA.best_chrom_history[-1][1:]
     _lcnfrs, _rcnfrs = GA._variables2cnfrs(_vars)

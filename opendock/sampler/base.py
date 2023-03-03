@@ -36,7 +36,7 @@ class BaseSampler(object):
     output_fpath (str): the output file path 
     box_center (list): list of floats (in Angstrom) that define the binding pocket center
     box_szie (list): list of floats (in Angstrom) that define the binding pocket size
-    
+
     """
     def __init__(self, ligand, receptor, scoring_function, **kwargs):
         self.ligand = ligand
@@ -79,7 +79,7 @@ class BaseSampler(object):
                 score = torch.sum(self.scoring_function.scoring())
 
                 return score
-
+            #print("Current Minimimzer ", self.minimizer)
             return self.minimizer(x_ligand, _sf), None
 
         elif not is_ligand and is_receptor:
@@ -107,8 +107,8 @@ class BaseSampler(object):
     def _out_of_box_check(self, ligand_cnfrs=None):
         xyz_ranges = []
         for i in range(3):
-            _range = [self.box_center[i] - self.box_size[i] / 2, 
-                      self.box_center[i] + self.box_size[i] / 2]
+            _range = [self.box_center[i] - self.box_size[i] * 1.2 / 2, 
+                      self.box_center[i] + self.box_size[i] * 1.2 / 2]
             xyz_ranges.append(_range)
 
         # setup box bound
@@ -125,13 +125,13 @@ class BaseSampler(object):
         
         return False
     
-    def _random_move(self):
+    def _random_move(self, ligand_cnfrs, receptor_cnfrs):
         # make a random move
-        print("[INFO] Initial Vector: ", self.ligand.cnfrs_, self.receptor.cnfrs_)
+        print("[INFO] Initial Vector: ", ligand_cnfrs, receptor_cnfrs)
         self.ligand.cnfrs_, self.receptor.cnfrs_ = \
-                self._mutate(self.ligand.cnfrs_, 
-                             self.receptor.cnfrs_, 
-                             10, np.pi * 0.1)
+                self._mutate(ligand_cnfrs, 
+                             receptor_cnfrs, 
+                             10, np.pi, minimize=False)
         print("[INFO] Random Start: ", self.ligand.cnfrs_, self.receptor.cnfrs_)
     
         return self
@@ -140,7 +140,8 @@ class BaseSampler(object):
                 receptor_cnfrs = None, 
                 coords_max=5.0, 
                 torsion_max=0.5, 
-                max_box_trials=20):
+                max_box_trials=20, 
+                minimize=True):
         _new_ligand_cnfrs = None
         _new_receptor_cnfrs = None
         
@@ -174,9 +175,10 @@ class BaseSampler(object):
             #if True:
                 _cnfr = torch.Tensor(_new_ligand_cnfrs[0].detach().numpy()).requires_grad_()
                 _new_ligand_cnfrs = [_cnfr, ]
-                _new_ligand_cnfrs, _ = self._minimize(_new_ligand_cnfrs, 
-                                                   None, is_ligand=True, 
-                                                   is_receptor=False)
+                if minimize:
+                    _new_ligand_cnfrs, _ = self._minimize(_new_ligand_cnfrs, 
+                                                        None, is_ligand=True, 
+                                                        is_receptor=False)
             except:
                 print("[WARNING] minimize failed, skipping")
         
@@ -193,8 +195,9 @@ class BaseSampler(object):
             _new_receptor_cnfrs = [torch.Tensor(x.detach().numpy()).requires_grad_() for x in _new_receptor_cnfrs]
 
             try:
-                _, _new_receptor_cnfrs = self._minimize(None, _new_receptor_cnfrs, 
-                                                        is_receptor=True, is_ligand=False)
+                if minimize:
+                    _, _new_receptor_cnfrs = self._minimize(None, _new_receptor_cnfrs, 
+                                                            is_receptor=True, is_ligand=False)
             except:
                 print("[WARNING] minimize failed, skipping")
 

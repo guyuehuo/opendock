@@ -1,12 +1,12 @@
 
 import random
+import torch
 import numpy as np
 import pandas as pd
 import os, sys
 import random
-import torch
 from opendock.sampler.base import BaseSampler
-from opendock.sampler.minimizer import lbfgs_minimizer
+from opendock.sampler.minimizer import lbfgs_minimizer, adam_minimizer
 from opendock.core.io import write_ligand_traj
 
 
@@ -31,18 +31,19 @@ class MonteCarloSampler(BaseSampler):
         self.best_cnfrs_ = [None, None]
         self.history_ = []
         self.ligand_cnfrs_history_ = []
+        self.ligand_scores_history_ = []
         self.initialized_ = False
         #self._initialize()
 
     def _initialize(self):
 
         if self.random_start:
-            print("Initial Vector: ", self.ligand.cnfrs_, self.receptor.cnfrs_)
+            #print("Initial Vector: ", self.ligand.cnfrs_, self.receptor.cnfrs_)
             (self.ligand.cnfrs_, self.receptor.cnfrs_) = \
                  self._mutate(self.ligand.cnfrs_, 
                               self.receptor.cnfrs_, 
                               10, np.pi * 0.1)
-            print("Random Start: ", self.ligand.cnfrs_, self.receptor.cnfrs_)
+            #print("Random Start: ", self.ligand.cnfrs_, self.receptor.cnfrs_)
 
         self.init_score = self._score() 
         # score, prob, is_accept
@@ -50,21 +51,23 @@ class MonteCarloSampler(BaseSampler):
         self.best   = self.history_[-1]
         self.best_cnfrs_ = [[self.ligand.init_cnfrs, ], self.receptor.init_cnfrs]
         #print("self.ligand.cnfrs_ ", self.ligand.cnfrs_)
-        self.ligand_cnfrs_history_.append(self.ligand.cnfrs_[0].clone().detach()) 
-
+        self.ligand_cnfrs_history_.append(torch.Tensor(self.ligand.cnfrs_[0].detach().numpy())) 
+        self.ligand_scores_history_.append(self.init_score.detach().numpy().ravel()[0])
         self.initialized_ = True
         return self
     
-    def _step(self):
+    def _step(self, minimize=False):
         # make mutations
-        _lig_cnfrs, _rec_cnfrs = self._mutate(self.ligand.cnfrs_, self.receptor.cnfrs_)
+        _lig_cnfrs, _rec_cnfrs = self._mutate(self.ligand.cnfrs_, 
+                                              self.receptor.cnfrs_, 
+                                              minimize=minimize)
         #self.ligand.cnfrs_, self.receptor.cnfrs_ = self._mutate(self.ligand.cnfrs_, self.receptor.cnfrs_)
 
         # calculate score 
         score = self._score(_lig_cnfrs, _rec_cnfrs).detach()[0].numpy()[0]
         # delta score
         delta_score = score - self.history_[-1][0]
-        print(f'#{self.index_} {self.__class__.__name__} curr {score:.2f} prev {self.history_[-1][0]:.2f} dG {delta_score:.2f}')
+        print(f'[INFO] #{self.index_} {self.__class__.__name__} curr {score:.2f} prev {self.history_[-1][0]:.2f} dG {delta_score:.2f}')
 
         # metropolis
         if delta_score < 0:
@@ -81,13 +84,14 @@ class MonteCarloSampler(BaseSampler):
                 self.receptor.cnfrs_ = _rec_cnfrs
 
             self.history_.append([score, prob, 1.])
-            print(f'[INFO] iter#{self.index_} {self.__class__.__name__} accept prob {prob:.2f} and rnd_num {rnd_num:.2f}')
-            self.ligand_cnfrs_history_.append(self.ligand.cnfrs_[0].clone().detach())
+            print(f'[INFO] #{self.index_} {self.__class__.__name__} accept prob {prob:.2f} and rnd_num {rnd_num:.2f}')
+            self.ligand_cnfrs_history_.append(torch.Tensor(self.ligand.cnfrs_[0].detach().numpy()))
+            self.ligand_scores_history_.append(score)
         else:
-            print(f'[INFO] iter#{self.index_} {self.__class__.__name__} reject prob {prob:.2f} and rnd_num {rnd_num:.2f}')
+            print(f'[INFO] #{self.index_} {self.__class__.__name__} reject prob {prob:.2f} and rnd_num {rnd_num:.2f}')
 
         # compare cnfrs
-        print("Cnfrs ", self.ligand.cnfrs_, self.receptor.cnfrs_)
+        #print("Cnfrs ", self.ligand.cnfrs_, self.receptor.cnfrs_)
 
         if score < self.best[0]:
             self.best = [score, 1, prob]
@@ -101,7 +105,7 @@ class MonteCarloSampler(BaseSampler):
 
         return self
 
-    def sampling(self, nsteps=None):
+    def sampling(self, nsteps=None, minimize_stride=10):
         # initialize the parameters
         if not self.initialized_:
             self._initialize()
@@ -109,15 +113,27 @@ class MonteCarloSampler(BaseSampler):
         if nsteps is not None:
             self.nsteps_ = nsteps
 
+        # score, prob, is_accept
+        _score = self._score(self.ligand.cnfrs_, self.receptor.cnfrs_)
+        self.history_.append([_score.detach()[0].numpy()[0], 1., 1.])
+        self.best   = self.history_[-1]
+        self.best_cnfrs_ = [self.ligand.cnfrs_, self.receptor.cnfrs_]
+        #print("self.ligand.cnfrs_ ", self.ligand.cnfrs_)
+        self.ligand_cnfrs_history_.append(torch.Tensor(self.ligand.cnfrs_[0].detach().numpy())) 
+        self.ligand_scores_history_.append(_score.detach().numpy().ravel()[0])
+
         for step in range(self.nsteps_):
-            self.kt_ = (self.nsteps_ - step) / self.nsteps_
+            #self.kt_ = (self.nsteps_ - step) / self.nsteps_
             self.index_ = step
-            self._step()
+            if step % minimize_stride == 0:
+                self._step(minimize=True)
+            else:
+                self._step(minimize=False)
     
     def save_traj(self, output_fpath_ligand=None, output_fpath_receptor=None):
         if output_fpath_ligand is not None:
             write_ligand_traj(self.ligand_cnfrs_history_, self.ligand, output_fpath_ligand,
-            {f'{self.scoring_function.__class__.__name__}': [x[0] for x in self.history_]})
+            {f'{self.scoring_function.__class__.__name__}': self.ligand_scores_history_})
         
         return self.best_cnfrs_
 
@@ -135,7 +151,7 @@ if __name__ == "__main__":
     ligand = LigandConformation(sys.argv[1])
     receptor = ReceptorConformation(sys.argv[2], 
                                     ligand.init_heavy_atoms_coords)
-    receptor.init_sidechain_cnfrs()
+    #receptor.init_sidechain_cnfrs()
     
     # define scoring function
     sf = VinaSF(receptor, ligand)
@@ -152,15 +168,14 @@ if __name__ == "__main__":
                            box_center=xyz_center, 
                            box_size=[20, 20, 20], 
                            random_start=True,
-                           minimizer=lbfgs_minimizer,
+                           minimizer=adam_minimizer,
                            )
     init_score = mc._score(ligand.cnfrs_, receptor.cnfrs_)
     print("Initial Score", init_score)
 
     # run mc sampling
-    for _ in range(4):
-        mc._random_move()
-        mc.sampling(100)
+    mc._random_move()
+    mc.sampling(100)
     
     mc.save_traj("traj_saved_100.pdb")
 

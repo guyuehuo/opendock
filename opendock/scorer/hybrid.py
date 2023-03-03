@@ -22,7 +22,7 @@ class HybridSF(BaseScoringFunction):
     def scoring(self):
         self.score_ = None
         for i in range(len(self.scorers_)):
-            _score = self.scorers_[i].scoring()
+            _score = self.scorers_[i].scoring().reshape((1, -1))
             if self.score_ is None:
                 self.score_ = _score * self.weights_[i]
             else:
@@ -32,7 +32,7 @@ class HybridSF(BaseScoringFunction):
             #self.scorings_.append(self.scorers_[i].scoring() * self.weights_[i])
         
         self.scorings_['hybrid'] = self.score_.detach().numpy().ravel()[0]
-        print("Detail Scores: ", self.scorings_)
+        print("[INFO] Detail Scores: ", self.scorings_)
         
         return self.score_.reshape((1, 1))
 
@@ -45,7 +45,7 @@ if __name__ == '__main__':
     from opendock.scorer.deeprmsd import DeepRmsdSF, CNN, DRmsdVinaSF
     from opendock.scorer.constraints import rmsd_to_reference
     from opendock.core import io
-    from opendock.sampler.minimizer import lbfgs_minimizer
+    from opendock.sampler.minimizer import lbfgs_minimizer, adam_minimizer
     from opendock.sampler.monte_carlo import MonteCarloSampler
 
     # define a flexible ligand object 
@@ -79,7 +79,7 @@ if __name__ == '__main__':
                            box_center=xyz_center, 
                            box_size=[20, 20, 20], 
                            random_start=True,
-                           minimizer=lbfgs_minimizer,
+                           minimizer=adam_minimizer,
                            )
     init_score = mc._score(ligand.cnfrs_, receptor.cnfrs_)
     print("Initial Score", init_score)

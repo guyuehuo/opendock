@@ -3,16 +3,14 @@ import torch
 import itertools
 import os, sys
 import time
-from opendock.core.receptor import Receptor
-from opendock.core.ligand import Ligand
-from opendock.core.conformation import LigandConformation
 from opendock.core.utils import *
 
 
 class BaseScoringFunction(object):
     """BaseScoringFunction implementation is the base class for scoring functions.
 
-    Function:
+    Methods
+    ------- 
     generate_pldist_mtrx: generate the protein-ligand distance matrix.
     """
     def __init__(self, receptor = None, ligand = None):
@@ -64,11 +62,13 @@ class BaseScoringFunction(object):
         self.dist = torch.sqrt(dist)
 
         #print("Distance matrix shape ", self.dist, self.dist.shape)
-
         return self.dist
 
 
 if __name__ == "__main__":
+    from opendock.core.receptor import Receptor
+    from opendock.core.ligand import Ligand
+    from opendock.core.conformation import LigandConformation
 
     ligand = LigandConformation(sys.argv[1])
     ligand.parse_ligand()

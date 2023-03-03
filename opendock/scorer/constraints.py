@@ -4,7 +4,7 @@ import itertools
 from opendock.scorer.scoring_function import BaseScoringFunction
 
 
-def upper_bound(x, upper_bound=1.0, k=1.0, exponent=1.0):
+def upper_wall(x, upper_bound=1.0, k=1.0, exponent=1.0):
     """Upper bound function.
 
     Arguments:
@@ -16,13 +16,13 @@ def upper_bound(x, upper_bound=1.0, k=1.0, exponent=1.0):
     Returns: array or vector, or float
     """
 
-    if x >= upper_bound:
+    if x.detach().numpy().ravel()[0] >= upper_bound:
         return torch.pow((x - upper_bound), exponent) * k
     else:
-        return 0
+        return torch.Tensor([0.0, ])
 
 
-def lower_bound(x, lower_bound=1.0, k=1.0, exponent=1.0):
+def lower_wall(x, lower_bound=1.0, k=1.0, exponent=1.0):
     """AI is creating summary for lower_bound
 
     Args:
@@ -34,10 +34,10 @@ def lower_bound(x, lower_bound=1.0, k=1.0, exponent=1.0):
     Returns:
         y(float, array, vector): the returned values
     """
-    if x <= lower_bound:
+    if x.detach().numpy().ravel()[0] <= lower_bound:
         return torch.pow((lower_bound - x), exponent) * k
     else:
-        return 0
+        return torch.Tensor([0.0, ])
 
 
 def wall(x, upper_bound=1.0, lower_bound=0.5, k=1.0, exponent=1.0):
@@ -54,12 +54,12 @@ def wall(x, upper_bound=1.0, lower_bound=0.5, k=1.0, exponent=1.0):
         y: array, vector or float, the returned values
     """
 
-    if x >= upper_bound:
+    if x.detach().numpy().ravel()[0] >= upper_bound:
         return torch.pow((x - upper_bound), exponent) * k
     elif x <= lower_bound:
         return torch.pow((lower_bound - x), exponent) * k
     else:
-        return 0
+        return torch.Tensor([0.0, ])
 
     
 def harmonic(x, reference=5.0, k=1.0, exponent=2.0):
@@ -146,25 +146,28 @@ class DistanceConstraintSF(ConstraintSF):
             score= harmonic(torch.mean(self.distances_paired_), self.bounds_[0], 
                              self.force_constant_, 2)
         elif self.constraint_type_ in ['UPPER', 'upper_wall', 'upper']:
-            score= upper_wall(torch.mean(self.distances_paired_), self.bounds[0], 
+            score= upper_wall(torch.mean(self.distances_paired_), self.bounds_[0], 
                               self.force_constant_, 2)
         elif self.constraint_type_ in ['LOWER', 'lower_wall', 'lower']:
-            score= lower_wall(torch.mean(self.distances_paired_), self.bounds[0], 
+            score= lower_wall(torch.mean(self.distances_paired_), self.bounds_[0], 
                               self.force_constant_, 2)
         elif self.constraint_type_ in ['WALL', 'wall']:
-            score= lower_wall(torch.mean(self.distances_paired_), self.bounds[0], self.bounds[1], 
+            score= lower_wall(torch.mean(self.distances_paired_), self.bounds_[0], self.bounds_[1], 
                               self.force_constant_, 2)
         else:
             score= torch.mean(self.distances_paired_)
 
         return score.reshape((1, -1))
 
+
 if __name__ == '__main__':
+
     import os, sys
     from opendock.core.receptor import Receptor
     from opendock.core.conformation import LigandConformation
-    from opendock.sampler.minimizer import lbfgs_minimizer
+    from opendock.sampler.minimizer import lbfgs_minimizer, adam_minimizer, sgd_minimizer
     from opendock.sampler.monte_carlo import MonteCarloSampler
+    from opendock.sampler.ga import GeneticAlgorithmSampler
     from opendock.core.asl import AtomSelection
     from opendock.scorer.vina import VinaSF 
     from opendock.scorer.hybrid import HybridSF 
@@ -176,11 +179,11 @@ if __name__ == '__main__':
     receptor.parse_receptor()
 
     asl = AtomSelection(molecule=receptor)
-    indices_r = asl.select_atom(atomnames=['C,O,N,CA',], chains=['A'], residx=['120-122'])
+    indices_r = asl.select_atom(atomnames=['OH',], chains=['A'], residx=['130'])
     print(indices_r, receptor.dataframe_ha_.head())
 
     asl = AtomSelection(molecule=ligand)
-    indices_l = asl.select_atom(atomnames=['N2,C13',])
+    indices_l = asl.select_atom(atomnames=['O1',])
     print(indices_l, ligand.dataframe_ha_.head())
 
     xyz_center = ligand._get_geo_center().detach().numpy()[0]
@@ -190,6 +193,8 @@ if __name__ == '__main__':
     cnstr = DistanceConstraintSF(receptor, ligand, 
                                  grpA_ha_indices=indices_r, 
                                  grpB_ha_indices=indices_l, 
+                                 constraint='upper', 
+                                 bounds=[3.0, ]
                                  )
     print(cnstr.scoring())
 
@@ -199,7 +204,7 @@ if __name__ == '__main__':
     print("Vina Score ", vs)
 
     # combined scoring function
-    sf = HybridSF(receptor, ligand, scorers=[sf1, cnstr], weights=[1.2, -0.2])
+    sf = HybridSF(receptor, ligand, scorers=[sf1, cnstr], weights=[0.5, 0.5])
     vs = sf.scoring()
     print("HybridSF Score ", vs)
     
@@ -214,5 +219,14 @@ if __name__ == '__main__':
     init_score = mc._score(ligand.cnfrs_, receptor.cnfrs_)
     print("Initial Score", init_score)
     mc._random_move()
-    mc.sampling(100)
+    #mc.sampling(10)
+    #mc.save_traj("traj_saved_100.pdb")
+
+    # initialize GA
+    #GA = GeneticAlgorithmSampler(ligand, receptor, sf, box_center=xyz_center, 
+    #                             box_size=[20, 20, 20], n_pop=10)
+    GA = GeneticAlgorithmSampler(ligand, receptor, sf, box_center=xyz_center, 
+                                 box_size=[20, 20, 20], minimizer=sgd_minimizer, n_pop=10)
+    #GA._initialize()
+    GA.sampling(n_gen=10)
     

@@ -1,25 +1,36 @@
-from torch.optim import Adam, LBFGS
+from torch.optim import Adam, LBFGS, SGD
 import torch
 import os, sys
 
 
+def sgd_minimizer(x, target_function, **kwargs):
+    # Define the optimizer
+    nsteps=kwargs.pop('nsteps', 20)
+    lr    = kwargs.pop('lr', 0.1)
+    
+    optimizer = SGD(x, lr=lr, weight_decay=0.01, momentum=0.9)
+
+    for i in range(nsteps):
+        optimizer.zero_grad()
+        loss = target_function(x)
+        loss.backward(retain_graph=True)
+        optimizer.step()
+
+    return x
+
+
 def adam_minimizer(x, target_function, **kwargs):
     # Define the optimizer
-    optimizer = Adam(x, lr=0.01)
+    nsteps=kwargs.pop('nsteps', 20)
+    lr    = kwargs.pop('lr', 0.1) 
 
-    # Add the closure function to calculate the gradient.
-    def closure():
-        if torch.is_grad_enabled():
-            optimizer.zero_grad()
-        
+    optimizer = Adam(x, lr=lr, weight_decay=0.01)
+
+    for i in range(nsteps):
+        optimizer.zero_grad()
         loss = target_function(x)
-
-        if loss.requires_grad:
-            loss.backward(retain_graph=True)
-        return loss
-    
-    # optimize now
-    optimizer.step(closure)
+        loss.backward(retain_graph=True)
+        optimizer.step()
 
     return x
 
@@ -66,7 +77,7 @@ if __name__ == "__main__":
     cnfr = ligand.init_cnfrs[0]
     xyz_init = ligand.init_heavy_atoms_coords
     # sc cnfr
-    sc_list = receptor.init_sidechain_cnfr()
+    sc_list = receptor.init_sidechain_cnfrs()
     #sc_cnfrs = torch.cat(sc_list)
     X = [cnfr, ] + sc_list
     cnfr_list = [cnfr, ]
@@ -105,24 +116,24 @@ if __name__ == "__main__":
         print("RMSD ", rmsd)       
 
         # vina energy    
-        sf = DeepRmsdSF(receptor, ligand)
+        sf = VinaSF(receptor, ligand)
         sf.rec_heavy_atoms_xyz = _xyz * 1.0
         _dist2 = sf.generate_pldist_mtrx()
 
         distsum = (_dist1 - _dist2).sum()
         print("DistanceMatrixDiff ", distsum)
 
-        vinascore = torch.sum(sf.scoring())
+        ds = torch.sum(sf.scoring())
         #vscore = sf.scoring()
-        print("deeprmsd ", vinascore)
+        print("DeepRMSD ", ds)
 
         # cnfr list
         #cnfr_list.append(torch.Tensor((x[0] * 1.0).detach().numpy()))
-        scores.append(vinascore)
+        scores.append(ds)
 
-        return vinascore
+        return ds
 
-    nx = lbfgs_minimizer(sc_list, sf_2)
+    nx = sgd_minimizer(sc_list, sf_2)
     print(nx)
     
     # write trajectory

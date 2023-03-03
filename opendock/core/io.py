@@ -1,3 +1,55 @@
+import os, sys
+import json 
+
+
+ALLOWED_CONFIGS_TERMS = ['receptor', 'ligand', 'out',
+                         'center_x', 'center_y', 'center_z',
+                         'size_x', 'size_y', 'size_z',
+                         'threads', 'conformations', 'tasks']
+
+
+def generate_new_configs(config_inp_fpath: str, 
+                         config_out_fpath: str = None):
+    """Generate idock style configuration file 
+    
+    Args:
+    ----- 
+    config_inp_fpath: str, 
+        Input configuration file in Vina style. 
+    config_out_fpath: str, 
+        Output configuration file in Idock style.
+    
+    Returns:
+    configs: dict, 
+        Returned parameters. 
+    """
+    configs = {}
+    with open(config_inp_fpath) as lines:
+        for l in lines:
+            if len(l.split("=")) == 2:
+                key = l.split("=")[0].strip()
+                if key in ALLOWED_CONFIGS_TERMS:
+                    configs[key] = l.split("=")[1].strip("\n").strip()
+                elif key == "cpu":
+                    configs['threads'] = l.split("=")[1].strip("\n").strip()
+                elif key == "exhaustiveness":
+                    configs['tasks'] = l.split("=")[1].strip("\n").strip()
+                elif key == "num_modes":
+                    configs['conformations'] = l.split("=")[1].strip("\n").strip()
+    
+    if "tasks" not in configs.keys():
+        configs["tasks"] = 4
+
+    real_output_dpath = os.path.dirname(configs['out'])
+    configs['out'] = real_output_dpath
+
+    if config_out_fpath is not None:
+        with open(config_out_fpath, 'w') as tof:
+            for key in configs.keys():
+                tof.write("{} = {} \n".format(key, configs[key]))
+        tof.close()
+
+    return configs
 
 
 def write_ligand_traj(cnfrs: list, 
@@ -25,9 +77,9 @@ def write_ligand_traj(cnfrs: list,
         if information is not None:
             for key in list(information.keys()):
                 try:
-                    lines.append(f"REMARK {key} {information[key][_idx]}")
+                    lines.append(f"REMARK {key} {information[key][_idx]:.3f}")
                 except:
-                    lines.append(f"REMARK {key} {information[key][0]}")
+                    lines.append(f"REMARK {key} {information[key][0]:.3f}")
 
         # make output atom lines
         for num, line in enumerate(origin_heavy_atoms_lines):
