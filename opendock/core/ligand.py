@@ -528,8 +528,7 @@ if __name__ == '__main__':
                            minimizer=adam_minimizer)
 
     genlig = LigandConformerGenerator(ligand, receptor, sf, sampler=mc)
-    genlig.generate_cnfrs(10)
-    print("Final Cnfrs ", ligand.cnfrs_)
+    genlig.generate_cnfrs(100)
     print(mc.ligand_cnfrs_history_, mc.ligand_scores_history_)
 
     
