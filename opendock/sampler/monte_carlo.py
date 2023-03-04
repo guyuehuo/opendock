@@ -49,7 +49,11 @@ class MonteCarloSampler(BaseSampler):
         # score, prob, is_accept
         self.history_.append([self.init_score.detach()[0].numpy()[0], 1., 1.])
         self.best   = self.history_[-1]
-        self.best_cnfrs_ = [[self.ligand.init_cnfrs, ], self.receptor.init_cnfrs]
+        try:
+            self.best_cnfrs_ = [[self.ligand.init_cnfrs, ], self.receptor.init_cnfrs]
+        except AttributeError:
+            self.best_cnfrs_ = [[self.ligand.init_cnfrs, ], None]
+
         #print("self.ligand.cnfrs_ ", self.ligand.cnfrs_)
         self.ligand_cnfrs_history_.append(torch.Tensor(self.ligand.cnfrs_[0].detach().numpy())) 
         self.ligand_scores_history_.append(self.init_score.detach().numpy().ravel()[0])

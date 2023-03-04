@@ -65,7 +65,9 @@ if __name__ == "__main__":
         collected_cnfrs += mc.ligand_cnfrs_history_
     
     # make clustering
-    cluster = BaseCluster(mc.ligand_cnfrs_history_, mc.ligand_scores_history_, ligand, 2)
+    cluster = BaseCluster(mc.ligand_cnfrs_history_, 
+                          mc.ligand_scores_history_, 
+                          ligand, 2)
     _scores, _cnfrs_list = cluster.clustering()
 
     # save traj 

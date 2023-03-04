@@ -60,8 +60,8 @@ class VinaSF(BaseScoringFunction):
         dist_list = []
         vdw_list = []
 
-        for frame_i in range(0, number_of_all_frames - 1):
-            for frame_j in range(frame_i + 1, number_of_all_frames):
+        for frame_i in range(0, self.number_of_all_frames - 1):
+            for frame_j in range(frame_i + 1, self.number_of_all_frames):
 
                 for i in self.all_root_frame_heavy_atoms_index_list[frame_i]:
                     for j in self.all_root_frame_heavy_atoms_index_list[frame_j]:
@@ -72,7 +72,8 @@ class VinaSF(BaseScoringFunction):
                         # angstrom
                         d = torch.sqrt(
                             torch.sum(
-                                torch.square(self.pose_heavy_atoms_coords[:, i] - self.pose_heavy_atoms_coords[:, j]),
+                                torch.square(self.ligand.pose_heavy_atoms_coords[:, i] - \
+                                             self.ligand.pose_heavy_atoms_coords[:, j]),
                                 axis=1))
                         dist_list.append(d.reshape(-1, 1))
 
@@ -277,7 +278,8 @@ class VinaSF(BaseScoringFunction):
                              self.rec_lig_atom_vdw_sum)
         vina_inter_term = vina.process()
         self.vina_inter_energy = vina_inter_term / (
-                    1 + 0.05846 * (self.ligand.active_torsion + 0.5 * self.ligand.inactive_torsion))
+                    1 + 0.05846 * (self.ligand.active_torsion \
+                                   + 0.5 * self.ligand.inactive_torsion))
 
         self.vina_inter_energy = self.vina_inter_energy.reshape(-1, 1)
         #print("self.vina_inter_energy", self.vina_inter_energy, self.vina_inter_energy.shape)

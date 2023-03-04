@@ -471,11 +471,65 @@ class Ligand(object):
         return self.init_cnfrs.requires_grad_()
 
 
+class LigandConformerGenerator(object):
+
+    def __init__(self, ligand=None, 
+                 receptor=None,
+                 scoring_function=None, 
+                 sampler=None,
+                 **kwargs):
+    
+        self.ligand = ligand
+        self.receptor = receptor
+        self.scoring_function = scoring_function
+        self.sampler = sampler
+
+        self.n_steps = kwargs.pop('n_steps', 100)
+
+    def generate_cnfrs(self, n_steps=None):
+        if n_steps is not None:
+            self.n_steps = n_steps
+
+        # start from initial cnfrs 
+        self.sampler.sampling(self.n_steps)
+        return self.sampler.ligand_cnfrs_history_
+
+
 if __name__ == '__main__':
     import os, sys
+    from opendock.core.conformation import LigandConformation, ReceptorConformation
+    from opendock.scorer.conformer import ConformerVinaIntraSF
+    from opendock.sampler.monte_carlo import MonteCarloSampler
+    from opendock.sampler.minimizer import adam_minimizer
 
-    ligand = Ligand(sys.argv[1])
-    ligand.parse_ligand()
+    ligand = LigandConformation(sys.argv[1])
     print(ligand.init_cnfrs)
+    receptor = ReceptorConformation(sys.argv[2])
+
+    # score function
+    sf = ConformerVinaIntraSF(ligand, receptor)
+    ligand.cnfrs_ = [torch.Tensor([[0, 0, 0, 0, 0, 0, np.pi / 2]]) + ligand.cnfrs_[0]]
+    print(ligand.cnfrs_)
+    print("Initial Energy ", sf.scoring())
+    ligand.cnfrs_ = [torch.Tensor([[0, 0, 0, 0, 0, 0, np.pi / 3]]) + ligand.cnfrs_[0]]
+    print(ligand.cnfrs_)
+    print("Initial Energy ", sf.scoring())
+    ligand.cnfrs_ = [torch.Tensor([[0, 0, 0, 0, 0, 0, np.pi / 4]]) + ligand.cnfrs_[0]]
+    print(ligand.cnfrs_)
+    print("Initial Energy ", sf.scoring())
+
+    # ligand center
+    xyz_center = ligand._get_geo_center().detach().numpy()[0]
+    print("Ligand XYZ COM", xyz_center)
+    # sampler 
+    mc = MonteCarloSampler(ligand, receptor, sf, 
+                           box_center=xyz_center, 
+                           box_size=[20, 20, 20], 
+                           minimizer=adam_minimizer)
+
+    genlig = LigandConformerGenerator(ligand, receptor, sf, sampler=mc)
+    genlig.generate_cnfrs(10)
+    print("Final Cnfrs ", ligand.cnfrs_)
+    print(mc.ligand_cnfrs_history_, mc.ligand_scores_history_)
 
     

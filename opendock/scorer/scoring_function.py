@@ -15,24 +15,26 @@ class BaseScoringFunction(object):
     """
     def __init__(self, receptor = None, ligand = None):
         # ligand
-        self.ligand = ligand
-        #self.pose_heavy_atoms_coords = self.ligand.pose_heavy_atoms_coords
-        self.lig_heavy_atoms_element = self.ligand.lig_heavy_atoms_element
-        self.updated_lig_heavy_atoms_xs_types = self.ligand.updated_lig_heavy_atoms_xs_types
-        self.lig_root_atom_index = self.ligand.root_heavy_atom_index
-        self.lig_frame_heavy_atoms_index_list = self.ligand.frame_heavy_atoms_index_list
-        self.lig_torsion_bond_index = self.ligand.torsion_bond_index
-        self.num_of_lig_ha = self.ligand.number_of_heavy_atoms
-        self.number_of_poses = len(self.ligand.pose_heavy_atoms_coords)
+        if ligand is not None:
+            self.ligand = ligand
+            #self.pose_heavy_atoms_coords = self.ligand.pose_heavy_atoms_coords
+            self.lig_heavy_atoms_element = self.ligand.lig_heavy_atoms_element
+            self.updated_lig_heavy_atoms_xs_types = self.ligand.updated_lig_heavy_atoms_xs_types
+            self.lig_root_atom_index = self.ligand.root_heavy_atom_index
+            self.lig_frame_heavy_atoms_index_list = self.ligand.frame_heavy_atoms_index_list
+            self.lig_torsion_bond_index = self.ligand.torsion_bond_index
+            self.num_of_lig_ha = self.ligand.number_of_heavy_atoms
+            self.number_of_poses = len(self.ligand.pose_heavy_atoms_coords)
 
         # receptor
-        self.receptor = receptor
-        #self.rec_heavy_atoms_xyz = self.receptor.rec_heavy_atoms_xyz
-        self.rec_heavy_atoms_xs_types = self.receptor.rec_heavy_atoms_xs_types
-        self.residues_heavy_atoms_pairs = self.receptor.residues_heavy_atoms_pairs
-        self.heavy_atoms_residues_indices = self.receptor.heavy_atoms_residues_indices
-        self.rec_index_to_series_dict = self.receptor.rec_index_to_series_dict
-        self.num_of_rec_ha = len(self.receptor.rec_heavy_atoms_xyz)
+        if receptor is not None:
+            self.receptor = receptor
+            #self.rec_heavy_atoms_xyz = self.receptor.rec_heavy_atoms_xyz
+            self.rec_heavy_atoms_xs_types = self.receptor.rec_heavy_atoms_xs_types
+            self.residues_heavy_atoms_pairs = self.receptor.residues_heavy_atoms_pairs
+            self.heavy_atoms_residues_indices = self.receptor.heavy_atoms_residues_indices
+            self.rec_index_to_series_dict = self.receptor.rec_index_to_series_dict
+            self.num_of_rec_ha = len(self.receptor.rec_heavy_atoms_xyz)
 
         # predefined parameters
         self.atomtype_mapping = ATOMTYPE_MAPPING

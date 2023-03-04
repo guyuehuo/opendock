@@ -195,7 +195,10 @@ class ReceptorConformation(Receptor):
            
         # load the coordinates of the ligand.
         # The initial coordinates of heavy atoms of the ligand. 
-        self.init_lig_ha_xyz = init_lig_heavy_atoms_xyz.reshape((-1, 3))
+        if init_lig_heavy_atoms_xyz is not None:
+            self.init_lig_ha_xyz = init_lig_heavy_atoms_xyz.reshape((-1, 3))
+        else:
+            self.init_lig_ha_xyz = None
 
         # select side chains at the binding pocket. 
         self.pldist = torch.tensor([]) # The distance matrix of protein-ligand.
