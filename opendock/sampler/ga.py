@@ -57,45 +57,37 @@ class GeneticAlgorithmSampler(BaseSampler):
         self.output_fpath = kwargs.pop('output_fpath', 'output.pdb')
         self.box_center = kwargs.pop('box_center', None)
         self.box_size   = kwargs.pop('box_size', None)
+        self.n_gen = kwargs.pop("n_gen", 100)
+        self.n_pop = kwargs.pop("n_pop", 200)
+        #--------------------------------------------------
+        #probability of crossover and mutation.
+        #--------------------------------------------------
+        self.p_c = kwargs.pop("p_c", 0.5)
+        self.p_m = kwargs.pop("p_m", 0.001)
+        #--------------------------------------------------
+        #The "k" parameter in tournament selection
+        #--------------------------------------------------
+        self.tournament_k = kwargs.pop("tournament_k", 3)
+        #--------------------------------------------------
+        #setting the objective function
+        #--------------------------------------------------
+        self.objective = kwargs.pop("objective", self.objective_func)
+        #--------------------------------------------------
+        #setting the number of bits
+        #--------------------------------------------------
+        #self._random_move()
+        self._init_variables = self._cnfrs2variables(self.ligand.cnfrs_, 
+                                                     self.receptor.cnfrs_)
+        self.n_var = int(len(self._init_variables))
+        self.n_bit = kwargs.pop("n_bit", [16, ] * self.n_var)
 
         self.initialized_ = False
         self.ligand_is_flexible = False
         self.receptor_is_flexible = False
 
-    #def _initialize(self, **kwargs):
-
-        #self._random_move()
-        self._init_variables = self._cnfrs2variables(self.ligand.cnfrs_, 
-                                                     self.receptor.cnfrs_)
-        #print("Initializing variables ", self._init_variables, self.scoring_function.scoring())
-
-        self.n_var = int(len(self._init_variables))
-        self.n_gen = kwargs.pop("n_gen", 100)
-        self.n_pop = kwargs.pop("n_pop", 200)
-
-        #--------------------------------------------------
-        #setting the number of bits
-        #--------------------------------------------------
-        """
-        The variable "n_bit" is a list. For example, for a one-variable system:
-        n_bit=[8]
-
-        Or, for a three-variable system:
-        n_bit=[8, 2, 16]
-        """
-        self.n_bit = kwargs.pop("n_bit", [16, ] * self.n_var)
-        #print("self.n_bit", self.n_bit, len(self.n_bit))
-
         #--------------------------------------------------
         #setting the bounds of variables
         #--------------------------------------------------
-        """
-        The variable "bound" is a list of list. For example, for a one-variable system:
-        bound=[[0,1]]
-
-        Or, for a three-variable system:
-        bound=[[0,1], [-5,5], [0,10]]
-        """
         if self.ligand.cnfrs_ is not None:
             xyz_ranges = []
             for i in range(3):
@@ -112,34 +104,17 @@ class GeneticAlgorithmSampler(BaseSampler):
         #print(self.bound)
 
         #--------------------------------------------------
-        #The "k" parameter in tournament selection
-        #--------------------------------------------------
-        self.tournament_k = kwargs.pop("tournament_k", 3)
-
-        #--------------------------------------------------
-        #setting the objective function
-        #--------------------------------------------------
-        self.objective = kwargs.pop("objective", self.objective_func)
-        #self.objective = self.objective_func
-        #self.align_object = kwargs["align_object"]
-
-        #--------------------------------------------------
-        #probability of crossover and mutation.
-        #--------------------------------------------------
-        self.p_c = kwargs.pop("p_c", 0.5)
-        self.p_m = kwargs.pop("p_m", 0.001)
-
-        #--------------------------------------------------
         # initial population
         #--------------------------------------------------
         #calculating the size of chromosomes
         self.chrom_size = sum(self.n_bit)
 
         _init_chrom = list(self.encode2chrom(self._init_variables))
-        _encoding_codes = self.decode_entire_chrom(np.array(_init_chrom))
-        _fitness = self.objective_func(_encoding_codes)
+        _decode_variables = self.decode_entire_chrom(np.array(_init_chrom))
+        _fitness = self.objective_func(_decode_variables)
+        self.ligand_cnfrs_history_.append(torch.Tensor(self.ligand.cnfrs_[0].detach().numpy())) 
+        self.ligand_scores_history_.append((_fitness * -1.).detach().numpy().ravel()[0])
         _pop = [_init_chrom, ]
-        #print("First Chrom fitness score", _fitness)
 
         for i in range(self.n_pop - 1):
 
@@ -154,20 +129,20 @@ class GeneticAlgorithmSampler(BaseSampler):
                         # revert 20% of the genes
                         _chrom[i] = int((_chrom[i] + 1 <= 1) * 1)
                 # encoding_codes are the variable lists
-                _encoding_codes = self.decode_entire_chrom(np.array(_chrom))
-                return _encoding_codes, _chrom
+                _decode_variables = self.decode_entire_chrom(np.array(_chrom))
+                return _decode_variables, _chrom
             
-            _encoding_codes, _chrom = make_chrom()
+            _decode_variables, _chrom = make_chrom()
             #_encoding_codes = self.decode_entire_chrom(np.array(_chrom))
-            _lcnfrs_, _rcnfrs_ = self._variables2cnfrs(_encoding_codes)
+            _lcnfrs_, _rcnfrs_ = self._variables2cnfrs(_decode_variables)
 
             # check out of box 
             while self._out_of_box_check(_lcnfrs_):
-                _encoding_codes, _chrom = make_chrom()
-                _lcnfrs_, _rcnfrs_ = self._variables2cnfrs(_encoding_codes)
+                _decode_variables, _chrom = make_chrom()
+                _lcnfrs_, _rcnfrs_ = self._variables2cnfrs(_decode_variables)
 
             # predict the fitness score
-            _fitness = self.objective_func(_encoding_codes)
+            _fitness = self.objective_func(_decode_variables)
             _pop.append(_chrom)
             #print("Vector and fitness score", _fitness)
 
@@ -352,17 +327,42 @@ class GeneticAlgorithmSampler(BaseSampler):
                 # cnfr to chrom
                 # minimize p1 
                 _p1, _p2 = self.crossover(p1, p2, p_c=self.p_c)
-                self.chrom_pop2[sn_pair] = self._minimize_chromosome(_p1)
-                self.chrom_pop2[sn_pair+1] = self._minimize_chromosome(_p2)
+                _p1 = self._minimize_chromosome(_p1)
+                _p2 = self._minimize_chromosome(_p2)
+                self.chrom_pop2[sn_pair] = _p1
+                self.chrom_pop2[sn_pair+1] = _p2
                 #self.chrom_pop2[sn_pair], self.chrom_pop2[sn_pair+1] = self.crossover(p1, p2, p_c=self.p_c)
+
+                for _p in [_p1, _p2]:
+                    _chrom_decoded = self.decode_entire_chrom(_p)
+                    _fitness = self.objective_func(_chrom_decoded)
+                    _lig_cnfrs, _rec_cnfrs_ = self._variables2cnfrs(_chrom_decoded)
+                    self.ligand_cnfrs_history_.append(torch.Tensor(_lig_cnfrs[0].detach().numpy()[0]))
+                    self.ligand_scores_history_.append(_fitness)
+
+                    if self.receptor.cnfrs_ is not None:
+                        self.receptor_cnfrs_history_.append([[torch.Tensor(x.detach().numpy()) for x in _rec_cnfrs_]])
+                    else:
+                        self.receptor_cnfrs_history_.append(None)
 
             #--------------------------------------------
             #mutation
             #--------------------------------------------
             for sn_chrom, chrom in enumerate(self.chrom_pop2):
                 _p = self.mutate(chrom)
-                self.chrom_pop2[sn_chrom] = self._minimize_chromosome(_p)
-                #self.chrom_pop2[sn_chrom] = self.mutate(chrom)
+                _p = self._minimize_chromosome(_p)
+                self.chrom_pop2[sn_chrom] = _p
+                
+                _chrom_decoded = self.decode_entire_chrom(_p)
+                _fitness = self.objective_func(_chrom_decoded)
+                _lig_cnfrs, _rec_cnfrs_ = self._variables2cnfrs(_chrom_decoded)
+                self.ligand_cnfrs_history_.append(torch.Tensor(_lig_cnfrs[0].detach().numpy()[0]))
+                self.ligand_scores_history_.append(_fitness)
+
+                if self.receptor.cnfrs_ is not None:
+                    self.receptor_cnfrs_history_.append([[torch.Tensor(x.detach().numpy()) for x in _rec_cnfrs_]])
+                else:
+                    self.receptor_cnfrs_history_.append(None)
 
             #--------------------------------------------
             #replacing the population
@@ -386,6 +386,16 @@ class GeneticAlgorithmSampler(BaseSampler):
             ind_best_chrom, best_chrom, best_chrom_decoded, best_chrom_fitness = self.get_best_chrom()
             best_chrom_decoded = [np.around(this_var, decimals=self.num_dec_var) for this_var in best_chrom_decoded]
             best_chrom_fitness = np.around(best_chrom_fitness, decimals=self.num_dec_fit)
+            
+            # save history 
+            _lig_cnfrs, _rec_cnfrs_ = self._variables2cnfrs(best_chrom_decoded)
+            self.ligand_cnfrs_history_.append(torch.Tensor(_lig_cnfrs[0].detach().numpy()[0]))
+            self.ligand_scores_history_.append(best_chrom_fitness)
+
+            if self.receptor.cnfrs_ is not None:
+                self.receptor_cnfrs_history_.append([[torch.Tensor(x.detach().numpy()) for x in _rec_cnfrs_]])
+            else:
+                self.receptor_cnfrs_history_.append(None)
 
             print(f"[INFO] iter#{self.this_iter} {self.__class__.__name__}, fitness {best_chrom_fitness}")
 
@@ -523,7 +533,7 @@ class GeneticAlgorithmSampler(BaseSampler):
 
         Parameters
         ----------
-        chrom : array
+        chrom : array, or list
             binary encoded array
         low : float, optional
             lower limit of the space for binning. The default is 0.
@@ -535,10 +545,12 @@ class GeneticAlgorithmSampler(BaseSampler):
         x : float
             decoded value of the passed binary-encoded array
         """
-        #print(chrom, chrom.shape)
+        if type(chrom) is not np.ndarray:
+            chrom = np.array(chrom)
+
         decoded_num = np.dot(chrom, 2**np.arange(chrom.size)[::-1])
         x = low + decoded_num*(high-low)/(2**chrom.size-1)
-        #print("DECODE ", chrom, x)
+
         return x
 
     @staticmethod

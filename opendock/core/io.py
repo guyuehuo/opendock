@@ -1,5 +1,4 @@
-import os, sys
-import json 
+import os
 
 
 ALLOWED_CONFIGS_TERMS = ['receptor', 'ligand', 'out',
@@ -33,7 +32,7 @@ def generate_new_configs(config_inp_fpath: str,
                 elif key == "cpu":
                     configs['threads'] = l.split("=")[1].strip("\n").strip()
                 elif key == "exhaustiveness":
-                    configs['tasks'] = l.split("=")[1].strip("\n").strip()
+                    configs['tasks'] = int(l.split("=")[1].strip("\n").strip())
                 elif key == "num_modes":
                     configs['conformations'] = l.split("=")[1].strip("\n").strip()
     

@@ -53,6 +53,10 @@ class BaseSampler(object):
         self.output_fpath = kwargs.pop('output_fpath', 'output.pdb')
         self.box_center = kwargs.pop('box_center', None)
         self.box_size   = kwargs.pop('box_size', None)
+        self.kt_        = kwargs.pop('kt', 1.0)
+        self.ligand_cnfrs_history_ = []
+        self.ligand_scores_history_ = []
+        self.receptor_cnfrs_history_ = []
 
     def _score(self, ligand_cnfrs=None, receptor_cnfrs=None):
         

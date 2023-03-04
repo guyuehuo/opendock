@@ -5,7 +5,7 @@ import torch
 from opendock.core.conformation import ReceptorConformation
 from opendock.core.conformation import LigandConformation
 from opendock.scorer.vina import VinaSF
-from opendock.sampler.monte_carlo import MonteCarloSampler
+from opendock.sampler.ga import GeneticAlgorithmSampler
 from opendock.sampler.minimizer import adam_minimizer, lbfgs_minimizer
 from opendock.scorer.constraints import rmsd_to_reference
 from opendock.core.clustering import BaseCluster
@@ -50,20 +50,22 @@ def main():
 
     # define sampler
     print("Cnfrs: ",ligand.cnfrs_, receptor.cnfrs_)
-    mc = MonteCarloSampler(ligand, receptor, sf, 
-                           box_center=xyz_center, 
-                           box_size=box_sizes, 
-                           random_start=True,
-                           minimizer=adam_minimizer,
-                           )
+    ga = GeneticAlgorithmSampler(ligand, receptor, sf, 
+                                 box_center=xyz_center, 
+                                 box_size=box_sizes, 
+                                 minimizer=adam_minimizer,
+                                 n_pop=100, 
+                                 p_c = 0.2,
+                                 p_m = 0.05
+                                 )
     
     collected_cnfrs = []
     collected_scores= []
     for i in range(configs['tasks']):
         print(f"[INFO] MonteCarloSampler Round #{i}")
-        mc._random_move(init_lig_cnfrs, receptor.init_cnfrs)
-        mc.sampling(100 * ligand.number_of_heavy_atoms)
-        collected_cnfrs += mc.ligand_cnfrs_history_
+        ga._random_move(init_lig_cnfrs, receptor.init_cnfrs)
+        ga.sampling(20 * ligand.number_of_frames)
+        collected_cnfrs += ga.ligand_cnfrs_history_
         collected_scores+= ga.ligand_scores_history_
     
     # make clustering
