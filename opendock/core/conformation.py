@@ -86,14 +86,16 @@ class LigandConformation(Ligand):
             self.init_heavy_atoms_coords[:, rotorX_index]  # shape [-1, 3]
         
         # rotation
-        new_relative_vector = relative_vector_center_rotation(rotorX_to_rotorY_vector, self.ligand_center,
-                                                                self.root_rotation_matrix)  # shape [-1, 3]    
+        new_relative_vector = relative_vector_center_rotation(rotorX_to_rotorY_vector, 
+                                                              self.ligand_center,
+                                                              self.root_rotation_matrix)  # shape [-1, 3]    
 
         # torsion
         if rotorX_index in self.root_heavy_atom_index:
             pass
         else:
-            new_relative_vector = relative_vector_rotation(new_relative_vector, self.all_torsion_matrix[rotorX_index])
+            new_relative_vector = relative_vector_rotation(new_relative_vector, 
+                                                           self.all_torsion_matrix[rotorX_index])
 
         new_rotorY_coord = self.pose_heavy_atoms_coords[rotorX_index] + new_relative_vector  # shape [-1, 3]
 

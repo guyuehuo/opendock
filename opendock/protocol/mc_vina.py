@@ -6,7 +6,7 @@ from opendock.core.conformation import ReceptorConformation
 from opendock.core.conformation import LigandConformation
 from opendock.scorer.vina import VinaSF
 from opendock.sampler.monte_carlo import MonteCarloSampler
-from opendock.sampler.minimizer import adam_minimizer, lbfgs_minimizer
+from opendock.sampler.minimizer import adam_minimizer, sgd_minimizer, lbfgs_minimizer
 from opendock.scorer.constraints import rmsd_to_reference
 from opendock.core.clustering import BaseCluster
 from opendock.core import io
@@ -62,15 +62,16 @@ def main():
     for i in range(configs['tasks']):
         print(f"[INFO] MonteCarloSampler Round #{i}")
         mc._random_move(init_lig_cnfrs, receptor.init_cnfrs)
-        mc.sampling(100 * ligand.number_of_heavy_atoms)
+        mc.sampling(20 * ligand.number_of_heavy_atoms, minimize_stride=1)
         collected_cnfrs += mc.ligand_cnfrs_history_
-        collected_scores+= ga.ligand_scores_history_
+        collected_scores+= mc.ligand_scores_history_
     
     # make clustering
     cluster = BaseCluster(collected_cnfrs, 
+                          None,
                           collected_scores, 
                           ligand, 1)
-    _scores, _cnfrs_list = cluster.clustering()
+    _scores, _cnfrs_list, _ = cluster.clustering()
 
     # save traj 
     try:

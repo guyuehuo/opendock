@@ -34,6 +34,7 @@ def adam_minimizer(x, target_function, **kwargs):
 
     return x
 
+
 def lbfgs_minimizer(x, target_function, **kwargs):
 
     # Define the optimizer

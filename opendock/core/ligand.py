@@ -1,11 +1,11 @@
 
-from turtle import pos
 import numpy as np
 import pandas as pd
 import torch
 import itertools
-import os, sys
-from opendock.core.utils import ATOMTYPE_MAPPING, COVALENT_RADII_DICT, VDW_RADII_DICT
+import sys
+from opendock.core.utils import ATOMTYPE_MAPPING, \
+    COVALENT_RADII_DICT, VDW_RADII_DICT
 
 
 class Ligand(object):
@@ -73,7 +73,6 @@ class Ligand(object):
         self._get_poses_fpath()
 
         # parse the ligand
-        #first_pose_fpath = os.path.join(self.poses_dpath, self.poses_list[0])
         self._parse_frame(self.pose_fpath)
         self.pose_files = [self.pose_fpath, ]
 
@@ -91,9 +90,6 @@ class Ligand(object):
         return self
 
     def _get_poses_fpath(self):
-        
-        #self.poses_list = [x for x in os.listdir(self.poses_dpath) if x[-5:] == "pdbqt"]
-        #self.poses_file_names = [os.path.basename(x)[:-6] for x in self.poses_list]
 
         self.number_of_poses = 1 #len(self.poses_list)
 
@@ -472,7 +468,27 @@ class Ligand(object):
 
 
 class LigandConformerGenerator(object):
-
+    """Generator for ligand conformers. This class implements
+    the sampler based ligand conformers generation by providing
+    a scoring function. 
+    
+    Methods
+    ------- 
+    scoring: the scoring method. 
+    
+    Attributes
+    ----------
+    ligand: opendock.core.conformation.LigandConformation 
+        The ligand object. 
+    receptor: opendock.core.conformation.ReceptorConformer 
+        The receptor object. 
+    sampler: opendock.sampler.base.BaseSampler
+        The sampler object. 
+    scoring_function: opendock.scorer.scoring_function.BaseScorer
+        The scoring function object. 
+    n_steps: int, default = 100 
+        The sampling step. 
+    """
     def __init__(self, ligand=None, 
                  receptor=None,
                  scoring_function=None, 

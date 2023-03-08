@@ -77,12 +77,11 @@ class AtomSelection(object):
                 for _resindex in resindices.split(','):
                     _start_index = int(_resindex.split("-")[0])
                     _end_index   = int(_resindex.split("-")[-1])
-                    #print("residx", _resindex, _start_index, _end_index)
-                    #print(self.molecule.dataframe_ha_['resSeq'])
+
                     for _idx in range(_start_index, _end_index + 1):
                         atom_indices += list(self.molecule.dataframe_ha_\
                         [self.molecule.dataframe_ha_['resSeq'] == _idx].index)
-            #print("residx selected all", self.residx_, atom_indices)
+
             return atom_indices
     
     def _get_resname_atoms_indices(self):
@@ -129,21 +128,29 @@ class AtomSelection(object):
         """
         Select atoms from a molecule object and return their heavy atom indices.
 
-        Args:
-        ----- 
+        Args
+        ---- 
         chains: list of chains, example ['ABC', ] or ['A', 'B']
         atomnames: list of atom names, example ['C','NH','CG1'] or ['C,O,N,CA', 'NE1', 'NE2']
         reidx: list of residue indices, example ['1-43', '45-90'] or ['90', '93', '95']
         resnames: list of residue names (or ligand name), example ['ALA,HIS', 'PRO'], ['LIG', 'UNK']
 
-        Returns:
+        Returns
         -------
         atom_indeices: np.ndarray, shape (n, )
             The atom indices (0-based, heavy atom indices). 
 
         Examples:
         --------
-        >>> from opendock.core.asl import AtomSele
+        >>> from opendock.core.asl import AtomSelection 
+        >>> asl = AtomSelection(molecule=receptor)
+        >>> indices_r = asl.select_atom(atomnames=['C,O,N,CA',], chains=['A'], residx=['120-122'])
+        >>> print(indices_r, receptor.dataframe_ha_.head())
+
+        >>> asl = AtomSelection(molecule=ligand)
+        >>> indices_l = asl.select_atom(atomnames=['N2,C13',])
+        >>> print(indices_l, ligand.dataframe_ha_.head())
+
         """
 
         atom_indices = []

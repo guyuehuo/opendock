@@ -125,9 +125,13 @@ class MonteCarloSampler(BaseSampler):
         #print("self.ligand.cnfrs_ ", self.ligand.cnfrs_)
         self.ligand_cnfrs_history_.append(torch.Tensor(self.ligand.cnfrs_[0].detach().numpy())) 
         self.ligand_scores_history_.append(_score.detach().numpy().ravel()[0])
+        if self.receptor.cnfrs_ is not None:
+            self.receptor_cnfrs_history_.append([torch.Tensor(x.detach().numpy()) for x in self.receptor.cnfrs_])
+        else:
+            self.receptor_cnfrs_history_.append(None)
 
         for step in range(self.nsteps_):
-            #self.kt_ = (self.nsteps_ - step) / self.nsteps_
+            self.kt_ = (self.nsteps_ - step) / self.nsteps_
             self.index_ = step
             if step % minimize_stride == 0:
                 self._step(minimize=True)

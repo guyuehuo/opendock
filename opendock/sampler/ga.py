@@ -112,6 +112,7 @@ class GeneticAlgorithmSampler(BaseSampler):
         _init_chrom = list(self.encode2chrom(self._init_variables))
         _decode_variables = self.decode_entire_chrom(np.array(_init_chrom))
         _fitness = self.objective_func(_decode_variables)
+        print("Fitness Score ", _fitness)
         self.ligand_cnfrs_history_.append(torch.Tensor(self.ligand.cnfrs_[0].detach().numpy())) 
         self.ligand_scores_history_.append((_fitness * -1.).detach().numpy().ravel()[0])
         _pop = [_init_chrom, ]
@@ -337,8 +338,8 @@ class GeneticAlgorithmSampler(BaseSampler):
                     _chrom_decoded = self.decode_entire_chrom(_p)
                     _fitness = self.objective_func(_chrom_decoded)
                     _lig_cnfrs, _rec_cnfrs_ = self._variables2cnfrs(_chrom_decoded)
-                    self.ligand_cnfrs_history_.append(torch.Tensor(_lig_cnfrs[0].detach().numpy()[0]))
-                    self.ligand_scores_history_.append(_fitness)
+                    self.ligand_cnfrs_history_.append(torch.Tensor(_lig_cnfrs[0].detach().numpy()[0]).reshape((1, -1)))
+                    self.ligand_scores_history_.append(_fitness.detach().numpy().ravel()[0] * -1)
 
                     if self.receptor.cnfrs_ is not None:
                         self.receptor_cnfrs_history_.append([[torch.Tensor(x.detach().numpy()) for x in _rec_cnfrs_]])
@@ -356,8 +357,8 @@ class GeneticAlgorithmSampler(BaseSampler):
                 _chrom_decoded = self.decode_entire_chrom(_p)
                 _fitness = self.objective_func(_chrom_decoded)
                 _lig_cnfrs, _rec_cnfrs_ = self._variables2cnfrs(_chrom_decoded)
-                self.ligand_cnfrs_history_.append(torch.Tensor(_lig_cnfrs[0].detach().numpy()[0]))
-                self.ligand_scores_history_.append(_fitness)
+                self.ligand_cnfrs_history_.append(torch.Tensor(_lig_cnfrs[0].detach().numpy()))
+                self.ligand_scores_history_.append(_fitness.detach().numpy().ravel()[0] * -1)
 
                 if self.receptor.cnfrs_ is not None:
                     self.receptor_cnfrs_history_.append([[torch.Tensor(x.detach().numpy()) for x in _rec_cnfrs_]])
@@ -389,7 +390,7 @@ class GeneticAlgorithmSampler(BaseSampler):
             
             # save history 
             _lig_cnfrs, _rec_cnfrs_ = self._variables2cnfrs(best_chrom_decoded)
-            self.ligand_cnfrs_history_.append(torch.Tensor(_lig_cnfrs[0].detach().numpy()[0]))
+            self.ligand_cnfrs_history_.append(torch.Tensor(_lig_cnfrs[0].detach().numpy()))
             self.ligand_scores_history_.append(best_chrom_fitness)
 
             if self.receptor.cnfrs_ is not None:

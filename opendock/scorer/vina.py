@@ -1,6 +1,5 @@
 import numpy as np
 import torch
-import itertools
 import os, sys
 import time
 from opendock.core.utils import *
@@ -8,6 +7,18 @@ from opendock.scorer.scoring_function import BaseScoringFunction
 
 
 class VinaSF(BaseScoringFunction):
+    """Vina scoring function. This is a pytorch implementation of the 
+    popular Vina score. This scoring function considers guassian terms, 
+    hydrogen bonds, and other terms. 
+    
+    Methods
+    ------- 
+    cal_inter_repulsive: calculate the inter-molecular repulsive energy \
+        between the ligand and the receptor. 
+    cal_intra_repulsive: calculate the intra-molecular repulsive energy \
+        of the ligand itself.
+    scoring: calculate the binding energy between the ligand and the receptor. 
+    """
     def __init__(self,
                  receptor = None,
                  ligand = None,
@@ -282,11 +293,7 @@ class VinaSF(BaseScoringFunction):
                                    + 0.5 * self.ligand.inactive_torsion))
 
         self.vina_inter_energy = self.vina_inter_energy.reshape(-1, 1)
-        #print("self.vina_inter_energy", self.vina_inter_energy, self.vina_inter_energy.shape)
 
-        # inter-protein-ligand clash
-        #self.cal_inter_repulsion(self.vina_dist, self.rec_lig_atom_vdw_sum)
-        # shape (N, 1)
         return self.vina_inter_energy
 
 
@@ -295,7 +302,8 @@ class VinaScoreCore(object):
     def __init__(self, dist_matrix, rec_lig_is_hydrophobic, rec_lig_is_hbond, rec_lig_atom_vdw_sum):
         """
         Args:
-            dist_matrix [N, M]: the distance matrix with less than 8 angstroms. N is the number of poses,
+            dist_matrix [N, M]: the distance matrix with less than 8 angstroms. 
+            N is the number of poses,
         M is the number of rec-lig atom pairs less than 8 Angstroms in each pose.
 
         Returns:
@@ -314,8 +322,6 @@ class VinaScoreCore(object):
         Gauss_1 = torch.sum(torch.exp(- torch.pow(d_ij / 0.5, 2)), axis=1) - torch.sum((d_ij == 0) * 1., axis=1)
         Gauss_2 = torch.sum(torch.exp(- torch.pow((d_ij - 3) / 2, 2)), axis=1) - \
                   torch.sum((d_ij == 0) * 1. * torch.exp(torch.tensor(-1 * 9 / 4)), axis=1)
-        #print("Gauss_1:", Gauss_1)
-        #print("Gauss_2:", Gauss_2)
 
         # Repulsion
         Repulsion = torch.sum(torch.pow(((d_ij < 0) * d_ij), 2), axis=1)

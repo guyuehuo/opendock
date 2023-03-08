@@ -40,39 +40,40 @@ def main():
     
     # define scoring function
     sf = VinaSF(receptor, ligand)
-    print("Initial ligand cnfrs ", init_lig_cnfrs, sf.scoring())
+    #print("Initial ligand cnfrs ", init_lig_cnfrs, sf.scoring())
     
     # box information 
     xyz_center = float(configs['center_x']), \
         float(configs["center_y"]), float(configs["center_z"])
     box_sizes  = float(configs['size_x']), \
         float(configs['size_y']), float(configs['size_z'])
-
-    # define sampler
-    print("Cnfrs: ",ligand.cnfrs_, receptor.cnfrs_)
-    ga = GeneticAlgorithmSampler(ligand, receptor, sf, 
-                                 box_center=xyz_center, 
-                                 box_size=box_sizes, 
-                                 minimizer=adam_minimizer,
-                                 n_pop=100, 
-                                 p_c = 0.2,
-                                 p_m = 0.05
-                                 )
     
     collected_cnfrs = []
     collected_scores= []
     for i in range(configs['tasks']):
+        ligand.cnfrs_, receptor.cnfrs_ = ligand.init_cnfrs, receptor.init_cnfrs
+        # define sampler
+        #print("Cnfrs: ",ligand.cnfrs_, receptor.cnfrs_)
+        ga = GeneticAlgorithmSampler(ligand, receptor, sf, 
+                                    box_center=xyz_center, 
+                                    box_size=box_sizes, 
+                                    minimizer=adam_minimizer,
+                                    n_pop=20, 
+                                    p_c = 0.2,
+                                    p_m = 0.05
+                                    )
         print(f"[INFO] MonteCarloSampler Round #{i}")
         ga._random_move(init_lig_cnfrs, receptor.init_cnfrs)
-        ga.sampling(20 * ligand.number_of_frames)
+        ga.sampling(5 * ligand.number_of_frames)
         collected_cnfrs += ga.ligand_cnfrs_history_
         collected_scores+= ga.ligand_scores_history_
     
     # make clustering
     cluster = BaseCluster(collected_cnfrs, 
+                          None,
                           collected_scores, 
                           ligand, 1)
-    _scores, _cnfrs_list = cluster.clustering()
+    _scores, _cnfrs_list, _ = cluster.clustering()
 
     # save traj 
     try:
