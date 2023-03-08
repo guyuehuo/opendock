@@ -214,7 +214,8 @@ class VinaSF(BaseScoringFunction):
         rec_lig_is_hydrophobic = []
         rec_lig_is_hbond = []
         rec_lig_atom_vdw_sum = []
-        for each_rec_indices, each_lig_indices in zip(rec_atom_indices_list, lig_atom_indices_list):
+        for each_rec_indices, each_lig_indices in zip(rec_atom_indices_list, 
+                                                      lig_atom_indices_list):
 
             r_hydro = []
             l_hydro = []

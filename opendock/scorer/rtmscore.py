@@ -4,16 +4,24 @@ from joblib import Parallel, delayed
 import pandas as pd
 import argparse
 import os, sys
+import uuid
+import shutil
 import MDAnalysis as mda
-#sys.path.append("/home/shenchao/resdocktest2/rtmscore2")
-sys.path.append(os.path.abspath(__file__).replace("rtmscore.py",".."))
 from torch.utils.data import DataLoader
-from opendock.scorer.RTMScore.RTMScore.data.data import VSDataset
-from opendock.scorer.RTMScore.RTMScore.model.utils import collate, run_an_eval_epoch
-from opendock.scorer.RTMScore.RTMScore.model.model2 import RTMScore, DGLGraphTransformer #LigandNet, TargetNet
+from opendock.scorer.RTMScore.RTMScore.data.data \
+    import VSDataset
+from opendock.scorer.RTMScore.RTMScore.model.utils \
+    import collate, run_an_eval_epoch
+from opendock.scorer.RTMScore.RTMScore.model.model2 \
+    import RTMScore, DGLGraphTransformer 
 import torch.multiprocessing
 from opendock.scorer.RTMScore.utils import obabel
+from opendock.scorer.scoring_function import BaseScoringFunction
+from opendock.core.io import write_ligand_traj, write_receptor_traj
+
+
 torch.multiprocessing.set_sharing_strategy('file_system')
+sys.path.append(os.path.abspath(__file__).replace("rtmscore.py",".."))
 
 _current_dpath = os.path.dirname(os.path.abspath(__file__))
 RTMScore_Model = os.path.join(_current_dpath, "RTMScore/trained_models/rtmscore_model1.pth")
@@ -22,8 +30,7 @@ args = {}
 args["batch_size"] = 128
 args["dist_threhold"] = 5
 args['device'] = 'cuda' if th.cuda.is_available() else 'cpu'
-args['device'] = "cpu"
-args["num_workers"] = 10
+args["num_workers"] = 1
 args["num_node_featsp"] = 41
 args["num_node_featsl"] = 41
 args["num_edge_featsp"] = 5
@@ -32,6 +39,7 @@ args["hidden_dim0"] = 128
 args["hidden_dim"] = 128
 args["n_gaussians"] = 10
 args["dropout_rate"] = 0.10
+
 
 def rtmsf(prot, lig, modpath=RTMScore_Model,
             cut=10.0,
@@ -58,22 +66,24 @@ def rtmsf(prot, lig, modpath=RTMScore_Model,
     parallel: whether to generate the graphs in parallel. (This argument is suitable for the situations when there are lots of ligands/poses)
     kwargs: other arguments related with model
     """
-    # try:
-    if not os.path.exists(".rtm_temp"):
-        os.mkdir(".rtm_temp")
+    tmp_directory = f"/tmp/rtmscore_{str(uuid.uuid4().hex)}"
 
-    if not prot.endswith("pdb"):
-        out = ".rtm_temp/" + os.path.basename(prot).split(".")[0] + ".pdb"
+    # try:
+    if not os.path.exists(tmp_directory):
+        os.makedirs(tmp_directory, exist_ok=True)
+
+    if not prot.endswith(".pdb"):
+        out = os.path.join(tmp_directory, "receptor.pdb")
         obabel(prot, out)
         prot = out
 
-    if not lig.endswith("mol2"):
-        out = ".rtm_temp/" + os.path.basename(lig).split(".")[0] + ".mol2"
+    if not lig.endswith(".mol2"):
+        out = os.path.join(tmp_directory, "ligand.mol2")
         obabel(lig, out)
         lig = out
 
-    if not reflig.endswith("mol2"):
-        out = ".rtm_temp/" + os.path.basename(reflig).split(".")[0] + ".mol2"
+    if not reflig.endswith(".mol2"):
+        out = out = os.path.join(tmp_directory, "refer_ligand.mol2")
         obabel(reflig, out)
         reflig = out
 
@@ -87,7 +97,7 @@ def rtmsf(prot, lig, modpath=RTMScore_Model,
                      parallel=parallel)
 
     test_loader = DataLoader(dataset=data,
-                             batch_size=params_dict["batch_size"],
+                             batch_size=32, # params_dict["batch_size"],
                              shuffle=False,
                              num_workers=params_dict["num_workers"],
                              collate_fn=collate)
@@ -127,30 +137,74 @@ def rtmsf(prot, lig, modpath=RTMScore_Model,
     preds = run_an_eval_epoch(model, test_loader, pred=True, dist_threhold=params_dict['dist_threhold'],
                               device=params_dict['device'])
 
-    ids = data.ids
-    df = pd.DataFrame(zip(*(ids, preds)), columns=["id", "score"])
-    df.sort_values("score", ascending=False, inplace=True)
-    print(df)
+    # remove temporary directory
+    shutil.rmtree(tmp_directory)
 
-    return data.ids, preds
+    return th.Tensor(np.array(preds).reshape((-1, 1)))
+
+
+class RtmscoreSF(BaseScoringFunction):
+    def __init__(self, receptor = None, ligand = None, **kwargs):
+        super(RtmscoreSF, self).__init__(receptor=receptor, ligand=ligand)
+
+        self.receptor = receptor
+        self.ligand = ligand
+
+        self.tmp_dpath = None
+    
+    def _prepare_receptor_fpath(self):
+
+        if self.receptor.cnfrs_ is not None:
+            _cnfrs_list = self.receptor.cnfrs_ 
+        else:
+            _cnfrs_list = self.receptor.init_sidechain_cnfrs()
+
+        self.receptor_fpath = os.path.join(self.tmp_dpath, "receptor.pdb")
+        write_receptor_traj([_cnfrs_list], self.receptor, self.receptor_fpath)
+
+        return self.receptor_fpath
+    
+    def _prepare_ligand_fpath(self):
+
+        self.ligand_fpath = os.path.join(self.tmp_dpath, "ligand.pdb")
+        write_ligand_traj(self.ligand.cnfrs_, self.ligand, self.ligand_fpath)
+
+        return self.ligand_fpath
+    
+    def scoring(self) -> th.Tensor:
+        self.tmp_dpath = f"/tmp/rtmscore_{str(uuid.uuid4().hex)}"
+        os.makedirs(self.tmp_dpath, exist_ok=True) 
+
+        # generate receptor and ligand pdb file 
+        self._prepare_receptor_fpath()
+        self._prepare_ligand_fpath()
+
+        # make scoring
+        scores = rtmsf(prot=self.receptor_fpath,
+                    lig=self.ligand_fpath,
+                    modpath=RTMScore_Model,
+                    cut=10.0,
+                    gen_pocket=True,
+                    reflig=self.ligand_fpath,
+                    explicit_H=False,
+                    use_chirality=True,
+                    parallel=False,
+                    params_dict=args
+                    )
+
+        return scores
+        
 
 if __name__ == "__main__":
 
-    os.mkdir(".rtm_temp")
+    from opendock.core.conformation import ReceptorConformation
+    from opendock.core.conformation import LigandConformation
 
-    lig_fpath = sys.argv[1]  # poses
-    rec_fpath = sys.argv[2]
-    ref_lig_fpath = sys.argv[3]  # the reference ligand (native conformation)
+    # define a flexible ligand object 
+    ligand = LigandConformation(sys.argv[1])
+    receptor = ReceptorConformation(sys.argv[2], 
+                                    ligand.init_heavy_atoms_coords)
 
-    ids, scores = rtmsf(prot=rec_fpath,
-                          lig=lig_fpath,
-                          modpath=RTMScore_Model,
-                          cut=10.0,
-                          gen_pocket=True,
-                          reflig=ref_lig_fpath,
-                          explicit_H=False,
-                          use_chirality=True,
-                          parallel=False,
-                          **args
-                          )
+    sf = RtmscoreSF(receptor=receptor, ligand=ligand)
+    print(sf.scoring())
     

@@ -2,6 +2,7 @@
 
 from opendock.scorer.scoring_function import BaseScoringFunction
 from opendock.scorer.constraints import harmonic
+import torch
 
 
 class ContactMapScorer(BaseScoringFunction):

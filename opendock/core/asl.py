@@ -1,11 +1,10 @@
 
-import os, sys
-import pandas as pd
+import sys
 
 
 class AtomSelection(object):
     """
-    Atom selection class for generating heavy atom indices. 
+    Atom selection for generating heavy atom indices. 
     In this class, the indices are 0-based and are correlated
     with the heavy atoms' xyz coordinates attribute in either 
     the receptor or the ligand object.
@@ -137,13 +136,14 @@ class AtomSelection(object):
 
         Returns
         -------
-        atom_indeices: np.ndarray, shape (n, )
+        atom_indeices: list, list of atom indices
             The atom indices (0-based, heavy atom indices). 
 
         Examples:
         --------
         >>> from opendock.core.asl import AtomSelection 
         >>> asl = AtomSelection(molecule=receptor)
+        >>> # select protein backbone for residues 120, 121 and 122
         >>> indices_r = asl.select_atom(atomnames=['C,O,N,CA',], chains=['A'], residx=['120-122'])
         >>> print(indices_r, receptor.dataframe_ha_.head())
 
