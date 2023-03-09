@@ -195,6 +195,13 @@ class DeepRmsdSF(BaseScoringFunction):
         return self.pred_rmsd
     
     def scoring(self):
+        # update heavy atom coordinates
+        if self.ligand.cnfrs_ is not None:
+            self.ligand.cnfrs2xyz(self.ligand.cnfrs_)
+
+        if self.receptor.cnfrs_ is not None:
+            self.receptor.cnfrs2xyz(self.receptor.cnfrs_)
+        
         return self._deeprmsd()
 
 
