@@ -24,6 +24,8 @@ pandas==1.3.2
 matplotlib==3.4.3   
 joblib==1.0.1   
 
+# lz
+torch-scatter
 ```
 conda create --prefix xxx --file ./requirements_conda.txt      
 pip install -r ./requirements_pip.txt

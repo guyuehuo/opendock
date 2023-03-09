@@ -68,21 +68,26 @@ def rtmsf(prot, lig, modpath=RTMScore_Model,
     """
     tmp_directory = f"/tmp/rtmscore_{str(uuid.uuid4().hex)}"
 
-    # try:
-    if not os.path.exists(tmp_directory):
-        os.makedirs(tmp_directory, exist_ok=True)
-
     if not prot.endswith(".pdb"):
+        if not os.path.exists(tmp_directory):
+            os.makedirs(tmp_directory, exist_ok=True)
+    
         out = os.path.join(tmp_directory, "receptor.pdb")
         obabel(prot, out)
         prot = out
 
     if not lig.endswith(".mol2"):
+        if not os.path.exists(tmp_directory):
+            os.makedirs(tmp_directory, exist_ok=True)
+
         out = os.path.join(tmp_directory, "ligand.mol2")
         obabel(lig, out)
         lig = out
 
     if not reflig.endswith(".mol2"):
+        if not os.path.exists(tmp_directory):
+            os.makedirs(tmp_directory, exist_ok=True) 
+
         out = out = os.path.join(tmp_directory, "refer_ligand.mol2")
         obabel(reflig, out)
         reflig = out
@@ -97,7 +102,7 @@ def rtmsf(prot, lig, modpath=RTMScore_Model,
                      parallel=parallel)
 
     test_loader = DataLoader(dataset=data,
-                             batch_size=32, # params_dict["batch_size"],
+                             batch_size=params_dict["batch_size"],
                              shuffle=False,
                              num_workers=params_dict["num_workers"],
                              collate_fn=collate)
@@ -140,7 +145,7 @@ def rtmsf(prot, lig, modpath=RTMScore_Model,
     # remove temporary directory
     shutil.rmtree(tmp_directory)
 
-    return th.Tensor(np.array(preds).reshape((-1, 1)))
+    return list(np.array(preds).ravel()) #th.Tensor(np.array(preds).reshape((-1, 1)))
 
 
 class RtmscoreSF(BaseScoringFunction):
@@ -151,46 +156,101 @@ class RtmscoreSF(BaseScoringFunction):
         self.ligand = ligand
 
         self.tmp_dpath = None
+        self.receptor_fpath = None
+        self.ligand_fpath   = None
     
-    def _prepare_receptor_fpath(self):
+    def _prepare_receptor_fpath(self, cnfrs_list = None):
 
-        if self.receptor.cnfrs_ is not None:
-            _cnfrs_list = self.receptor.cnfrs_ 
+        if cnfrs_list is None:
+            if self.receptor.cnfrs_ is not None:
+                _cnfrs_list = self.receptor.cnfrs_ 
+            else:
+                _cnfrs_list = self.receptor.init_sidechain_cnfrs()
+
+            self.receptor_fpath = os.path.join(self.tmp_dpath, "receptor.pdb")
+            write_receptor_traj([_cnfrs_list], self.receptor, self.receptor_fpath)
         else:
-            _cnfrs_list = self.receptor.init_sidechain_cnfrs()
-
-        self.receptor_fpath = os.path.join(self.tmp_dpath, "receptor.pdb")
-        write_receptor_traj([_cnfrs_list], self.receptor, self.receptor_fpath)
+            self.receptor_fpath = []
+            for i, _cnfrs_list in enumerate(cnfrs_list):
+                _receptor_fpath = os.path.join(self.tmp_dpath, f"receptor_{i}.pdb")
+                write_receptor_traj([_cnfrs_list], self.receptor, _receptor_fpath)
+                self.receptor_fpath.append(_receptor_fpath)
 
         return self.receptor_fpath
     
-    def _prepare_ligand_fpath(self):
+    def _prepare_ligand_fpath(self, cnfrs = None):
 
         self.ligand_fpath = os.path.join(self.tmp_dpath, "ligand.pdb")
-        write_ligand_traj(self.ligand.cnfrs_, self.ligand, self.ligand_fpath)
+        if cnfrs is None:
+            write_ligand_traj(self.ligand.cnfrs_, self.ligand, self.ligand_fpath)
+        else:
+            write_ligand_traj(cnfrs, self.ligand, self.ligand_fpath)
 
         return self.ligand_fpath
+    
+    def _score(self, receptor_fpath=None, ligand_fpath=None):
+        _scores = rtmsf(prot=receptor_fpath,
+                        lig=ligand_fpath,
+                        modpath=RTMScore_Model,
+                        cut=10.0,
+                        gen_pocket=True,
+                        reflig=ligand_fpath,
+                        explicit_H=False,
+                        use_chirality=True,
+                        parallel=False,
+                        params_dict=args
+                        )
+    
+        return _scores
+    
+    def make_flexible_scoring(self, ligand_cnfrs, receptor_cnfrs_list):
+        scores = []
+        if len(ligand_cnfrs) == len(receptor_cnfrs_list):
+            for _lcnfrs, _rcnfrs in zip(ligand_cnfrs, receptor_cnfrs_list):
+                self.tmp_dpath = f"/tmp/rtmscore_{str(uuid.uuid4().hex)}"
+                os.makedirs(self.tmp_dpath, exist_ok=True) 
+
+                _rec_fpath = self._prepare_receptor_fpath([_rcnfrs, ])[0]
+                _lig_fpath = self._prepare_ligand_fpath([_lcnfrs, ])
+
+                _scores = self._score(_rec_fpath, _lig_fpath)
+                scores.append(_scores)
+
+                # clean temporary files
+                shutil.rmtree(self.tmp_dpath)
+        else:
+            for _lcnfrs in ligand_cnfrs:
+                self.tmp_dpath = f"/tmp/rtmscore_{str(uuid.uuid4().hex)}"
+                os.makedirs(self.tmp_dpath, exist_ok=True) 
+
+                _rec_fpath = self._prepare_receptor_fpath([receptor_cnfrs_list[0], ])[0]
+                _lig_fpath = self._prepare_ligand_fpath([_lcnfrs, ])
+
+                _scores = self._score(_rec_fpath, _lig_fpath)
+                scores.append(_scores)
+
+                # clean temporary files
+                shutil.rmtree(self.tmp_dpath)
+        
+        return th.Tensor(scores)
+
     
     def scoring(self) -> th.Tensor:
         self.tmp_dpath = f"/tmp/rtmscore_{str(uuid.uuid4().hex)}"
         os.makedirs(self.tmp_dpath, exist_ok=True) 
 
         # generate receptor and ligand pdb file 
-        self._prepare_receptor_fpath()
-        self._prepare_ligand_fpath()
+        if self.receptor_fpath is None:
+            self.receptor_fpath = self._prepare_receptor_fpath()
 
-        # make scoring
-        scores = rtmsf(prot=self.receptor_fpath,
-                    lig=self.ligand_fpath,
-                    modpath=RTMScore_Model,
-                    cut=10.0,
-                    gen_pocket=True,
-                    reflig=self.ligand_fpath,
-                    explicit_H=False,
-                    use_chirality=True,
-                    parallel=False,
-                    params_dict=args
-                    )
+        if self.ligand_fpath is None:
+            self.ligand_fpath   = self._prepare_ligand_fpath()
+
+        _scores = self._score(self.receptor_fpath, self.ligand_fpath)
+        scores = th.Tensor([_scores, ])
+        
+        # clean temporary files
+        shutil.rmtree(self.tmp_dpath)
 
         return scores
         
