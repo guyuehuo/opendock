@@ -236,6 +236,11 @@ class RtmscoreSF(BaseScoringFunction):
 
     
     def scoring(self) -> th.Tensor:
+        """Score the receptor and ligand conformations with RTMscore. 
+        
+        Returns:
+        scores, torch.Tensor, shape = (n, 1)
+        """
         self.tmp_dpath = f"/tmp/rtmscore_{str(uuid.uuid4().hex)}"
         os.makedirs(self.tmp_dpath, exist_ok=True) 
 
