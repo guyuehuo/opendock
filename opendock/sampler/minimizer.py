@@ -102,7 +102,8 @@ class MinimizerSampler(BaseSampler):
         chunck = int(total_step / rounds) 
         ratio = ((current_step % chunck) / chunck)
 
-        return (2 * init_lr * abs(0.5 - ratio)) ** 2 + 1e-4
+        #return (2 * init_lr * abs(0.5 - ratio)) ** 2 + 1e-4
+        return init_lr * (1 - ratio) + 1e-4
 
     def sampling(self, nsteps=1000, 
                  init_lr=1.0, 

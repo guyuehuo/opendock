@@ -45,10 +45,10 @@ mi = MinimizerSampler(ligand=ligand, receptor=receptor,
 init_score = mi._score(ligand.cnfrs_, receptor.cnfrs_)
 print("Initial Score", init_score)
 mi._random_move(ligand.cnfrs_, receptor.cnfrs_)
-mi.sampling(nsteps=ligand.number_of_frames * 2000, init_lr=1.0, 
+mi.sampling(nsteps=ligand.number_of_frames * 5000, init_lr=0.5, 
             rounds=ligand.number_of_frames * 10)
 
-#print("Final confrs: ", mi.ligand_cnfrs_history_)
+#print("Final confrs: ", mi.ligand_cnfrs_his  tory_)
 write_ligand_traj(mi.ligand_cnfrs_history_, ligand, 
                   "traj_mini_full.pdb", 
                   {"hybrid_score": mi.ligand_scores_history_})

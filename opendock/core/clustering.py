@@ -16,6 +16,22 @@ def xyz_rmsd_to_reference(x, reference):
 
 
 def cnfr_rmsd_to_reference(x, reference, ligand):
+    """Calucate the RMSD of a conformation to the reference conformation. 
+    
+    Args
+    ---- 
+    x: torch.Tensor, 
+        The ligand conformation vector. 
+    reference: torch.Tensor, 
+        The reference conformation vector. 
+    ligand: object of Ligand or LigandConformation. 
+        The ligand object. 
+
+    Returns
+    ------- 
+    rmsd: float, 
+        The calculated RMSD (symmetric not considered).
+    """
 
     _xyz_query = ligand.cnfr2xyz(x)
     _xyz_refer = ligand.cnfr2xyz(reference)
@@ -24,6 +40,41 @@ def cnfr_rmsd_to_reference(x, reference, ligand):
 
 
 class BaseCluster(object):
+    """Base Clustering Class. This class deals with list of conformations and 
+    related scores, return the cluster centers ordered by scores. A cluster is 
+    defined by distance cutoff (RMSD) between poses. 
+
+    Args
+    ---- 
+    cnfrs_list: list of cnfrs to cluster (of ligand poses). 
+    receptor_cnfrs_list: list of corresponding receptor cnfrs list. 
+    scores: list of floats. The docking scores. 
+    ligand: object of Ligand or LigandConformation. 
+    cutoff: float. The cutoff for RMSD clustering. 
+
+    Attributes
+    ----------
+    receptor: object of Receptor or ReceptorConformation, 
+        The receptor object. 
+    ligand: object of Ligand or LigandConformation
+        The ligand object. 
+    cnfrs_list: list of cnfrs to cluster (of ligand poses).
+        The ligand cnfrs list.
+    receptor_cnfrs_list: list of corresponding receptor cnfrs.
+        The receptor cnfrs list.
+    cluster_centers: list of torch.Tensor, 
+        The cluster centers of the ligand poses. 
+    cluster_centers: list of torch.Tensor
+        The cnfrs (torch.Tensor) of the ligand poses. 
+    cluster_receptor_cnfrs: list of torch.Tensor
+        The cnfrs (torch.Tensor) of the receptor side chains. 
+
+    Methods
+    ------- 
+    _get_lowest_energy: get the lowest energy of the conformations 
+    _filter_sminilar_cnfrs: remove the conformations given the cluster center 
+    clustering: the clustering method 
+    """
 
     def __init__(self, cnfrs_list, 
                  receptor_cnfrs_list=None, 
@@ -69,6 +120,26 @@ class BaseCluster(object):
         return _new_cnfr_list, _new_scores, _new_rec_cnfrs_list
 
     def clustering(self, num_modes=20, energy_cutoff=0) -> tuple:
+        """
+        Cluster the ligand cnfrs using RMSD cutoffs. 
+
+        Args 
+        ---- 
+        num_modes : int, default = 20
+            Number of modes to output, equals to number of clusters.
+        energy_cutoff : float, default = 0
+            The energy cutoff for ligand pose cluster centers. Only 
+            keep the ligand centers whose score is lower than this value. 
+
+        Returns
+        ------- 
+        cluster_scores: list of floats,
+            The scores of the returned cluster centers (cnfrs). 
+        cluster_centers: list of torch.Tensor
+            The cnfrs (torch.Tensor) of the ligand poses. 
+        cluster_receptor_cnfrs: list of torch.Tensor
+            The cnfrs (torch.Tensor) of the receptor side chains. 
+        """
 
         cnfrs_list = self.cnfrs_list
         scores = self.scores
