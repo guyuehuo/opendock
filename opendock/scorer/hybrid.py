@@ -32,7 +32,7 @@ class HybridSF(BaseScoringFunction):
             #self.scorings_.append(self.scorers_[i].scoring() * self.weights_[i])
         
         self.scorings_['hybrid'] = self.score_.detach().numpy().ravel()[0]
-        print("[INFO] Detail Scores: ", self.scorings_)
+        #print("[INFO] Detail Scores: ", self.scorings_)
         
         return self.score_.reshape((1, 1))
 

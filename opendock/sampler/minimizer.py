@@ -1,6 +1,9 @@
 from torch.optim import Adam, LBFGS, SGD
+from opendock.sampler.base import BaseSampler
 import torch
 import os, sys
+import math
+import random
 
 
 def sgd_minimizer(x, target_function, **kwargs):
@@ -8,7 +11,7 @@ def sgd_minimizer(x, target_function, **kwargs):
     nsteps=kwargs.pop('nsteps', 20)
     lr    = kwargs.pop('lr', 0.1)
     
-    optimizer = SGD(x, lr=lr, weight_decay=0.01, momentum=0.9)
+    optimizer = SGD(x, lr=lr, weight_decay=0.1, momentum=0.8)
 
     for i in range(nsteps):
         optimizer.zero_grad()
@@ -36,9 +39,15 @@ def adam_minimizer(x, target_function, **kwargs):
 
 
 def lbfgs_minimizer(x, target_function, **kwargs):
+    # Define the optimizer
+    nsteps=kwargs.pop('nsteps', 20)
+    lr    = kwargs.pop('lr', 0.1) 
+
+    if nsteps <= 2:
+        nsteps = 2
 
     # Define the optimizer
-    optimizer = LBFGS(x, lr=0.1, history_size=5, max_iter=10)
+    optimizer = LBFGS(x, lr=lr, history_size=nsteps, max_iter=nsteps)
 
     # Add the closure function to calculate the gradient.
     def closure():
@@ -56,6 +65,88 @@ def lbfgs_minimizer(x, target_function, **kwargs):
 
     return x
 
+
+class MinimizerSampler(BaseSampler):
+    def __init__(self, receptor, ligand, scoring_function, **kwargs):
+        super(MinimizerSampler, self).__init__(receptor, ligand, scoring_function)
+        self.receptor = receptor
+        self.ligand = ligand
+
+        self.lr_mode = kwargs.pop('lr_mode', 'periodic')
+        #self.method = kwargs.pop('method', 'Adam')
+        self.minimizer = kwargs.pop('minimizer', None)
+        self.box_center = kwargs.pop('box_center', None)
+        self.box_size   = kwargs.pop('box_size', None)
+    
+    def _make_periodic_lr(self, total_step=1000, 
+                          current_step=0, 
+                          init_lr=1.0, rounds=10):
+        """Obtain periodic learning rate for a given step.
+        
+        Args
+        ---- 
+        total_step: int, 
+            number of total sampling steps
+        current_step: int, 
+            current step index 
+        init_lr: float, optional, default = 1.0
+            initial learning rate for the sampling 
+        rounds: int, optional, default = 10
+            number of rounds for learning rate rising
+
+        Returns
+        -------
+        lr: float, 
+            the learning rate for minimization
+        """
+        chunck = int(total_step / rounds) 
+        ratio = ((current_step % chunck) / chunck)
+
+        return (2 * init_lr * abs(0.5 - ratio)) ** 2 + 1e-4
+
+    def sampling(self, nsteps=1000, 
+                 init_lr=1.0, 
+                 rounds=10):
+
+        for _step in range(nsteps):
+            self.index_ = _step
+            _lr = self._make_periodic_lr(total_step=nsteps, 
+                                         current_step=_step, 
+                                         init_lr=init_lr,
+                                         rounds=rounds)
+            #print("LR ", _lr)
+            if self.ligand.cnfrs_ is not None:
+                is_ligand = True 
+            else: 
+                is_ligand = False
+            
+            if self.receptor.cnfrs_ is not None:
+                is_receptor = True
+            else:
+                is_receptor = False
+
+            self.ligand.cnfrs_, self.receptor.cnfrs_ = \
+            self._minimize(self.ligand.cnfrs_, self.receptor.cnfrs_, 
+                           is_ligand=is_ligand, is_receptor=is_receptor,
+                           lr=_lr, nsteps=1,
+                           )
+            if self.ligand.cnfrs_ is not None:
+                #print(self.ligand.cnfrs_[0])
+                self.ligand_cnfrs_history_.append(torch.Tensor(self.ligand.cnfrs_[0]\
+                                                               .detach().numpy() * 1.0))
+                #print(self.ligand_cnfrs_history_[-1])
+            if self.receptor.cnfrs_ is not None:
+                self.receptor_cnfrs_history_.append([torch.Tensor(x.detach().numpy() * 1.0) \
+                                                     for x in self.receptor.cnfrs_])
+                
+            _score = self._score(self.ligand.cnfrs_, self.receptor.cnfrs_)
+            _score = _score.detach().numpy().ravel()[0]
+            self.ligand_scores_history_.append(_score)
+
+            print(f"[INFO] #{self.index_} {self.__class__.__name__} score {_score}")
+        
+        return self
+    
 
 if __name__ == "__main__":
     from opendock.core.conformation import ReceptorConformation

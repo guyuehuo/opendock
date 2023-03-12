@@ -34,6 +34,7 @@ class DistanceMapScorer(BaseScoringFunction):
 
     def scoring(self):
         # make distance matrix, shape (1, N, M)
+        # reference distance matrix, shape (N, M)
         _dmap = (self.generate_pldist_mtrx()[0] - self.reference_dmap_)
         _diff = torch.sqrt(torch.mean(torch.pow(_dmap, 2)))
 

@@ -213,6 +213,14 @@ class ReceptorConformation(Receptor):
         self.pocket_dist_cutoff_ = pocket_dist_cutoff
 
     def _generate_pldist(self):
+        """Calculates the protein-ligand heavy atom distance matrix. 
+        
+        Returns
+        -------
+        distance_matrix: torch.Tensor, shape = (n_poses, n_M, n_N)
+            The distance matrix between the receptor and the ligand
+            heavy atoms. 
+        """
         
         # Generate the distance matrix of heavy atoms 
         # between the protein and the ligand.

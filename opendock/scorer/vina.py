@@ -259,7 +259,9 @@ class VinaSF(BaseScoringFunction):
 
             # rec-lig vdw 
             rec_lig_atom_vdw_sum.append(
-                self._pad(torch.from_numpy(np.array(r_vdw) + np.array(l_vdw)), _Max_dim).reshape(1, -1))
+                self._pad(torch.from_numpy(np.array(r_vdw) + \
+                                           np.array(l_vdw)), _Max_dim)\
+                                            .reshape(1, -1))
 
         self.rec_lig_is_hydrophobic = torch.cat(rec_lig_is_hydrophobic, axis=0)
         self.rec_lig_is_hbond = torch.cat(rec_lig_is_hbond, axis=0)

@@ -1,5 +1,4 @@
 # Scoring functions in OpenDock framework. 
-
 The scoring functions are the core components of the molecular modelling. 
 In general, the scoring functions could be classified into different groups, 
 such as knowledge-based methods (such as drugscore, chemscore), and emperical 

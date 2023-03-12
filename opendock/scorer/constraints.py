@@ -83,9 +83,9 @@ class ConstraintSF(BaseScoringFunction):
 
     def __init__(self, 
                  receptor = None,
-                 ligand = None):
+                 ligand = None, **kwargs):
         super(ConstraintSF, self)\
-        .__init__(receptor=receptor, ligand=ligand)
+        .__init__(receptor=receptor, ligand=ligand, **kwargs)
 
     def _distance(self, x, y):
 
@@ -93,6 +93,25 @@ class ConstraintSF(BaseScoringFunction):
     
     def _angle(self, x, y, z):
         return NotImplemented
+    
+    def _apply_constraint(self, x):
+
+        if self.constraint_type_ in ['harmonic', 'HARMONIC']:
+            score= harmonic(x, self.bounds_[0], 
+                             self.force_constant_, 2)
+        elif self.constraint_type_ in ['UPPER', 'upper_wall', 'upper']:
+            score= upper_wall(x, self.bounds_[0], 
+                              self.force_constant_, 2)
+        elif self.constraint_type_ in ['LOWER', 'lower_wall', 'lower']:
+            score= lower_wall(x, self.bounds_[0], 
+                              self.force_constant_, 2)
+        elif self.constraint_type_ in ['WALL', 'wall']:
+            score= lower_wall(x, self.bounds_[0], self.bounds_[1], 
+                              self.force_constant_, 2)
+        else:
+            score= x
+
+        return score.reshape((1, -1))
 
 
 class DistanceConstraintSF(ConstraintSF):
@@ -142,20 +161,36 @@ class DistanceConstraintSF(ConstraintSF):
         self.distances_paired_ = torch.stack(self.distances_paired_)
         #print("Paired Distances", self.distances_paired_)
 
-        if self.constraint_type_ in ['harmonic', 'HARMONIC']:
-            score= harmonic(torch.mean(self.distances_paired_), self.bounds_[0], 
-                             self.force_constant_, 2)
-        elif self.constraint_type_ in ['UPPER', 'upper_wall', 'upper']:
-            score= upper_wall(torch.mean(self.distances_paired_), self.bounds_[0], 
-                              self.force_constant_, 2)
-        elif self.constraint_type_ in ['LOWER', 'lower_wall', 'lower']:
-            score= lower_wall(torch.mean(self.distances_paired_), self.bounds_[0], 
-                              self.force_constant_, 2)
-        elif self.constraint_type_ in ['WALL', 'wall']:
-            score= lower_wall(torch.mean(self.distances_paired_), self.bounds_[0], self.bounds_[1], 
-                              self.force_constant_, 2)
-        else:
-            score= torch.mean(self.distances_paired_)
+        score = self._apply_constraint(torch.mean(self.distances_paired))
+
+        return score.reshape((1, -1))
+    
+
+class OutOfBoxConstraint(ConstraintSF):
+    def __init__(self, 
+                 receptor = None,
+                 ligand = None, 
+                 **kwargs):
+        super(OutOfBoxConstraint, self)\
+        .__init__(receptor=receptor, ligand=ligand)
+
+        self.box_center = kwargs.pop('box_center', None)
+        self.box_size   = kwargs.pop('box_size', None)
+
+        self.constraint_type_ = kwargs.pop('constraint', 'upper_wall')
+        self.force_constant_ = kwargs.pop('force', 1.0)
+        # distance boundary, unit is angstrom
+        self.bounds_ = kwargs.pop('bounds', [self.box_size[0] / 2.0, ])
+
+    def scoring(self):
+        # ligand coordinates center 
+        _ligand_center = torch.mean(self.ligand.cnfr2xyz(self.ligand.cnfrs_)[0], axis=0)
+
+        # center distance 
+        _distance = self._distance(torch.Tensor(self.box_center), _ligand_center)
+
+        # apply constraints
+        score = self._apply_constraint(_distance)
 
         return score.reshape((1, -1))
 
@@ -219,12 +254,8 @@ if __name__ == '__main__':
     init_score = mc._score(ligand.cnfrs_, receptor.cnfrs_)
     print("Initial Score", init_score)
     mc._random_move()
-    #mc.sampling(10)
-    #mc.save_traj("traj_saved_100.pdb")
 
     # initialize GA
-    #GA = GeneticAlgorithmSampler(ligand, receptor, sf, box_center=xyz_center, 
-    #                             box_size=[20, 20, 20], n_pop=10)
     GA = GeneticAlgorithmSampler(ligand, receptor, sf, box_center=xyz_center, 
                                  box_size=[20, 20, 20], minimizer=sgd_minimizer, n_pop=10)
     #GA._initialize()

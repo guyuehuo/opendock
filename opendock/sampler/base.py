@@ -72,7 +72,8 @@ class BaseSampler(object):
         return self.scoring_function.scoring()
 
     def _minimize(self, x_ligand=None, x_receptor=None, 
-                  is_ligand=True, is_receptor=False):
+                  is_ligand=True, is_receptor=False, 
+                  lr=0.1, nsteps=10):
         """
         Minimize the cnfrs if required.
         """
@@ -84,7 +85,7 @@ class BaseSampler(object):
 
                 return score
             #print("Current Minimimzer ", self.minimizer)
-            return self.minimizer(x_ligand, _sf), None
+            return self.minimizer(x_ligand, _sf, lr=lr, nsteps=nsteps), None
 
         elif not is_ligand and is_receptor:
             # minimize the receptor sidechain only
@@ -94,7 +95,7 @@ class BaseSampler(object):
 
                 return score
 
-            return None, self.minimizer(x_receptor, _sf)
+            return None, self.minimizer(x_receptor, _sf, lr=lr, nsteps=nsteps)
         else:
             # minimize both the ligand and the receptor sidechains
             def _sf(x):
@@ -104,7 +105,7 @@ class BaseSampler(object):
 
                 return score
             
-            new_cnfrs = self.minimizer(x_ligand + x_receptor, _sf)
+            new_cnfrs = self.minimizer(x_ligand + x_receptor, _sf, lr=lr, nsteps=nsteps)
 
             return [new_cnfrs[0]], new_cnfrs[1:]
 
@@ -119,7 +120,8 @@ class BaseSampler(object):
         self.box_ranges_ = xyz_ranges
 
         # xyz coords shape (1, N, 3)
-        xyz_coords = (self.ligand.cnfr2xyz(ligand_cnfrs) * 1.0)[0]
+        xyz_coords = self.ligand.cnfr2xyz(ligand_cnfrs).detach()[0]
+        #print("XYZ coords shape ", xyz_coords, xyz_coords.shape)
 
         for i in range(3):
             # check whether xyz out of boundaries
