@@ -21,3 +21,27 @@ the lowest energy poses or receptor conformations are therefore selected.
 ## How to implement user defined ```sampler```?
 
 ## How to combine ```samplers``` and ```scorers```?
+In the following example, the usage of the sampler is explained in details. 
+
+    ```
+    # define scoring function
+    sf = VinaSF(receptor, ligand)
+    vs = sf.scoring()
+    print("Vina Score ", vs)
+
+    # ligand center
+    xyz_center = ligand._get_geo_center().detach().numpy()[0]
+    print("Ligand XYZ COM", xyz_center)
+
+    # define sampler
+    print("Cnfrs: ",ligand.cnfrs_, receptor.cnfrs_)
+    mc = MonteCarloSampler(ligand, receptor, sf, 
+                           box_center=xyz_center, 
+                           box_size=[20, 20, 20], 
+                           random_start=True,
+                           minimizer=adam_minimizer,
+                           )
+    init_score = mc._score(ligand.cnfrs_, receptor.cnfrs_)
+    print("Initial Score", init_score) 
+    
+    ```
