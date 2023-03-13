@@ -172,8 +172,30 @@ class ReceptorConformation(Receptor):
     """
     Update the side chains of residues at the 
     binding pocket when performing optimizations. 
-    The residues less than 6 anstroms from the 
+    The residues less than 8 anstroms from the 
     ligand are considered to be at the binding pocket. 
+
+    Args
+    ---- 
+    receptor_fpath: str, 
+        The receptor pdbqt file path. 
+    init_lig_heavy_atoms_xyz: torch.Tensor, shape = (N, 3)
+        The reference ligand coordinates, or pre-defined pocket center. 
+    pocket_dist_cutoff: float, 
+        The cutoff for pocket sidechain selection.
+
+    Methods
+    -------
+    init_sidechain_cnfrs: select the sidechains and make related conformations. 
+    cnfr2xyz: convert the conformation vectors into xyz coordinates. 
+
+    Attributes
+    ----------
+    rec_heavy_atoms_xyz: torch.Tensor, shape = (N, 3)
+        The receptor heavy atom coordinates. 
+    select_residue_indices: list, shape = (N, )
+        The indices of the residues selected for sidechain sampling. 
+
     """
     
     def __init__(self, receptor_fpath: str=None, 

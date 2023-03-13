@@ -23,7 +23,6 @@ the lowest energy poses or receptor conformations are therefore selected.
 ## How to combine ```samplers``` and ```scorers```?
 In the following example, the usage of the sampler is explained in details. 
 
-    ```
     # define scoring function
     sf = VinaSF(receptor, ligand)
     vs = sf.scoring()
@@ -35,7 +34,9 @@ In the following example, the usage of the sampler is explained in details.
 
     # define sampler
     print("Cnfrs: ",ligand.cnfrs_, receptor.cnfrs_)
-    mc = MonteCarloSampler(ligand, receptor, sf, 
+    mc = MonteCarloSampler(ligand=ligand, 
+                           receptor=receptor, 
+                           scoring_function=sf, 
                            box_center=xyz_center, 
                            box_size=[20, 20, 20], 
                            random_start=True,
@@ -44,4 +45,5 @@ In the following example, the usage of the sampler is explained in details.
     init_score = mc._score(ligand.cnfrs_, receptor.cnfrs_)
     print("Initial Score", init_score) 
     
-    ```
+The ```sampler``` here is an object of the ```MonteCarloSampler```, which requires the 
+receptor, ligand, and scoring function objects. 
