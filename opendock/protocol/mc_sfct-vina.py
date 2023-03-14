@@ -81,7 +81,7 @@ def main():
     sfct_scores = sf.score_cnfrs(_cnfrs_list, None)
 
     # average scores
-    alpha = 0.5
+    alpha = 0.8
     _total_scores = np.array(_scores) * alpha + sfct_scores.detach().numpy().ravel() * (1 - alpha)
 
     # score by sorting
