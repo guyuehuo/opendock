@@ -6,7 +6,6 @@ from opendock.scorer.vina import VinaSF
 from opendock.scorer.hybrid import HybridSF 
 from opendock.scorer.constraints import OutOfBoxConstraint
 from opendock.core.io import write_ligand_traj
-import numpy as np
 
 
 ligand = LigandConformation(sys.argv[1])

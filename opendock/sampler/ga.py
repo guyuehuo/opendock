@@ -112,7 +112,6 @@ class GeneticAlgorithmSampler(BaseSampler):
         _init_chrom = list(self.encode2chrom(self._init_variables))
         _decode_variables = self.decode_entire_chrom(np.array(_init_chrom))
         _fitness = self.objective_func(_decode_variables)
-        print("Fitness Score ", _fitness)
         self.ligand_cnfrs_history_.append(torch.Tensor(self.ligand.cnfrs_[0].detach().numpy())) 
         self.ligand_scores_history_.append((_fitness * -1.).detach().numpy().ravel()[0])
         _pop = [_init_chrom, ]
@@ -191,7 +190,7 @@ class GeneticAlgorithmSampler(BaseSampler):
             receptor_cnfrs: list of sidechain cnfr vectors
         """ 
         _receptor_cnfrs = None
-        _lignad_cnfrs = None
+        _ligand_cnfrs = None
 
         if self.ligand.cnfrs_ is None and self.receptor.cnfrs_ is not None:
             _receptor_cnfrs = self.receptor._split_cnfr_tensor_to_list\
@@ -200,7 +199,6 @@ class GeneticAlgorithmSampler(BaseSampler):
         elif self.ligand.cnfrs_ is not None and self.receptor.cnfrs_ is None:
             _ligand_cnfrs = torch.Tensor([variables, ]).requires_grad_()
         elif self.ligand.cnfrs_ is not None and self.receptor.cnfrs_ is not None:
-            #print("ligand shape self.ligand.cnfrs_[0].size()[0]", self.ligand.cnfrs_[0].size()[1], self.ligand.cnfrs_)
             _ligand_cnfrs = torch.Tensor([variables[:self.ligand.cnfrs_[0].size()[1]], ]).requires_grad_()
             _receptor_cnfrs = self.receptor._split_cnfr_tensor_to_list\
             (torch.Tensor(variables[self.ligand.cnfrs_[0].size()[1]:])) #.requires_grad_()
@@ -404,6 +402,11 @@ class GeneticAlgorithmSampler(BaseSampler):
             self.best_chrom_history.append([best_chrom_fitness, ] + best_chrom_decoded)
             self.best_seqs_df = pd.DataFrame(self.best_chrom_history, columns=['fitness', ] + [f"v{x}" for x in range(self.n_var)])
 
+            # gradient zero check to aviod no changing score
+            if len(self.ligand_cnfrs_history_) > 20 and \
+                (np.array(self.ligand_scores_history_[-20:]) == 0).sum() >= 19:
+                print("[WARNING] find no changing scores in sampling, exit now!!!")
+                break
 
     def objective_func(self, x, **kwargs):
         """

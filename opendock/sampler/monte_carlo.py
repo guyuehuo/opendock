@@ -162,6 +162,7 @@ if __name__ == "__main__":
     from opendock.scorer.constraints import rmsd_to_reference
     from opendock.core import io
     from opendock.scorer.rtmscore import RtmscoreSF
+    from opendock.scorer.onionnet_sfct import OnionNetSFCTSF
 
     # define a flexible ligand object 
     ligand = LigandConformation(sys.argv[1])
@@ -199,5 +200,11 @@ if __name__ == "__main__":
     scores = sf.make_flexible_scoring(mc.ligand_cnfrs_history_, [receptor.cnfrs_, ])
     print(scores)
     
+    # onionnet-sfct
+    sf = OnionNetSFCTSF(receptor, ligand, 
+                        python_exe="/share/zhengliangzhen/apps/zydock/python_env/docking/bin/python3.6", 
+                        scorer_bin="/share/zhengliangzhen/apps/zydock/tools/OnionNet-SFCT/scorer.py")
+    scores = sf.score_cnfrs(mc.ligand_cnfrs_history_[:10], None)
+    print("OnionNetSFCT scores ", scores)
     mc.save_traj("traj_saved_100.pdb")
 
