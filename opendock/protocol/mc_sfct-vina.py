@@ -56,7 +56,7 @@ def main():
                            box_center=xyz_center, 
                            box_size=box_sizes, 
                            random_start=True,
-                           minimizer=adam_minimizer,
+                           minimizer=lbfgs_minimizer,
                            )
     
     collected_cnfrs = []
