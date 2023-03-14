@@ -7,7 +7,6 @@ from opendock.core.conformation import LigandConformation
 from opendock.scorer.vina import VinaSF
 from opendock.sampler.ga import GeneticAlgorithmSampler
 from opendock.sampler.minimizer import adam_minimizer, lbfgs_minimizer
-from opendock.scorer.constraints import rmsd_to_reference
 from opendock.core.clustering import BaseCluster
 from opendock.core.io import write_ligand_traj, generate_new_configs
 
@@ -46,7 +45,7 @@ def main():
     
     init_lig_cnfrs = [torch.Tensor(ligand.init_cnfrs.detach().numpy())]
     
-    # define scoring function
+    # define scoring function,m         
     sf = VinaSF(receptor, ligand)
     #print("Initial ligand cnfrs ", init_lig_cnfrs, sf.scoring())
     
@@ -59,7 +58,7 @@ def main():
         ga = GeneticAlgorithmSampler(ligand, receptor, sf, 
                                      box_center=xyz_center, 
                                      box_size=box_sizes, 
-                                     minimizer=adam_minimizer,
+                                     minimizer=lbfgs_minimizer,
                                      n_pop=100, 
                                      p_c = 0.3,
                                      p_m = 0.05
@@ -68,8 +67,8 @@ def main():
         ga._random_move(init_lig_cnfrs, receptor.init_cnfrs)
         ga.sampling(5 * ligand.number_of_frames)
         collected_cnfrs += ga.ligand_cnfrs_history_
-        collected_scores+= ga.ligand_scores_history_ #[x * -1.0 for x in ga.ligand_scores_history_]
-    
+        collected_scores+= ga.ligand_scores_history_ 
+        
     # make clustering
     cluster = BaseCluster(collected_cnfrs, 
                           None,
