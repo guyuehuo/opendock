@@ -161,7 +161,6 @@ if __name__ == "__main__":
     from opendock.scorer.deeprmsd import DeepRmsdSF, CNN, DRmsdVinaSF
     from opendock.scorer.constraints import rmsd_to_reference
     from opendock.core import io
-    from opendock.scorer.rtmscore import RtmscoreSF
     from opendock.scorer.onionnet_sfct import OnionNetSFCTSF
 
     # define a flexible ligand object 
@@ -185,20 +184,20 @@ if __name__ == "__main__":
                            box_center=xyz_center, 
                            box_size=[20, 20, 20], 
                            random_start=True,
-                           minimizer=adam_minimizer,
+                           minimizer=lbfgs_minimizer,
                            )
     init_score = mc._score(ligand.cnfrs_, receptor.cnfrs_)
     print("Initial Score", init_score)
 
     # run mc sampling
     mc._random_move(ligand.cnfrs_, receptor.cnfrs_)
-    mc.sampling(1000)
+    mc.sampling(100)
 
     # rtmscores 
-    sf = RtmscoreSF(ligand=ligand, receptor=receptor)
-    receptor.init_sidechain_cnfrs()
-    scores = sf.make_flexible_scoring(mc.ligand_cnfrs_history_, [receptor.cnfrs_, ])
-    print(scores)
+    #sf = RtmscoreSF(ligand=ligand, receptor=receptor)
+    #receptor.init_sidechain_cnfrs()
+    #scores = sf.make_flexible_scoring(mc.ligand_cnfrs_history_, [receptor.cnfrs_, ])
+    #print(scores)
     
     # onionnet-sfct
     sf = OnionNetSFCTSF(receptor, ligand, 
