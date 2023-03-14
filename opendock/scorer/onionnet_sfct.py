@@ -11,8 +11,9 @@ import torch
 class OnionNetSFCTSF(BaseScoringFunction):
 
     def __init__(self, receptor=None, ligand=None, **kwargs):
-        super().__init__(receptor, ligand)
-
+        super().__init__(receptor=receptor, ligand=ligand)
+        self.receptor = receptor
+        self.ligand   = ligand
         self.python_exe = kwargs.pop("python_exe", "python")
         self.scorer_bin = os.path.abspath(kwargs.pop("scorer_bin", "scorer.py"))
         self.sfct_dpath = os.path.dirname(self.scorer_bin)
@@ -31,10 +32,10 @@ class OnionNetSFCTSF(BaseScoringFunction):
         # ligand pdbqt 
         self.ligand_fpath = os.path.join(self.temp_dpath, "ligand.pdb")
         if self.ligand.cnfrs_ is None:
-            write_receptor_traj(self.ligand.init_cnfrs, self.ligand, 
+            write_ligand_traj(self.ligand.init_cnfrs, self.ligand, 
                                 self.ligand_fpath)
         else:
-            write_receptor_traj(self.ligand.cnfrs_, self.ligand, 
+            write_ligand_traj(self.ligand.cnfrs_, self.ligand, 
                                 self.ligand_fpath)
     
     def _run_sfct(self):
@@ -46,7 +47,8 @@ class OnionNetSFCTSF(BaseScoringFunction):
 
         cmd = f"{self.python_exe} {self.scorer_bin} -r {self.receptor_fpath} \
                 -l {self.ligand_fpath} -o {outfile} \
-                --model {self.sfct_dpath}/tools/OnionNet-SFCT/model/rf.model --ncpus 16"
+                --model {self.sfct_dpath}/model/rf.model --ncpus 1 --stype general"
+        print(f"[INFO] running cmd {cmd}")
         job = sp.Popen(cmd, shell=True)
         job.communicate()
 
