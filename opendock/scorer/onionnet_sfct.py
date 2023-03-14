@@ -39,28 +39,24 @@ class OnionNetSFCTSF(BaseScoringFunction):
                                 self.ligand_fpath)
     
     def _run_sfct(self):
-
-        """$PYTHON_ENV/bin/python $ZYDOCK_ROOT/tools/OnionNet-SFCT/scorer.py 
-        -r $rec -l $out/$outfile -o $out/sfct_scores.txt 
-        --model $ZYDOCK_ROOT/tools/OnionNet-SFCT/model/rf.model --ncpus 16"""
         outfile = os.path.join(self.temp_dpath, "sfct.txt")
 
         cmd = f"{self.python_exe} {self.scorer_bin} -r {self.receptor_fpath} \
                 -l {self.ligand_fpath} -o {outfile} \
                 --model {self.sfct_dpath}/model/rf.model --ncpus 1 --stype general"
-        print(f"[INFO] running cmd {cmd}")
+        print(f"[INFO] running sfct scoring cmd {cmd}")
         job = sp.Popen(cmd, shell=True)
         job.communicate()
 
         if os.path.exists(outfile):
             with open(outfile) as lines:
                 try:
-                    score = [float(x.split()[-1]) for x in lines if "#" not in x][0]
+                    score = [float(x.split()[-1]) for x in lines if "#" not in x]
                 except IndexError:
-                    score = 9.99
+                    score = [9.99]
         else:
             print("[WARNING] failed to obtain sfct scores ...")
-            score = 9.99
+            score = [9.99]
         
         return score
     
@@ -117,10 +113,9 @@ if __name__ == "__main__":
     ligand = LigandConformation(sys.argv[1])
     receptor = ReceptorConformation(sys.argv[2], 
                                     ligand.init_heavy_atoms_coords)
-    #receptor.init_sidechain_cnfrs()
 
     sf = OnionNetSFCTSF(receptor, ligand, 
                         python_exe="/share/zhengliangzhen/apps/zydock/python_env/docking/bin/python3.6", 
                         scorer_bin="/share/zhengliangzhen/apps/zydock/tools/OnionNet-SFCT/scorer.py")
-    score = sf.scoring(remove_temp=False)
+    score = sf.scoring(remove_temp=True)
     print("SFCT score ", score)

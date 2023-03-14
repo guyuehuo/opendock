@@ -137,6 +137,13 @@ class MonteCarloSampler(BaseSampler):
                 self._step(minimize=True)
             else:
                 self._step(minimize=False)
+
+            # gradient zero check to aviod no changing score
+            if len(self.ligand_cnfrs_history_) > 20 and \
+                (np.array(self.ligand_scores_history_[-20:]) == 0).sum() >= 19:
+                print("[WARNING] find no changing scores in sampling, exit now!!!")
+                break
+
     
     def save_traj(self, output_fpath_ligand=None, output_fpath_receptor=None):
         if output_fpath_ligand is not None:
