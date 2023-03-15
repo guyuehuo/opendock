@@ -290,14 +290,23 @@ class VinaSF(BaseScoringFunction):
                              self.rec_lig_is_hydrophobic, 
                              self.rec_lig_is_hbond, 
                              self.rec_lig_atom_vdw_sum)
-        vina_inter_term = vina.process()
-        self.vina_inter_energy = vina_inter_term / (
-                    1 + 0.05846 * (self.ligand.active_torsion \
-                                   + 0.5 * self.ligand.inactive_torsion))
+        try:
+            vina_inter_term = vina.process()
+            self.vina_inter_energy = vina_inter_term / (
+                1 + 0.05846 * (self.ligand.active_torsion \
+                                + 0.5 * self.ligand.inactive_torsion))
 
-        self.vina_inter_energy = self.vina_inter_energy.reshape(-1, 1)
+            self.vina_inter_energy = self.vina_inter_energy.reshape(-1, 1)
+        except:
+            self.vina_inter_energy = torch.Tensor([[99.99, ]]).requires_grad()
 
-        return self.vina_inter_energy
+        try:
+            vina_intra_term = self.cal_intra_repulsion()
+        except:
+            vina_intra_term = torch.Tensor([[0.0, ]])
+        #print("inter and intra", self.vina_inter_energy, vina_intra_term)
+
+        return self.vina_inter_energy + vina_intra_term
 
 
 class VinaScoreCore(object):

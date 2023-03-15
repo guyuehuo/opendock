@@ -65,10 +65,10 @@ def main():
                                     )
         print(f"[INFO] GeneticAlgorithmSampler Round #{i}")
         ga._random_move(init_lig_cnfrs, receptor.init_cnfrs)
-        ga.sampling(5 * ligand.number_of_frames)
+        ga.sampling(20 * ligand.number_of_heavy_atoms)
         collected_cnfrs += ga.ligand_cnfrs_history_
         collected_scores+= ga.ligand_scores_history_ 
-        
+
     # make clustering
     cluster = BaseCluster(collected_cnfrs, 
                           None,
