@@ -15,8 +15,8 @@ class Particle(object):
 
 class ParticleSwarmOptimizer(BaseSampler):
     def __init__(self, ligand, receptor, scoring_function,
-                 weight=0.8, cognitive_param=1.2, 
-                 social_param=1.2, max_iter=100, **kwargs):
+                 weight=0.5, cognitive_param=1.5, 
+                 social_param=1.5, max_iter=100, **kwargs):
         
         super(ParticleSwarmOptimizer, self).__init__(ligand, receptor, scoring_function)
         
@@ -80,14 +80,18 @@ class ParticleSwarmOptimizer(BaseSampler):
                 # minimize if necessary
                 if self.minimizer is not None:
                     lcnfrs_, rcnfrs_ = self._variables2cnfrs(particle.position)
-                    lcnfrs_, rcnfrs_ = self._minimize(lcnfrs_, rcnfrs_, 
-                                                    (lcnfrs_ is not None), 
-                                                    (rcnfrs_ is not None))
-                    x = self._cnfrs2variables(lcnfrs_, rcnfrs_)
-                    _fitness = self.objective_func(x) 
-                    #print(f"Minimize particle with fitness {_fitness} and prev fitness {particle.fitness}")
+                    try:
+                        lcnfrs_, rcnfrs_ = self._minimize(lcnfrs_, rcnfrs_, 
+                                                        (lcnfrs_ is not None), 
+                                                        (rcnfrs_ is not None))
+                        x = self._cnfrs2variables(lcnfrs_, rcnfrs_)
+                        _fitness = self.objective_func(x) 
+                        #print(f"Minimize particle with fitness {_fitness} and prev fitness {particle.fitness}")
+                    except RuntimeError:
+                        _fitness = 999.99 
+                        print("[WARNING] Running minimization failed, ignore ...")
 
-                    if _fitness <= particle.fitness:
+                    if _fitness < particle.fitness:
                         particle.position = np.array(x)
                         particle.best_position = np.array(x)
                         particle.fitness = _fitness
@@ -106,7 +110,23 @@ class ParticleSwarmOptimizer(BaseSampler):
                 
                 particle.position = np.clip(particle.position, self.lb, self.ub)
 
+            # save history 
+            _lig_cnfrs, _rec_cnfrs_ = self._variables2cnfrs(self.global_best_position)
+            self.ligand_cnfrs_history_.append(torch.Tensor(_lig_cnfrs[0].detach().numpy()))
+            self.ligand_scores_history_.append(self.global_best_fitness)
+
+            if self.receptor.cnfrs_ is not None:
+                self.receptor_cnfrs_history_.append([[torch.Tensor(x.detach().numpy()) for x in _rec_cnfrs_]])
+            else:
+                self.receptor_cnfrs_history_.append(None)
+
             print(f"[INFO] #iter={_step} {self.global_best_position} {self.global_best_fitness}")
+            
+            # early stopping checking
+            if len(self.ligand_cnfrs_history_) > 20 and \
+                self.ligand_scores_history_[-20] == self.ligand_scores_history_[-1]:
+                print("[WARNING] find no changing scores in sampling, early stopping now!!!")
+                break
 
         return self.global_best_position, self.global_best_fitness
 
