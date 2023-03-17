@@ -6,6 +6,28 @@ import torch
 
 
 class Particle(object):
+    """Define a particle object. 
+    
+    Attributes
+    ----------
+    position: np.array,
+        the variables to be optimized
+    velocity: np.array,
+        the variables's evolve direction
+    best_position: np.array,
+        the best position for this particle ever
+    fitness: float,
+        the fitness of the particle
+
+    Arguments
+    ---------
+    dim: int, 
+        the dimension of the particle
+    lb: np.array or list, 
+        the lower bound of the particle's position
+    ub: np.array or list,
+        the upper bound of the particle's position
+    """
     def __init__(self, dim, lb, ub):
         self.position = np.array([random.uniform(lb[i], ub[i]) for i in range(dim)])
         self.velocity = np.zeros(dim)
@@ -14,9 +36,31 @@ class Particle(object):
 
 
 class ParticleSwarmOptimizer(BaseSampler):
+    """Particle Swarm Optimizer for ligand and receptor conformation sampling. 
+
+    Attributes
+    ----------
+    receptor: ReceptorConformation object, 
+        the receptor object 
+    ligand: LigandConformation object,
+        the ligand object
+    scoring_function: scoring function object
+    weight: float, optional
+        the particle's self-confidence value for movement
+    cognitive_param: float, optional
+        the particle's understanding of best direction
+    social_param:  float, optional
+        the community movement confidence
+    
+    Methods
+    ------- 
+    sampling: the method for cnfrs optimization
+
+    """
     def __init__(self, ligand, receptor, scoring_function,
-                 weight=0.5, cognitive_param=1.5, 
-                 social_param=1.5, max_iter=100, **kwargs):
+                 weight=1.0, cognitive_param=1.5, 
+                 social_param=1.5, 
+                 max_iter=100, **kwargs):
         
         super(ParticleSwarmOptimizer, self).__init__(ligand, receptor, scoring_function)
         
@@ -28,6 +72,7 @@ class ParticleSwarmOptimizer(BaseSampler):
         self.output_fpath = kwargs.pop('output_fpath', 'output.pdb')
         self.box_center = kwargs.pop('box_center', None)
         self.box_size   = kwargs.pop('box_size', None)
+        self.early_stop_tolerance = kwargs.pop('early_stop_tolerance', 20)
 
         # make boundary points
         self.bounds = []
@@ -52,8 +97,8 @@ class ParticleSwarmOptimizer(BaseSampler):
         self.lb = [x[0] for x in self.bounds]
         self.ub = [x[1] for x in self.bounds]
         self.weight = weight
-        self.cognitive_param = cognitive_param
-        self.social_param = social_param
+        self.init_cognitive_param = cognitive_param
+        self.init_social_param = social_param
         self.max_iter = max_iter
         
         init_particle = Particle(self.dim, self.lb, self.ub)
@@ -67,12 +112,46 @@ class ParticleSwarmOptimizer(BaseSampler):
                        for _ in range(self.size - 1)]
         self.global_best_position = np.zeros(self.dim)
         self.global_best_fitness = float('inf')
+
+    def _make_periodic_weight(self, total_step=1000, 
+                              current_step=0, 
+                              init_w=0.99, rounds=10):
+        """Obtain periodic learning rate for a given step.
         
-    def sampling(self, nsteps=None):
+        Args
+        ---- 
+        total_step: int, 
+            number of total sampling steps
+        current_step: int, 
+            current step index 
+        init_lr: float, optional, default = 1.0
+            initial learning rate for the sampling 
+        rounds: int, optional, default = 10
+            number of rounds for learning rate rising
+
+        Returns
+        -------
+        lr: float, 
+            the learning rate for minimization
+        """
+        chunck = int(total_step / rounds) 
+        ratio = ((current_step % chunck) / chunck)
+
+        #return (2 * init_lr * abs(0.5 - ratio)) ** 2 + 1e-4
+        return init_w * (1 - ratio) + 1e-4
+        
+    def sampling(self, nsteps=None) -> tuple:
         if nsteps is not None:
             self.max_iter = nsteps
 
         for _step in range(self.max_iter):
+            self.cognitive_param = self._make_periodic_weight(self.max_iter, 
+                                                              _step, self.init_cognitive_param, 
+                                                              random.randint(20, 50))
+            self.social_param = self._make_periodic_weight(self.max_iter, 
+                                                           _step, self.init_social_param, 
+                                                           random.randint(20, 50))
+
             for i in range(self.size):
                 particle = self.swarm[i]
                 particle.fitness = self.objective_func(particle.position)
@@ -123,8 +202,9 @@ class ParticleSwarmOptimizer(BaseSampler):
             print(f"[INFO] #iter={_step} {self.global_best_position} {self.global_best_fitness}")
             
             # early stopping checking
-            if len(self.ligand_cnfrs_history_) > 20 and \
-                self.ligand_scores_history_[-20] == self.ligand_scores_history_[-1]:
+            if len(self.ligand_cnfrs_history_) > self.early_stop_tolerance and \
+                self.ligand_scores_history_[-1 * self.early_stop_tolerance] \
+                    == self.ligand_scores_history_[-1]:
                 print("[WARNING] find no changing scores in sampling, early stopping now!!!")
                 break
 
@@ -138,7 +218,7 @@ if __name__ == "__main__":
     from opendock.scorer.vina import VinaSF
     from opendock.scorer.deeprmsd import DeepRmsdSF, CNN, DRmsdVinaSF
     from opendock.scorer.constraints import rmsd_to_reference
-    from opendock.sampler.minimizer import lbfgs_minimizer
+    from opendock.sampler.minimizer import lbfgs_minimizer, adam_minimizer
     from opendock.core import io
 
     # define a flexible ligand object 
@@ -159,7 +239,7 @@ if __name__ == "__main__":
     ps = ParticleSwarmOptimizer(ligand, receptor, sf, 
                                 box_center=xyz_center, 
                                 box_size=[20, 20, 20], 
-                                minimizer=lbfgs_minimizer, 
-                                kappa=5.0)
+                                minimizer=adam_minimizer, 
+                                )
     ps.sampling(200)
 
