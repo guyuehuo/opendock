@@ -92,7 +92,7 @@ class Receptor(object):
         self.dataframe_['x'] = [x.numpy()[0] for x in self.init_rec_all_atoms_xyz]
         self.dataframe_['y'] = [x.numpy()[1] for x in self.init_rec_all_atoms_xyz]
         self.dataframe_['z'] = [x.numpy()[2] for x in self.init_rec_all_atoms_xyz]
-        self.dataframe_['charge'] = self.charges
+        #self.dataframe_['charge'] = self.charges
         self.dataframe_ha_ = self.dataframe_[self.dataframe_['element'] != "dummy"]
         self.dataframe_ha_.index = np.arange(self.dataframe_ha_.shape[0])
 
@@ -126,9 +126,11 @@ class Receptor(object):
 
     def _read_pdbqt(self):
         with open(self.receptor_fpath) as f:
-            self.rec_lines = [x for x in f.readlines() if
-                              (len(x) > 4 and x[:4] == "ATOM")]
-
+            #self.rec_lines = [x for x in f.readlines() if
+            #                  (len(x) > 4 and x[:4] == "ATOM")]
+            self.rec_lines = [x for x in f.readlines() if x.startswith("ATOM") or
+                              x.startswith("HETATM")]
+       
         rec_heavy_atoms_xyz = []
         rec_all_atoms_xyz = []
         temp_indices = []  # the indices of all atoms in each residue
@@ -154,6 +156,7 @@ class Receptor(object):
             except:
                 charges.append(0.0)
 
+            """
             # Water or HETATM
             if res_name[:2] == "WA" or res_name == "HEM" or res_name == "NAD" or res_name == "NAP" or res_name == "UMP" \
                     or res_name[:2] == "MG" or res_name.strip() == "MG" or res_name == "SAM" or res_name == "ADP" \
@@ -164,7 +167,7 @@ class Receptor(object):
                     self.residues_heavy_atoms_indices.append(temp_heavy_atoms_indices)
                 else:
                     continue
-
+            """
             num += 1
 
             if atom_xs_type != "dummy":

@@ -492,3 +492,38 @@ def local_set_lr(epoch, torsion_param, number_of_frames):
         lr[i] = lr_torsion
 
     return lr
+
+
+def merge_rec_hetatm(rec, het_inp):
+    with open(rec) as f:
+        rec_lines = [x for x in f.readlines() if x.startswith("ATOM") or x.startswith("HETATM")]
+
+    # create temp file
+    if not os.path.exists(".temp"):
+        os.mkdir(".temp")
+    temp_file = ".temp/temp_rec_hetatm.pdbqt"
+
+    # load the HETATM files
+    new_lines = rec_lines
+    if os.path.isfile(het_inp):
+        with open(het_inp) as f:
+            het_lines = [l[:21] + "z" + l[22:] for l in f.readlines() if l.startswith("ATOM") or l.startswith("HETATM")]
+        new_lines += het_lines
+
+    elif os.path.isdir(het_inp):
+        het_files = [x for x in os.listdir(het_inp) if x.endswith("pdbqt")]
+
+        for file_ in het_files:
+            with open(het_inp + "/" + file_) as f:
+                het_lines = [l[:21] + "z" + l[22:] for l in f.readlines() if
+                             l.startswith("ATOM") or l.startswith("HETATM")]
+            new_lines += het_lines
+
+    else:
+        print("FileNotFoundError: the File or Directory {} if Not Found ...".format(het_inp))
+
+    with open(temp_file, "w") as f:
+        for l in new_lines:
+            f.writelines(l)
+
+    return temp_file
