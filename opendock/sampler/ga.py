@@ -175,63 +175,6 @@ class GeneticAlgorithmSampler(BaseSampler):
 
         self.initialized_ = True
 
-    def _variables2cnfrs(self, variables):
-        """
-        Convert the variables (that define the chromosomes) into ligand and receptor conformation vectors. 
-
-        Args:
-        ----- 
-        variables: list of floats
-            The variables that define the the chromosomes
-        
-        Returns:
-        cnfrs: tuple of list of torch.Tensor, (ligand_cnfrs, receptor_cnfrs)
-            ligand_cnfrs: list of pose cnfr vectors, 
-            receptor_cnfrs: list of sidechain cnfr vectors
-        """ 
-        _receptor_cnfrs = None
-        _ligand_cnfrs = None
-
-        if self.ligand.cnfrs_ is None and self.receptor.cnfrs_ is not None:
-            _receptor_cnfrs = self.receptor._split_cnfr_tensor_to_list\
-            (torch.Tensor(variables)) #.requires_grad_()
-            _receptor_cnfrs = [torch.Tensor(x.detach().numpy()).requires_grad_() for x in _receptor_cnfrs]
-        elif self.ligand.cnfrs_ is not None and self.receptor.cnfrs_ is None:
-            _ligand_cnfrs = torch.Tensor([variables, ]).requires_grad_()
-        elif self.ligand.cnfrs_ is not None and self.receptor.cnfrs_ is not None:
-            _ligand_cnfrs = torch.Tensor([variables[:self.ligand.cnfrs_[0].size()[1]], ]).requires_grad_()
-            _receptor_cnfrs = self.receptor._split_cnfr_tensor_to_list\
-            (torch.Tensor(variables[self.ligand.cnfrs_[0].size()[1]:])) #.requires_grad_()
-            _receptor_cnfrs = [torch.Tensor(x.detach().numpy()).requires_grad_() for x in _receptor_cnfrs]
-        
-        return [_ligand_cnfrs, ], _receptor_cnfrs
-    
-    def _cnfrs2variables(self, ligand_cnfrs, receptor_cnfrs):
-        """
-        Convert the conformation vectors into a list of variables that can be encoded into chromosomes
-
-        Args:
-        ----- 
-        ligand_cnfrs: list of torch.Tensor (shape = [1, -1])
-            The ligand conformation vectors that define the ligand pose.  
-        receptor_cnfrs: list of torch.Tensor
-            The receptor sidechain conformation vectors that define the receptor sidechain conformations. 
-        
-        Returns:
-        -------
-        variables: list
-            The list of variables that can be encoded into chromosomes.
-        """
-        variables = []
-        if ligand_cnfrs is not None:
-            variables += list(ligand_cnfrs[0].detach().numpy().ravel())
-        
-        if receptor_cnfrs is not None:
-            # extend the sidechain cnfrs to make a list of variables
-            variables += sum([list(x.detach().numpy()) for x in receptor_cnfrs], [])
-        
-        return variables
-
     def select_one_parent(self, tournament_k=3):
         """
         selecting one parent chromosome based on "tournament selection"
@@ -429,7 +372,11 @@ class GeneticAlgorithmSampler(BaseSampler):
 
         """
         self.ligand.cnfrs_, self.receptor.cnfrs_ = self._variables2cnfrs(x)
-        return self._score(self.ligand.cnfrs_, self.receptor.cnfrs_) * -1.0 
+        if self._out_of_box_check(self.ligand.cnfrs_):
+            return -999.99
+        else:
+            return self._score(self.ligand.cnfrs_, \
+                               self.receptor.cnfrs_) * -1.0 
 
     def get_best_chrom(self):
         """
