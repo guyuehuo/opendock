@@ -3,7 +3,7 @@ import os, sys
 import torch
 import random 
 import numpy as np
-
+import math
 
 class BaseSampler(object):
     """
@@ -267,7 +267,19 @@ class BaseSampler(object):
             # extend the sidechain cnfrs to make a list of variables
             variables += sum([list(x.detach().numpy()) for x in receptor_cnfrs], [])
         
-        return variables
+        new_variables = []
+        for i, _v in enumerate(variables):
+            if i >= 3:
+                if _v < -1. * np.pi:
+                    _v = _v - 2 * math.ceil(0.5 * _v / np.pi) * np.pi #- np.pi / 2.0
+                elif _v > np.pi:
+                    _v = 2 * math.ceil(0.5 * _v / np.pi) * np.pi - _v #- np.pi / 2.0
+
+                new_variables.append(_v)
+            else:
+                new_variables.append(_v)
+
+        return new_variables
 
     def objective_func(self, x, **kwargs):
         """

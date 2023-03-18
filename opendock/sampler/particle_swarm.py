@@ -77,30 +77,31 @@ class ParticleSwarmOptimizer(BaseSampler):
         # make boundary points
         self.bounds = []
         if self.ligand.cnfrs_ is not None:
-            self.bounds += [[self.box_center[x] - self.box_size[x], 
-                            self.box_center[x] + self.box_size[x]] for x in range(3)] + \
-                           [[np.pi * -1., np.pi]] * (3 + self.ligand.cnfrs_[0].shape[1] - 6) 
+            self.bounds += [[self.box_center[x] - self.box_size[x]/2.0, 
+                            self.box_center[x] + self.box_size[x]/2.0] for x in range(3)] + \
+                           [[np.pi * -1.0, np.pi]] * (3 + self.ligand.cnfrs_[0].shape[1] - 6) 
         
         if self.receptor.cnfrs_ is not None:
             # receptor number of freedoms
             num_freedoms = np.sum([x.shape()[0] for x in self.receptor.cnfrs_])
-            self.bounds += [[np.pi * -1., np.pi], ] * num_freedoms
-        
-        # init variable 
-        init_variables = self._cnfrs2variables(self.ligand.cnfrs_, 
-                                               self.receptor.cnfrs_)
-        fitness = self.objective_func(init_variables)
-        print("init_variables", init_variables, fitness)
+            self.bounds += [[np.pi * -1.0, np.pi], ] * num_freedoms
 
-        self.dim = len(init_variables)
-        self.size = kwargs.pop('size', 100)
+        self.size = kwargs.pop('population_size', 100)
         self.lb = [x[0] for x in self.bounds]
         self.ub = [x[1] for x in self.bounds]
         self.weight = weight
         self.init_cognitive_param = cognitive_param
         self.init_social_param = social_param
         self.max_iter = max_iter
-        
+
+    def _initialize_variables(self):
+        # init variable 
+        init_variables = self._cnfrs2variables(self.ligand.cnfrs_, 
+                                               self.receptor.cnfrs_)
+        fitness = self.objective_func(init_variables)
+        print("init_variables", init_variables, fitness) 
+        self.dim = len(init_variables)
+
         init_particle = Particle(self.dim, self.lb, self.ub)
         init_particle.position = np.array(init_variables)
         init_particle.fitness = fitness
@@ -141,6 +142,9 @@ class ParticleSwarmOptimizer(BaseSampler):
         return init_w * (1 - ratio) + 1e-4
         
     def sampling(self, nsteps=None) -> tuple:
+        # initialize variables
+        self._initialize_variables()
+
         if nsteps is not None:
             self.max_iter = nsteps
 
@@ -182,9 +186,12 @@ class ParticleSwarmOptimizer(BaseSampler):
                 if particle.fitness < self.objective_func(particle.best_position):
                     particle.best_position = particle.position
                 
-                cognitive_velocity = self.cognitive_param * random.uniform(0, 1) * (particle.best_position - particle.position)
-                social_velocity = self.social_param * random.uniform(0, 1) * (self.global_best_position - particle.position)
-                particle.velocity = self.weight * particle.velocity + cognitive_velocity + social_velocity
+                cognitive_velocity = self.cognitive_param * random.uniform(0, 1) \
+                    * (particle.best_position - particle.position)
+                social_velocity = self.social_param * random.uniform(0, 1) \
+                    * (self.global_best_position - particle.position)
+                particle.velocity = self.weight * particle.velocity + \
+                    cognitive_velocity + social_velocity
                 particle.position += particle.velocity
                 
                 particle.position = np.clip(particle.position, self.lb, self.ub)
@@ -239,7 +246,9 @@ if __name__ == "__main__":
     ps = ParticleSwarmOptimizer(ligand, receptor, sf, 
                                 box_center=xyz_center, 
                                 box_size=[20, 20, 20], 
-                                minimizer=adam_minimizer, 
+                                minimizer=lbfgs_minimizer, 
+                                population_size=100,
                                 )
-    ps.sampling(200)
+    for _r in range(10):
+        ps.sampling(50)
 

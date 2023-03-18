@@ -3,7 +3,8 @@ import os, sys
 import shutil
 import argparse
 import subprocess as sp 
-from openbabel import openbabel as ob
+#from openbabel import openbabel as ob
+import openbabel as ob
 from opendock.core.ligand import Ligand
 
 
