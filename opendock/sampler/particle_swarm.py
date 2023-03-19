@@ -135,6 +135,9 @@ class ParticleSwarmOptimizer(BaseSampler):
             the learning rate for minimization
         """
         chunck = int(total_step / rounds) 
+        if chunck == 0:
+            chunck = 1
+
         ratio = ((current_step % chunck) / chunck)
 
         #return (2 * init_lr * abs(0.5 - ratio)) ** 2 + 1e-4
@@ -147,10 +150,10 @@ class ParticleSwarmOptimizer(BaseSampler):
         for _step in range(self.max_iter):
             self.cognitive_param = self._make_periodic_weight(self.max_iter, 
                                                               _step, self.init_cognitive_param, 
-                                                              random.randint(20, 50))
+                                                              random.randint(2, 10))
             self.social_param = self._make_periodic_weight(self.max_iter, 
                                                            _step, self.init_social_param, 
-                                                           random.randint(20, 50))
+                                                           random.randint(2, 10))
 
             for i in range(self.size):
                 particle = self.swarm[i]
@@ -236,10 +239,13 @@ if __name__ == "__main__":
     xyz_center = ligand._get_geo_center().detach().numpy()[0]
     print("Ligand XYZ COM", xyz_center)
 
-    ps = ParticleSwarmOptimizer(ligand, receptor, sf, 
-                                box_center=xyz_center, 
-                                box_size=[20, 20, 20], 
-                                minimizer=adam_minimizer, 
-                                )
-    ps.sampling(200)
+    for i in range(10):
+        ps = ParticleSwarmOptimizer(ligand, receptor, sf, 
+                                    box_center=xyz_center, 
+                                    box_size=[20, 20, 20], 
+                                    minimizer=adam_minimizer, 
+                                    )
+        
+        _variables, _ = ps.sampling(20)
+        ligand.cnfrs_, receptor.cnfrs_ = ps._variables2cnfrs(_variables)
 
