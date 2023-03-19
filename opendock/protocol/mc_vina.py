@@ -62,7 +62,7 @@ def main():
     for i in range(configs['tasks']):
         print(f"[INFO] MonteCarloSampler Round #{i}")
         mc._random_move(init_lig_cnfrs, receptor.init_cnfrs)
-        mc.sampling(20 * ligand.number_of_heavy_atoms, minimize_stride=1)
+        mc.sampling(50 * ligand.number_of_heavy_atoms, minimize_stride=1)
         collected_cnfrs += mc.ligand_cnfrs_history_
         collected_scores+= mc.ligand_scores_history_
     
@@ -72,7 +72,8 @@ def main():
                           collected_scores, 
                           ligand, 1)
     _scores, _cnfrs_list, _ = cluster.clustering()
-
+    print(_scores)
+ 
     # save traj 
     try:
         os.makedirs(configs['out'], exist_ok=True)

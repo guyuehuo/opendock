@@ -58,7 +58,7 @@ class ParticleSwarmOptimizer(BaseSampler):
 
     """
     def __init__(self, ligand, receptor, scoring_function,
-                 weight=1.0, cognitive_param=1.5, 
+                 weight=0.8, cognitive_param=1.5, 
                  social_param=1.5, 
                  max_iter=100, **kwargs):
         
@@ -73,45 +73,51 @@ class ParticleSwarmOptimizer(BaseSampler):
         self.box_center = kwargs.pop('box_center', None)
         self.box_size   = kwargs.pop('box_size', None)
         self.early_stop_tolerance = kwargs.pop('early_stop_tolerance', 20)
+        self.minimization_ratio = kwargs.pop('minimization_ratio', 1. / 3.)
 
         # make boundary points
         self.bounds = []
         if self.ligand.cnfrs_ is not None:
-            self.bounds += [[self.box_center[x] - self.box_size[x], 
-                            self.box_center[x] + self.box_size[x]] for x in range(3)] + \
-                           [[np.pi * -1., np.pi]] * (3 + self.ligand.cnfrs_[0].shape[1] - 6) 
+            self.bounds += [[self.box_center[x] - self.box_size[x]/2.0, 
+                            self.box_center[x] + self.box_size[x]/2.0] for x in range(3)] + \
+                           [[np.pi * -1.0, np.pi]] * (3 + self.ligand.cnfrs_[0].shape[1] - 6) 
         
         if self.receptor.cnfrs_ is not None:
             # receptor number of freedoms
             num_freedoms = np.sum([x.shape()[0] for x in self.receptor.cnfrs_])
-            self.bounds += [[np.pi * -1., np.pi], ] * num_freedoms
-        
-        # init variable 
-        init_variables = self._cnfrs2variables(self.ligand.cnfrs_, 
-                                               self.receptor.cnfrs_)
-        fitness = self.objective_func(init_variables)
-        print("init_variables", init_variables, fitness)
+            self.bounds += [[np.pi * -1.0, np.pi], ] * num_freedoms
 
-        self.dim = len(init_variables)
-        self.size = kwargs.pop('size', 100)
+        self.size = kwargs.pop('population_size', 100)
         self.lb = [x[0] for x in self.bounds]
         self.ub = [x[1] for x in self.bounds]
         self.weight = weight
         self.init_cognitive_param = cognitive_param
         self.init_social_param = social_param
+        self.cognitive_param = cognitive_param
+        self.social_param = social_param
         self.max_iter = max_iter
-        
+
+        # initialize
+        self._initialize_variables()
+        self.global_best_position = np.zeros(self.dim)
+        self.global_best_fitness = float('inf')
+
+    def _initialize_variables(self):
+        # init variable 
+        init_variables = self._cnfrs2variables(self.ligand.cnfrs_, 
+                                               self.receptor.cnfrs_)
+        #print("init variables", init_variables, self.ligand.cnfrs_)
+        fitness = self.objective_func(init_variables)
+        print("init_variables", init_variables, fitness) 
+        self.dim = len(init_variables)
+
         init_particle = Particle(self.dim, self.lb, self.ub)
         init_particle.position = np.array(init_variables)
         init_particle.fitness = fitness
-        init_particle.best_position = np.array(init_variables)
-        #print("init swarm particle ", init_particle.position)
+        init_particle.best_position = init_particle.position
 
-        self.swarm = [init_particle, ]
-        self.swarm += [Particle(self.dim, self.lb, self.ub) \
+        self.swarm = [init_particle, ] + [Particle(self.dim, self.lb, self.ub) \
                        for _ in range(self.size - 1)]
-        self.global_best_position = np.zeros(self.dim)
-        self.global_best_fitness = float('inf')
 
     def _make_periodic_weight(self, total_step=1000, 
                               current_step=0, 
@@ -144,23 +150,27 @@ class ParticleSwarmOptimizer(BaseSampler):
         return init_w * (1 - ratio) + 1e-4
         
     def sampling(self, nsteps=None) -> tuple:
+        # initialize variables
+        #self._initialize_variables()
+
         if nsteps is not None:
             self.max_iter = nsteps
 
         for _step in range(self.max_iter):
-            self.cognitive_param = self._make_periodic_weight(self.max_iter, 
+            '''self.cognitive_param = self._make_periodic_weight(self.max_iter, 
                                                               _step, self.init_cognitive_param, 
                                                               random.randint(2, 10))
             self.social_param = self._make_periodic_weight(self.max_iter, 
                                                            _step, self.init_social_param, 
-                                                           random.randint(2, 10))
+                                                           random.randint(2, 10))'''
 
             for i in range(self.size):
                 particle = self.swarm[i]
                 particle.fitness = self.objective_func(particle.position)
 
                 # minimize if necessary
-                if self.minimizer is not None:
+                _random_num = random.random()
+                if self.minimizer is not None and _random_num < self.minimization_ratio:
                     lcnfrs_, rcnfrs_ = self._variables2cnfrs(particle.position)
                     try:
                         lcnfrs_, rcnfrs_ = self._minimize(lcnfrs_, rcnfrs_, 
@@ -180,14 +190,17 @@ class ParticleSwarmOptimizer(BaseSampler):
                 
                 if particle.fitness < self.global_best_fitness:
                     self.global_best_fitness = particle.fitness
-                    self.global_best_position = particle.position
+                    self.global_best_position = particle.position * 1.0 # * 1.0 is to ensure that is a cloned object
                 
                 if particle.fitness < self.objective_func(particle.best_position):
                     particle.best_position = particle.position
                 
-                cognitive_velocity = self.cognitive_param * random.uniform(0, 1) * (particle.best_position - particle.position)
-                social_velocity = self.social_param * random.uniform(0, 1) * (self.global_best_position - particle.position)
-                particle.velocity = self.weight * particle.velocity + cognitive_velocity + social_velocity
+                cognitive_velocity = self.cognitive_param * random.uniform(0, 1) \
+                    * (particle.best_position - particle.position)
+                social_velocity = self.social_param * random.uniform(0, 1) \
+                    * (self.global_best_position - particle.position)
+                particle.velocity = self.weight * particle.velocity + \
+                    cognitive_velocity + social_velocity
                 particle.position += particle.velocity
                 
                 particle.position = np.clip(particle.position, self.lb, self.ub)
@@ -198,10 +211,12 @@ class ParticleSwarmOptimizer(BaseSampler):
             self.ligand_scores_history_.append(self.global_best_fitness)
 
             if self.receptor.cnfrs_ is not None:
-                self.receptor_cnfrs_history_.append([[torch.Tensor(x.detach().numpy()) for x in _rec_cnfrs_]])
+                self.receptor_cnfrs_history_.append([[torch.Tensor(x.detach().numpy()) 
+                                                      for x in _rec_cnfrs_]])
             else:
                 self.receptor_cnfrs_history_.append(None)
 
+            #_fitness = self.objective_func(self.global_best_position)
             print(f"[INFO] #iter={_step} {self.global_best_position} {self.global_best_fitness}")
             
             # early stopping checking
@@ -241,11 +256,12 @@ if __name__ == "__main__":
 
     for i in range(10):
         ps = ParticleSwarmOptimizer(ligand, receptor, sf, 
-                                    box_center=xyz_center, 
-                                    box_size=[20, 20, 20], 
-                                    minimizer=adam_minimizer, 
-                                    )
-        
-        _variables, _ = ps.sampling(20)
+                                box_center=xyz_center, 
+                                box_size=[20, 20, 20], 
+                                minimizer=lbfgs_minimizer, 
+                                )
+    
+        _variables, _ = ps.sampling(50)
         ligand.cnfrs_, receptor.cnfrs_ = ps._variables2cnfrs(_variables)
+        ps._initialize_variables()
 

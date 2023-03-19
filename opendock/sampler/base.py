@@ -3,7 +3,7 @@ import os, sys
 import torch
 import random 
 import numpy as np
-
+import math
 
 class BaseSampler(object):
     """
@@ -227,14 +227,18 @@ class BaseSampler(object):
         """ 
         _receptor_cnfrs = None
         _ligand_cnfrs = None
+        variables = list(variables)
 
         if self.ligand.cnfrs_ is None and self.receptor.cnfrs_ is not None:
+            variables = [self._restrict_angle_range(x) for x in variables]
             _receptor_cnfrs = self.receptor._split_cnfr_tensor_to_list\
             (torch.Tensor(variables)) #.requires_grad_()
             _receptor_cnfrs = [torch.Tensor(x.detach().numpy()).requires_grad_() for x in _receptor_cnfrs]
         elif self.ligand.cnfrs_ is not None and self.receptor.cnfrs_ is None:
-            _ligand_cnfrs = torch.Tensor([variables, ]).requires_grad_()
+            _variables = variables[:3] + [self._restrict_angle_range(x) for x in variables[3:]]
+            _ligand_cnfrs = torch.Tensor([_variables, ]).requires_grad_()
         elif self.ligand.cnfrs_ is not None and self.receptor.cnfrs_ is not None:
+            variables = [self._restrict_angle_range(x) for x in variables]
             _ligand_cnfrs = torch.Tensor([variables[:self.ligand.cnfrs_[0].size()[1]], ]).requires_grad_()
             _receptor_cnfrs = self.receptor._split_cnfr_tensor_to_list\
             (torch.Tensor(variables[self.ligand.cnfrs_[0].size()[1]:])) #.requires_grad_()
@@ -261,13 +265,33 @@ class BaseSampler(object):
         """
         variables = []
         if ligand_cnfrs is not None:
-            variables += list(ligand_cnfrs[0].detach().numpy().ravel())
-        
+            variables += [self._restrict_angle_range(x) for x in 
+                          list(ligand_cnfrs[0].detach().numpy().ravel())]
+
+
         if receptor_cnfrs is not None:
             # extend the sidechain cnfrs to make a list of variables
-            variables += sum([list(x.detach().numpy()) for x in receptor_cnfrs], [])
-        
+            variables += [self._restrict_angle_range(x) for x in 
+                          sum([list(x.detach().numpy()) for x in receptor_cnfrs], [])]
+
         return variables
+
+    def _restrict_angle_range(self, x):
+        '''if x < -1. * np.pi:
+            y = x - 2 * math.floor(0.5 * x / np.pi) * np.pi #- np.pi / 2.0
+            print("Restricting angle range x, ", x, y)
+        elif x > np.pi:
+            y = x - 2 * math.ceil(0.5 * x / np.pi) * np.pi #- np.pi / 2.0
+            print("Restricting angle range x, ", x, y)
+        else:
+            y = x'''
+        '''if x < 0 or x > 2 * np.pi:
+            y = x - 2 * int(0.5 * x / np.pi) * np.pi #- np.pi / 2.
+            #print("Restricting angle range x, ", x, y)
+        else:'''
+        y = x
+        
+        return y
 
     def objective_func(self, x, **kwargs):
         """
@@ -289,7 +313,9 @@ class BaseSampler(object):
             fitness value
 
         """
+        #print("before convert, ", x)
         self.ligand.cnfrs_, self.receptor.cnfrs_ = self._variables2cnfrs(x)
+        #print("Converted cnfrs, ", self.ligand.cnfrs_, self.receptor.cnfrs_ )
         #if the cnfr is out of box, drop it and assign a very large value
         if self._out_of_box_check(self.ligand.cnfrs_):
             return 999.99
