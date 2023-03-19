@@ -58,7 +58,7 @@ class ParticleSwarmOptimizer(BaseSampler):
 
     """
     def __init__(self, ligand, receptor, scoring_function,
-                 weight=1.0, cognitive_param=1.5, 
+                 weight=0.8, cognitive_param=1.5, 
                  social_param=1.5, 
                  max_iter=100, **kwargs):
         
@@ -92,6 +92,8 @@ class ParticleSwarmOptimizer(BaseSampler):
         self.weight = weight
         self.init_cognitive_param = cognitive_param
         self.init_social_param = social_param
+        self.cognitive_param = cognitive_param
+        self.social_param = social_param
         self.max_iter = max_iter
 
     def _initialize_variables(self):
@@ -102,15 +104,8 @@ class ParticleSwarmOptimizer(BaseSampler):
         print("init_variables", init_variables, fitness) 
         self.dim = len(init_variables)
 
-        init_particle = Particle(self.dim, self.lb, self.ub)
-        init_particle.position = np.array(init_variables)
-        init_particle.fitness = fitness
-        init_particle.best_position = np.array(init_variables)
-        #print("init swarm particle ", init_particle.position)
-
-        self.swarm = [init_particle, ]
-        self.swarm += [Particle(self.dim, self.lb, self.ub) \
-                       for _ in range(self.size - 1)]
+        self.swarm = [Particle(self.dim, self.lb, self.ub) \
+                       for _ in range(self.size)]
         self.global_best_position = np.zeros(self.dim)
         self.global_best_fitness = float('inf')
 
@@ -149,12 +144,12 @@ class ParticleSwarmOptimizer(BaseSampler):
             self.max_iter = nsteps
 
         for _step in range(self.max_iter):
-            self.cognitive_param = self._make_periodic_weight(self.max_iter, 
+            '''self.cognitive_param = self._make_periodic_weight(self.max_iter, 
                                                               _step, self.init_cognitive_param, 
                                                               random.randint(20, 50))
             self.social_param = self._make_periodic_weight(self.max_iter, 
                                                            _step, self.init_social_param, 
-                                                           random.randint(20, 50))
+                                                           random.randint(20, 50))'''
 
             for i in range(self.size):
                 particle = self.swarm[i]
@@ -246,9 +241,9 @@ if __name__ == "__main__":
     ps = ParticleSwarmOptimizer(ligand, receptor, sf, 
                                 box_center=xyz_center, 
                                 box_size=[20, 20, 20], 
-                                minimizer=lbfgs_minimizer, 
-                                population_size=100,
+                                minimizer=adam_minimizer, 
+                                population_size=200,
                                 )
     for _r in range(10):
-        ps.sampling(50)
+        ps.sampling(100)
 
