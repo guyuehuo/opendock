@@ -13,7 +13,7 @@ from opendock.scorer.vina import VinaSF
 from opendock.scorer.onionnet_sfct import OnionNetSFCTSF
 from opendock.scorer.rtmscore import RtmscoreSF
 from opendock.scorer.zPoseRanker import zPoseRankerSF
-from opendock.scorer.deeprmsd import DeepRmsdSF
+from opendock.scorer.deeprmsd import DeepRmsdSF, CNN, DRmsdVinaSF
 
 from opendock.core.conformation import ReceptorConformation
 from opendock.core.conformation import LigandConformation
@@ -25,13 +25,14 @@ samplers = {
     # sampler, number of sampling steps (per heavy atom)
     "ga": [GeneticAlgorithmSampler, 5],
     "bo": [BayesianOptimizationSampler, 20],
-    "mc": [MonteCarloSampler, 100],
+    "mc": [MonteCarloSampler, 10],
     "pso": [ParticleSwarmOptimizer, 10],
 }
 
 scorers = {
     "vina": VinaSF,
     "deeprmsd": DeepRmsdSF,
+    "rmsd-vina": DRmsdVinaSF,
     "sfct": OnionNetSFCTSF,
     "rtm": RtmscoreSF,
     "zranker": zPoseRankerSF,
@@ -88,7 +89,7 @@ def main():
 
     collected_cnfrs = []
     collected_scores= []
-    sampler = samplers[args.sampler[0]](ligand, receptor, sf, 
+    sampler = samplers[args.sampler][0](ligand, receptor, sf, 
                                          box_center=xyz_center, 
                                          box_size=box_sizes, 
                                          minimizer=minimizers[args.minimizer],
@@ -96,13 +97,13 @@ def main():
     for i in range(configs['tasks']):
         sampler._random_move(init_lig_cnfrs, receptor.init_cnfrs)
         #ligand.cnfrs_, receptor.cnfrs_ = ligand.init_cnfrs, receptor.init_cnfrs
-        sampler = samplers[args.sampler[0]](ligand, receptor, sf, 
+        sampler = samplers[args.sampler][0](ligand, receptor, sf, 
                                          box_center=xyz_center, 
                                          box_size=box_sizes, 
                                          minimizer=minimizers[args.minimizer],
                                          )
         print(f"[INFO] {args.sampler} Round #{i}")
-        sampler.sampling(samplers[args.sampler[1]] * ligand.number_of_heavy_atoms)
+        sampler.sampling(samplers[args.sampler][1] * ligand.number_of_heavy_atoms)
         collected_cnfrs += sampler.ligand_cnfrs_history_
         collected_scores+= sampler.ligand_scores_history_ 
 
@@ -113,19 +114,25 @@ def main():
                           collected_scores, 
                           ligand, 1)
     _scores, _cnfrs_list, _ = cluster.clustering(num_modes=10)
+    print(_cnfrs_list, _scores)
 
     # final scoring and ranking 
     _rescores = []
     for _cnfrs in _cnfrs_list:
-        ligand.cnfrs_, receptor.cnfrs_ = [_cnfrs], None
+        _cnfrs = torch.tensor(_cnfrs.detach().numpy() * 1.0)
+        ligand.cnfrs_, receptor.cnfrs_ = [_cnfrs, ], None
+        ligand.cnfr2xyz([_cnfrs])
         scorer = scorers[args.scorer](receptor=receptor, ligand=ligand)
-        _s = scorer.scoring().detach().numpy().ravel()[0]
-        _rescores.append([_s, _cnfrs_list])
+        _s = scorer.scoring().detach().numpy().ravel()[0] * 1.0
+        _rescores.append([_s, _cnfrs])
+
+        #del scorer
+        #print(_s, _cnfrs)
     
     sorted_scores_cnfrs = list(sorted(_rescores, key=lambda x: x[0]))
     _scores = [x[0] for x in sorted_scores_cnfrs]
     _cnfrs_list = [x[1] for x in sorted_scores_cnfrs]
-
+    print(_cnfrs_list, _scores)
     # save traj 
     try:
         os.makedirs(configs['out'], exist_ok=True)

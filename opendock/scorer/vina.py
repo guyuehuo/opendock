@@ -280,6 +280,13 @@ class VinaSF(BaseScoringFunction):
         return self
 
     def scoring(self):
+        '''# update heavy atom coordinates
+        if self.ligand.cnfrs_ is not None:
+            self.ligand.cnfr2xyz(self.ligand.cnfrs_)
+
+        if self.receptor.cnfrs_ is not None:
+            self.receptor.cnfrs2xyz(self.receptor.cnfrs_)'''
+
         # make distance matrix
         self.generate_pldist_mtrx()
 

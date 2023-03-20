@@ -195,12 +195,12 @@ class DeepRmsdSF(BaseScoringFunction):
         return self.pred_rmsd
     
     def scoring(self):
-        # update heavy atom coordinates
+        '''# update heavy atom coordinates
         if self.ligand.cnfrs_ is not None:
-            self.ligand.cnfrs2xyz(self.ligand.cnfrs_)
+            self.ligand.cnfr2xyz(self.ligand.cnfrs_)
 
         if self.receptor.cnfrs_ is not None:
-            self.receptor.cnfrs2xyz(self.receptor.cnfrs_)
+            self.receptor.cnfrs2xyz(self.receptor.cnfrs_)'''
         
         return self._deeprmsd()
 
@@ -209,7 +209,7 @@ class DRmsdVinaSF(DeepRmsdSF):
     def __init__(self,
                  receptor: Receptor = None,
                  ligand: Ligand = None,
-                 weight_alpha: float = 0.5,
+                 weight_alpha: float = 0.8,
                  ):
         # inheritant from base class
         super(DRmsdVinaSF, self).__init__(receptor, ligand)
