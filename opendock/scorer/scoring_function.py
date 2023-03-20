@@ -109,7 +109,6 @@ class ExternalScoringFunction(BaseScoringFunction):
         return self.ligand_fpath
     
 
-
 if __name__ == "__main__":
     from opendock.core.receptor import Receptor
     from opendock.core.ligand import Ligand

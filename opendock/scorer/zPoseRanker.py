@@ -47,7 +47,7 @@ class zPoseRankerSF(ExternalScoringFunction):
 
         return scores
 
-    def scoring(self, ligand_cnfrs=None, receptor_cnfrs_list=None):
+    def scoring(self, ligand_cnfrs=None, receptor_cnfrs_list=None, remove_temp=True):
 
         self.tmp_dpath = f"/tmp/{self.__class__.__name__}_{str(uuid.uuid4().hex)[:8]}"
         os.makedirs(self.tmp_dpath, exist_ok=True) 
@@ -62,7 +62,8 @@ class zPoseRankerSF(ExternalScoringFunction):
         _scores = self._score(self.receptor_fpath, self.ligand_fpath)
 
         # remove temp dpath 
-        shutil.rmtree(self.tmp_dpath)
+        if remove_temp:
+            shutil.rmtree(self.tmp_dpath)
 
         return torch.Tensor(_scores).reshape((1, -1))
 

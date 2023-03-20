@@ -75,9 +75,7 @@ def main():
                           ligand, 1)
     _scores, _cnfrs_list, _ = cluster.clustering()
 
-    sf = OnionNetSFCTSF(receptor, ligand, 
-                        python_exe="/share/zhengliangzhen/apps/zydock/python_env/docking/bin/python3.6", 
-                        scorer_bin="/share/zhengliangzhen/apps/zydock/tools/OnionNet-SFCT/scorer.py")
+    sf = OnionNetSFCTSF(receptor, ligand)
     sfct_scores = sf.score_cnfrs(_cnfrs_list, None)
 
     # average scores

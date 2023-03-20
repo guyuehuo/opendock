@@ -1,5 +1,5 @@
 
-from opendock.scorer.scoring_function import BaseScoringFunction
+from opendock.scorer.scoring_function import ExternalScoringFunction
 from opendock.core.io import write_ligand_traj, write_receptor_traj
 import uuid
 import os, sys
@@ -12,43 +12,23 @@ SFCT_PY_BIN = "/share/zhengliangzhen/apps/zydock/python_env/docking/bin/python3.
 SFCT_PY_SCRIPT = "/share/zhengliangzhen/apps/zydock/tools/OnionNet-SFCT/scorer.py"
 
 
-class OnionNetSFCTSF(BaseScoringFunction):
-
+class OnionNetSFCTSF(ExternalScoringFunction):
     def __init__(self, receptor=None, ligand=None, **kwargs):
-        super().__init__(receptor=receptor, ligand=ligand)
-        self.receptor = receptor
-        self.ligand   = ligand
-        self.python_exe = kwargs.pop("python_exe", "python")
-        self.scorer_bin = os.path.abspath(kwargs.pop("scorer_bin", "scorer.py"))
-        self.sfct_dpath = os.path.dirname(self.scorer_bin)
+        super(OnionNetSFCTSF, self).__init__(receptor=receptor, ligand=ligand)
 
-    def _prepare_files(self):
-        # receptor pdbqt 
-        self.receptor_fpath = os.path.join(self.temp_dpath, "receptor.pdb")
-        if self.receptor.cnfrs_ is None:
-            with open(self.receptor_fpath, 'w') as tf:
-                for l in self.receptor.receptor_original_lines:
-                    tf.write(l)
-        else:
-            write_receptor_traj(self.receptor.cnfrs_, self.receptor, 
-                                self.receptor_fpath)
-        
-        # ligand pdbqt 
-        self.ligand_fpath = os.path.join(self.temp_dpath, "ligand.pdb")
-        if self.ligand.cnfrs_ is None:
-            write_ligand_traj(self.ligand.init_cnfrs, self.ligand, 
-                                self.ligand_fpath)
-        else:
-            write_ligand_traj(self.ligand.cnfrs_, self.ligand, 
-                                self.ligand_fpath)
+        self.python_exe = kwargs.pop("python_exe", SFCT_PY_BIN)
+        self.scorer_bin = kwargs.pop("scorer_bin", SFCT_PY_SCRIPT)
+        self.sfct_dpath = os.path.dirname(self.scorer_bin)
+        self.verbose = kwargs.pop("verbose", False)
     
     def _run_sfct(self):
-        outfile = os.path.join(self.temp_dpath, "sfct.txt")
+        outfile = os.path.join(self.tmp_dpath, "sfct.txt")
 
         cmd = f"{self.python_exe} {self.scorer_bin} -r {self.receptor_fpath} \
                 -l {self.ligand_fpath} -o {outfile} \
                 --model {self.sfct_dpath}/model/rf.model --ncpus 1 --stype general"
-        print(f"[INFO] running sfct scoring cmd {cmd}")
+        if self.verbose: 
+            print(f"[INFO] running sfct scoring cmd {cmd}")
         job = sp.Popen(cmd, shell=True)
         job.communicate()
 
@@ -89,23 +69,27 @@ class OnionNetSFCTSF(BaseScoringFunction):
         
         return torch.Tensor(scores).reshape((-1, 1))
 
-
-    def scoring(self, remove_temp=True) -> torch.Tensor:
+    def scoring(self, ligand_cnfrs=None, 
+                receptor_cnfrs_list=None, 
+                remove_temp=True) -> torch.Tensor:
         # make temp directory
-        self.temp_dpath = f"/tmp/{self.__call__.__name__}_{str(uuid.uuid4().hex)}"
-        os.makedirs(self.temp_dpath, exist_ok=True)
+        self.tmp_dpath = f"/tmp/{self.__class__.__name__}_{str(uuid.uuid4().hex)[:8]}"
+        os.makedirs(self.tmp_dpath, exist_ok=True)
 
-        # make files 
-        self._prepare_files()
+        # generate receptor and ligand pdb file 
+        if self.receptor_fpath is None:
+            self.receptor_fpath = self._prepare_receptor_fpath(cnfrs_list=receptor_cnfrs_list)
+        if self.ligand_fpath is None:
+            self.ligand_fpath   = self._prepare_ligand_fpath(cnfrs=ligand_cnfrs)
 
         # run scoring 
         score = self._run_sfct()
 
         # do clean-up
         if remove_temp:
-            shutil.rmtree(self.temp_dpath)
+            shutil.rmtree(self.tmp_dpath)
 
-        return torch.Tensor([[score, ]])
+        return torch.Tensor(score).reshape((1, -1))
 
 
 if __name__ == "__main__":
@@ -120,6 +104,7 @@ if __name__ == "__main__":
 
     sf = OnionNetSFCTSF(receptor, ligand, 
                         python_exe=SFCT_PY_BIN, 
-                        scorer_bin=SFCT_PY_SCRIPT)
+                        scorer_bin=SFCT_PY_SCRIPT, 
+                        verbose=True)
     score = sf.scoring(remove_temp=True)
     print("SFCT score ", score)
