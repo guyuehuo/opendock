@@ -23,6 +23,9 @@ class zPoseRankerSF(ExternalScoringFunction):
         self.verbose = kwargs.pop('verbose', False)
     
     def _score(self, receptor_fpath=None, ligand_fpath=None):
+        if self.tmp_dpath is None:
+            self.tmp_dpath = f"/tmp/{self.__class__.__name__}_{str(uuid.uuid4().hex)[:8]}"
+            os.makedirs(self.tmp_dpath, exist_ok=True)
 
         # npy file 
         cmd = f"{DTI_PY_BIN} {DTI_NPY_SCRIPT} --ligand {ligand_fpath} --receptor \
@@ -49,8 +52,9 @@ class zPoseRankerSF(ExternalScoringFunction):
 
     def scoring(self, ligand_cnfrs=None, receptor_cnfrs_list=None, remove_temp=True):
 
-        self.tmp_dpath = f"/tmp/{self.__class__.__name__}_{str(uuid.uuid4().hex)[:8]}"
-        os.makedirs(self.tmp_dpath, exist_ok=True) 
+        if self.tmp_dpath is None:
+            self.tmp_dpath = f"/tmp/{self.__class__.__name__}_{str(uuid.uuid4().hex)[:8]}"
+            os.makedirs(self.tmp_dpath, exist_ok=True) 
 
         # generate receptor and ligand pdb file 
         if self.receptor_fpath is None:
@@ -79,4 +83,4 @@ if __name__ == "__main__":
                                     ligand.init_heavy_atoms_coords)
 
     sf = zPoseRankerSF(receptor=receptor, ligand=ligand, verbose=True)
-    print(sf.scoring())
+    print(sf._score(ligand_fpath=sys.argv[1], receptor_fpath=sys.argv[2]))

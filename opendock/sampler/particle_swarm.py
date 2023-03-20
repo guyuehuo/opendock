@@ -108,7 +108,7 @@ class ParticleSwarmOptimizer(BaseSampler):
                                                self.receptor.cnfrs_)
         #print("init variables", init_variables, self.ligand.cnfrs_)
         fitness = self.objective_func(init_variables)
-        print("init_variables", init_variables, fitness) 
+        #print("init_variables", init_variables, fitness) 
         self.dim = len(init_variables)
 
         init_particle = Particle(self.dim, self.lb, self.ub)

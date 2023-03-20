@@ -12,13 +12,23 @@ with the conformation vectors (```cnfrs```).
 A ```sampler``` requires at least three components: the "scoring function" (```scorer```), 
 the ligand and the receptor objects. The ```sampler``` keeps modifying the ```cnfrs```, and 
 then evaluates the scores or energies by the ```scorer```. In this framework, at least three 
-standard ```samplers``` are implemented, the ```MonteCarloSampler```, the ```GeneticAlgorithmSampler```
-and the ```MinimizerSampler```. For both ```samplers```, the main method is ```sampling```, which 
+standard ```samplers``` are implemented:
+    
+    MonteCarloSampler
+    GeneticAlgorithmSampler
+    BayersianOptimizerSampler
+    ParticleSwarmOptimizer
+    MinimizerSampler
+
+For both ```samplers```, the main method is ```sampling```, which 
 defines number of steps. The sampling history is stored in the object (```ligand_scores_history_```, 
 ```ligand_cnfrs_history_``` and ```receptor_cnfrs_history_```). By using the ```cluster``` class, 
 the lowest energy poses or receptor conformations are therefore selected. 
 
 ## How to implement user defined ```sampler```?
+A ```sampler``` should have at least one core function ```sampling``` (which should be kept as it is).
+Multiple steps are defined in the ```sampling``` function. For ```sampler```, the ```receptor``` 
+object, the ```ligand``` object and the ```scoring_function``` object are key parameters or arguments. 
 
 ## How to combine ```samplers``` and ```scorers```?
 In the following example, the usage of the sampler is explained in details. 
