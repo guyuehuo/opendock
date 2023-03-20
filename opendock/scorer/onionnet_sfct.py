@@ -8,6 +8,10 @@ import subprocess as sp
 import torch
 
 
+SFCT_PY_BIN = "/share/zhengliangzhen/apps/zydock/python_env/docking/bin/python3.6"
+SFCT_PY_SCRIPT = "/share/zhengliangzhen/apps/zydock/tools/OnionNet-SFCT/scorer.py"
+
+
 class OnionNetSFCTSF(BaseScoringFunction):
 
     def __init__(self, receptor=None, ligand=None, **kwargs):
@@ -88,7 +92,7 @@ class OnionNetSFCTSF(BaseScoringFunction):
 
     def scoring(self, remove_temp=True) -> torch.Tensor:
         # make temp directory
-        self.temp_dpath = f"/tmp/sfct_{str(uuid.uuid4().hex)}"
+        self.temp_dpath = f"/tmp/{self.__call__.__name__}_{str(uuid.uuid4().hex)}"
         os.makedirs(self.temp_dpath, exist_ok=True)
 
         # make files 
@@ -115,7 +119,7 @@ if __name__ == "__main__":
                                     ligand.init_heavy_atoms_coords)
 
     sf = OnionNetSFCTSF(receptor, ligand, 
-                        python_exe="/share/zhengliangzhen/apps/zydock/python_env/docking/bin/python3.6", 
-                        scorer_bin="/share/zhengliangzhen/apps/zydock/tools/OnionNet-SFCT/scorer.py")
+                        python_exe=SFCT_PY_BIN, 
+                        scorer_bin=SFCT_PY_SCRIPT)
     score = sf.scoring(remove_temp=True)
     print("SFCT score ", score)

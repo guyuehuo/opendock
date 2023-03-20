@@ -16,8 +16,7 @@ from opendock.scorer.RTMScore.RTMScore.model.model2 \
     import RTMScore, DGLGraphTransformer 
 import torch.multiprocessing
 from opendock.scorer.RTMScore.utils import obabel
-from opendock.scorer.scoring_function import BaseScoringFunction
-from opendock.core.io import write_ligand_traj, write_receptor_traj
+from opendock.scorer.scoring_function import BaseScoringFunction, ExternalScoringFunction
 
 
 torch.multiprocessing.set_sharing_strategy('file_system')
@@ -148,7 +147,7 @@ def rtmsf(prot, lig, modpath=RTMScore_Model,
     return list(np.array(preds).ravel()) #th.Tensor(np.array(preds).reshape((-1, 1)))
 
 
-class RtmscoreSF(BaseScoringFunction):
+class RtmscoreSF(ExternalScoringFunction):
     def __init__(self, receptor = None, ligand = None, **kwargs):
         super(RtmscoreSF, self).__init__(receptor=receptor, ligand=ligand)
 
@@ -158,35 +157,6 @@ class RtmscoreSF(BaseScoringFunction):
         self.tmp_dpath = None
         self.receptor_fpath = None
         self.ligand_fpath   = None
-    
-    def _prepare_receptor_fpath(self, cnfrs_list = None):
-
-        if cnfrs_list is None:
-            if self.receptor.cnfrs_ is not None:
-                _cnfrs_list = self.receptor.cnfrs_ 
-            else:
-                _cnfrs_list = self.receptor.init_sidechain_cnfrs()
-
-            self.receptor_fpath = os.path.join(self.tmp_dpath, "receptor.pdb")
-            write_receptor_traj([_cnfrs_list], self.receptor, self.receptor_fpath)
-        else:
-            self.receptor_fpath = []
-            for i, _cnfrs_list in enumerate(cnfrs_list):
-                _receptor_fpath = os.path.join(self.tmp_dpath, f"receptor_{i}.pdb")
-                write_receptor_traj([_cnfrs_list], self.receptor, _receptor_fpath)
-                self.receptor_fpath.append(_receptor_fpath)
-
-        return self.receptor_fpath
-    
-    def _prepare_ligand_fpath(self, cnfrs = None):
-
-        self.ligand_fpath = os.path.join(self.tmp_dpath, "ligand.pdb")
-        if cnfrs is None:
-            write_ligand_traj(self.ligand.cnfrs_, self.ligand, self.ligand_fpath)
-        else:
-            write_ligand_traj(cnfrs, self.ligand, self.ligand_fpath)
-
-        return self.ligand_fpath
     
     def _score(self, receptor_fpath=None, ligand_fpath=None):
         _scores = rtmsf(prot=receptor_fpath,
@@ -204,10 +174,13 @@ class RtmscoreSF(BaseScoringFunction):
         return _scores
     
     def make_flexible_scoring(self, ligand_cnfrs, receptor_cnfrs_list):
+        #self.tmp_dpath = f"/tmp/{self.__class__.__name__}_{str(uuid.uuid4().hex)}"
+        #os.makedirs(self.tmp_dpath, exist_ok=True)  
+
         scores = []
         if len(ligand_cnfrs) == len(receptor_cnfrs_list):
             for _lcnfrs, _rcnfrs in zip(ligand_cnfrs, receptor_cnfrs_list):
-                self.tmp_dpath = f"/tmp/rtmscore_{str(uuid.uuid4().hex)}"
+                self.tmp_dpath = f"/tmp/{self.__class__.__name__}_{str(uuid.uuid4().hex)[:8]}"
                 os.makedirs(self.tmp_dpath, exist_ok=True) 
 
                 _rec_fpath = self._prepare_receptor_fpath([_rcnfrs, ])[0]
@@ -220,7 +193,7 @@ class RtmscoreSF(BaseScoringFunction):
                 shutil.rmtree(self.tmp_dpath)
         else:
             for _lcnfrs in ligand_cnfrs:
-                self.tmp_dpath = f"/tmp/rtmscore_{str(uuid.uuid4().hex)}"
+                self.tmp_dpath = f"/tmp/{self.__class__.__name__}_{str(uuid.uuid4().hex)[:8]}"
                 os.makedirs(self.tmp_dpath, exist_ok=True) 
 
                 _rec_fpath = self._prepare_receptor_fpath([receptor_cnfrs_list[0], ])[0]
@@ -241,7 +214,7 @@ class RtmscoreSF(BaseScoringFunction):
         Returns:
         scores, torch.Tensor, shape = (n, 1)
         """
-        self.tmp_dpath = f"/tmp/rtmscore_{str(uuid.uuid4().hex)}"
+        self.tmp_dpath = f"/tmp/{self.__class__.__name__}_{str(uuid.uuid4().hex)}"
         os.makedirs(self.tmp_dpath, exist_ok=True) 
 
         # generate receptor and ligand pdb file 

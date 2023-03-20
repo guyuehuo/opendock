@@ -4,6 +4,7 @@ import itertools
 import os, sys
 import time
 from opendock.core.utils import *
+from opendock.core.io import write_ligand_traj, write_receptor_traj
 
 
 class BaseScoringFunction(object):
@@ -65,6 +66,48 @@ class BaseScoringFunction(object):
 
         #print("Distance matrix shape ", self.dist, self.dist.shape)
         return self.dist
+
+
+class ExternalScoringFunction(BaseScoringFunction):
+
+    def __init__(self, receptor, ligand):
+        super(ExternalScoringFunction, self).__init__(receptor, ligand)
+        self.receptor = receptor
+        self.ligand = ligand
+
+        self.tmp_dpath = None
+        self.receptor_fpath = None
+        self.ligand_fpath   = None
+
+    def _prepare_receptor_fpath(self, cnfrs_list = None):
+
+        if cnfrs_list is None:
+            if self.receptor.cnfrs_ is not None:
+                _cnfrs_list = self.receptor.cnfrs_ 
+            else:
+                _cnfrs_list = self.receptor.init_sidechain_cnfrs()
+
+            self.receptor_fpath = os.path.join(self.tmp_dpath, "receptor.pdb")
+            write_receptor_traj([_cnfrs_list], self.receptor, self.receptor_fpath)
+        else:
+            self.receptor_fpath = []
+            for i, _cnfrs_list in enumerate(cnfrs_list):
+                _receptor_fpath = os.path.join(self.tmp_dpath, f"receptor_{i}.pdb")
+                write_receptor_traj([_cnfrs_list], self.receptor, _receptor_fpath)
+                self.receptor_fpath.append(_receptor_fpath)
+
+        return self.receptor_fpath
+    
+    def _prepare_ligand_fpath(self, cnfrs = None):
+
+        self.ligand_fpath = os.path.join(self.tmp_dpath, "ligand.pdb")
+        if cnfrs is None:
+            write_ligand_traj(self.ligand.cnfrs_, self.ligand, self.ligand_fpath)
+        else:
+            write_ligand_traj(cnfrs, self.ligand, self.ligand_fpath)
+
+        return self.ligand_fpath
+    
 
 
 if __name__ == "__main__":
