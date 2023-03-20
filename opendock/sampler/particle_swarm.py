@@ -117,7 +117,7 @@ class ParticleSwarmOptimizer(BaseSampler):
         init_particle.best_position = init_particle.position
 
         self.swarm = [init_particle, ] + [Particle(self.dim, self.lb, self.ub) \
-                       for _ in range(self.size - 1)]
+                      for _ in range(self.size - 1)]
 
     def _make_periodic_weight(self, total_step=1000, 
                               current_step=0, 

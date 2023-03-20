@@ -2,21 +2,58 @@
 import os, sys 
 import argparse
 import torch
+# sampler
+from opendock.sampler.bayesian import BayesianOptimizationSampler
+from opendock.sampler.monte_carlo import MonteCarloSampler
+from opendock.sampler.particle_swarm import ParticleSwarmOptimizer
+from opendock.sampler.ga import GeneticAlgorithmSampler
+from opendock.sampler.minimizer import adam_minimizer, lbfgs_minimizer, sgd_minimizer
+# scorer
+from opendock.scorer.vina import VinaSF
+from opendock.scorer.onionnet_sfct import OnionNetSFCTSF
+from opendock.scorer.rtmscore import RtmscoreSF
+from opendock.scorer.zPoseRanker import zPoseRankerSF
+from opendock.scorer.deeprmsd import DeepRmsdSF
+
 from opendock.core.conformation import ReceptorConformation
 from opendock.core.conformation import LigandConformation
-from opendock.scorer.vina import VinaSF
-from opendock.scorer.deeprmsd import DeeprmsdSF
-from opendock.sampler.ga import GeneticAlgorithmSampler
-from opendock.sampler.minimizer import adam_minimizer, lbfgs_minimizer
 from opendock.core.clustering import BaseCluster
 from opendock.core.io import write_ligand_traj, generate_new_configs
+
+
+samplers = {
+    # sampler, number of sampling steps (per heavy atom)
+    "ga": [GeneticAlgorithmSampler, 5],
+    "bo": [BayesianOptimizationSampler, 20],
+    "mc": [MonteCarloSampler, 100],
+    "pso": [ParticleSwarmOptimizer, 10],
+}
+
+scorers = {
+    "vina": VinaSF,
+    "deeprmsd": DeepRmsdSF,
+    "sfct": OnionNetSFCTSF,
+    "rtm": RtmscoreSF,
+    "zranker": zPoseRankerSF,
+}
+
+minimizers = {
+    "lbfgs": lbfgs_minimizer,
+    "adam": adam_minimizer,
+    "sgd": sgd_minimizer,
+}
 
 
 def argument():
     parser = argparse.ArgumentParser()
     parser.add_argument("-c", "--config", dest="config", default="vina.config", type=str,
                         help="Configuration file.")
-
+    parser.add_argument("--scorer", default="vina", type=str, 
+                        help="The scoring functhon name.")
+    parser.add_argument("--sampler", default="mc", type=str, 
+                        help="The sampler method.")
+    parser.add_argument("--minimizer", default="lbfgs", type=str, 
+                        help="The minimization method.")
     args = parser.parse_args()
 
     if len(sys.argv) < 2:
@@ -46,31 +83,28 @@ def main():
     
     init_lig_cnfrs = [torch.Tensor(ligand.init_cnfrs.detach().numpy())]
     
-    # define scoring function,m         
-    sf = VinaSF(receptor, ligand)
-    #print("Initial ligand cnfrs ", init_lig_cnfrs, sf.scoring())
-    
+    # define scoring function,m  
+    sf = VinaSF(receptor=receptor, ligand=ligand)
+
     collected_cnfrs = []
     collected_scores= []
+    sampler = samplers[args.sampler[0]](ligand, receptor, sf, 
+                                         box_center=xyz_center, 
+                                         box_size=box_sizes, 
+                                         minimizer=minimizers[args.minimizer],
+                                         )
     for i in range(configs['tasks']):
-        ligand.cnfrs_, receptor.cnfrs_ = ligand.init_cnfrs, receptor.init_cnfrs
-        # define sampler
-        #print("Cnfrs: ",ligand.cnfrs_, receptor.cnfrs_)
-        ga = GeneticAlgorithmSampler(ligand, receptor, sf, 
-                                     box_center=xyz_center, 
-                                     box_size=box_sizes, 
-                                     minimizer=lbfgs_minimizer,
-                                     minimization_ratio=0.1,
-                                     n_pop=100, 
-                                     p_c = 0.3,
-                                     p_m = 0.05,
-                                     early_stop_tolerance=10,
-                                    )
-        print(f"[INFO] GeneticAlgorithmSampler Round #{i}")
-        ga._random_move(init_lig_cnfrs, receptor.init_cnfrs)
-        ga.sampling(5 * ligand.number_of_heavy_atoms)
-        collected_cnfrs += ga.ligand_cnfrs_history_
-        collected_scores+= ga.ligand_scores_history_ 
+        sampler._random_move(init_lig_cnfrs, receptor.init_cnfrs)
+        #ligand.cnfrs_, receptor.cnfrs_ = ligand.init_cnfrs, receptor.init_cnfrs
+        sampler = samplers[args.sampler[0]](ligand, receptor, sf, 
+                                         box_center=xyz_center, 
+                                         box_size=box_sizes, 
+                                         minimizer=minimizers[args.minimizer],
+                                         )
+        print(f"[INFO] {args.sampler} Round #{i}")
+        sampler.sampling(samplers[args.sampler[1]] * ligand.number_of_heavy_atoms)
+        collected_cnfrs += sampler.ligand_cnfrs_history_
+        collected_scores+= sampler.ligand_scores_history_ 
 
     print("[INFO] Number of collected conformations: ", len(collected_cnfrs))
     # make clustering
@@ -78,7 +112,19 @@ def main():
                           None,
                           collected_scores, 
                           ligand, 1)
-    _scores, _cnfrs_list, _ = cluster.clustering()
+    _scores, _cnfrs_list, _ = cluster.clustering(num_modes=10)
+
+    # final scoring and ranking 
+    _rescores = []
+    for _cnfrs in _cnfrs_list:
+        ligand.cnfrs_, receptor.cnfrs_ = [_cnfrs], None
+        scorer = scorers[args.scorer](receptor=receptor, ligand=ligand)
+        _s = scorer.scoring().detach().numpy().ravel()[0]
+        _rescores.append([_s, _cnfrs_list])
+    
+    sorted_scores_cnfrs = list(sorted(_rescores, key=lambda x: x[0]))
+    _scores = [x[0] for x in sorted_scores_cnfrs]
+    _cnfrs_list = [x[1] for x in sorted_scores_cnfrs]
 
     # save traj 
     try:
@@ -88,7 +134,7 @@ def main():
 
     write_ligand_traj(_cnfrs_list, ligand, 
                       os.path.join(configs['out'], 'output_clusters.pdb'), 
-                      information={"VinaScore": _scores},
+                      information={args.scorer: _scores},
                       )
 
 if __name__ == '__main__':

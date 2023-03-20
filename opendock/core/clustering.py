@@ -79,7 +79,8 @@ class BaseCluster(object):
     def __init__(self, cnfrs_list, 
                  receptor_cnfrs_list=None, 
                  scores=None, 
-                 ligand=None, cutoff=1.0):
+                 ligand=None, 
+                 cutoff=1.0):
 
         self.cnfrs_list = cnfrs_list
         self.receptor_cnfrs_list = receptor_cnfrs_list
