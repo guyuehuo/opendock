@@ -265,9 +265,9 @@ class BaseSampler(object):
         """
         variables = []
         if ligand_cnfrs is not None:
-            variables += [self._restrict_angle_range(x) for x in 
-                          list(ligand_cnfrs[0].detach().numpy().ravel())]
-
+            _vector = list(ligand_cnfrs[0].detach().numpy().ravel())
+            variables = _vector[:3]
+            variables += [self._restrict_angle_range(x) for x in _vector[3:]]
 
         if receptor_cnfrs is not None:
             # extend the sidechain cnfrs to make a list of variables
@@ -277,19 +277,16 @@ class BaseSampler(object):
         return variables
 
     def _restrict_angle_range(self, x):
-        '''if x < -1. * np.pi:
-            y = x - 2 * math.floor(0.5 * x / np.pi) * np.pi #- np.pi / 2.0
-            print("Restricting angle range x, ", x, y)
+        if x < -np.pi:
+            y = x + 2 * np.pi
+            while y < - np.pi or y > np.pi:
+                y = y + 2 * np.pi
         elif x > np.pi:
-            y = x - 2 * math.ceil(0.5 * x / np.pi) * np.pi #- np.pi / 2.0
-            print("Restricting angle range x, ", x, y)
+            y = x - 2 * np.pi 
+            while y < - np.pi or y > np.pi:
+                y = y - 2 * np.pi
         else:
-            y = x'''
-        '''if x < 0 or x > 2 * np.pi:
-            y = x - 2 * int(0.5 * x / np.pi) * np.pi #- np.pi / 2.
-            #print("Restricting angle range x, ", x, y)
-        else:'''
-        y = x
+            y = x
         
         return y
 

@@ -59,16 +59,19 @@ def main():
                                      box_center=xyz_center, 
                                      box_size=box_sizes, 
                                      minimizer=lbfgs_minimizer,
+                                     minimization_ratio=0.1,
                                      n_pop=100, 
                                      p_c = 0.3,
-                                     p_m = 0.05
+                                     p_m = 0.05,
+                                     early_stop_tolerance=10,
                                     )
         print(f"[INFO] GeneticAlgorithmSampler Round #{i}")
         ga._random_move(init_lig_cnfrs, receptor.init_cnfrs)
-        ga.sampling(20 * ligand.number_of_heavy_atoms)
+        ga.sampling(5 * ligand.number_of_heavy_atoms)
         collected_cnfrs += ga.ligand_cnfrs_history_
         collected_scores+= ga.ligand_scores_history_ 
 
+    print("[INFO] Number of collected conformations: ", len(collected_cnfrs))
     # make clustering
     cluster = BaseCluster(collected_cnfrs, 
                           None,

@@ -59,10 +59,13 @@ class GeneticAlgorithmSampler(BaseSampler):
         self.box_size   = kwargs.pop('box_size', None)
         self.n_gen = kwargs.pop("n_gen", 100)
         self.n_pop = kwargs.pop("n_pop", 200)
+        self.minimization_ratio = kwargs.pop("minimization_ratio", 1. /3.)
+        self.early_stop_tolerance = kwargs.pop("early_stop_tolerance", 20)
+
         #--------------------------------------------------
         #probability of crossover and mutation.
         #--------------------------------------------------
-        self.p_c = kwargs.pop("p_c", 0.5)
+        self.p_c = kwargs.pop("p_c", 0.3)
         self.p_m = kwargs.pop("p_m", 0.001)
         #--------------------------------------------------
         #The "k" parameter in tournament selection
@@ -113,7 +116,7 @@ class GeneticAlgorithmSampler(BaseSampler):
         _decode_variables = self.decode_entire_chrom(np.array(_init_chrom))
         _fitness = self.objective_func(_decode_variables)
         self.ligand_cnfrs_history_.append(torch.Tensor(self.ligand.cnfrs_[0].detach().numpy())) 
-        self.ligand_scores_history_.append((_fitness * -1.).detach().numpy().ravel()[0])
+        self.ligand_scores_history_.append(_fitness * -1.)
         _pop = [_init_chrom, ]
 
         for i in range(self.n_pop - 1):
@@ -137,9 +140,11 @@ class GeneticAlgorithmSampler(BaseSampler):
             _lcnfrs_, _rcnfrs_ = self._variables2cnfrs(_decode_variables)
 
             # check out of box 
-            while self._out_of_box_check(_lcnfrs_):
+            _ntry = 1
+            while self._out_of_box_check(_lcnfrs_) and _ntry <= 10:
                 _decode_variables, _chrom = make_chrom()
                 _lcnfrs_, _rcnfrs_ = self._variables2cnfrs(_decode_variables)
+                _ntry += 1
 
             # predict the fitness score
             _fitness = self.objective_func(_decode_variables)
@@ -195,16 +200,19 @@ class GeneticAlgorithmSampler(BaseSampler):
         return ind_sel[ind_best_from_sel]
     
     def _minimize_chromosome(self, chrom):
-        if self.minimizer is not None:
+        if self.minimizer is not None and self.minimization_ratio < random.random():
             # convert chromosome to conformation 
             variables = self.decode_entire_chrom(np.array(chrom))
             _lig_cnfrs, _rec_cnfrs = self._variables2cnfrs(variables)
             #print("Variable to Cnfrs ", _lig_cnfrs, _rec_cnfrs)
-            _lig_cnfrs, _rec_cnfrs = self._minimize(_lig_cnfrs, _rec_cnfrs, 
-                                                    is_receptor=self.receptor_is_flexible, 
-                                                    is_ligand=self.ligand_is_flexible)
-            variables = self._cnfrs2variables(_lig_cnfrs, _rec_cnfrs)
-            return list(self.encode2chrom(variables))
+            try:
+                _lig_cnfrs, _rec_cnfrs = self._minimize(_lig_cnfrs, _rec_cnfrs, 
+                                                        is_receptor=self.receptor_is_flexible, 
+                                                        is_ligand=self.ligand_is_flexible)
+                variables = self._cnfrs2variables(_lig_cnfrs, _rec_cnfrs)
+                return list(self.encode2chrom(variables))
+            except RuntimeError:
+                return chrom
         else:
             return chrom
 
@@ -224,14 +232,6 @@ class GeneticAlgorithmSampler(BaseSampler):
         None.
 
         """
-        # initialize the GA object by creating starting chromosomes
-        if not self.initialized_:
-            self._initialize()
-
-        """if output is not None:
-            os.makedirs(output, exist_ok=True)
-            self.output_dpath = output"""
-
         #------------------------------------------------
         #number of generations is set from object if not given
         #------------------------------------------------
@@ -279,11 +279,13 @@ class GeneticAlgorithmSampler(BaseSampler):
                     _chrom_decoded = self.decode_entire_chrom(_p)
                     _fitness = self.objective_func(_chrom_decoded)
                     _lig_cnfrs, _rec_cnfrs_ = self._variables2cnfrs(_chrom_decoded)
-                    self.ligand_cnfrs_history_.append(torch.Tensor(_lig_cnfrs[0].detach().numpy()[0]).reshape((1, -1)))
-                    self.ligand_scores_history_.append(_fitness.detach().numpy().ravel()[0] * -1)
+                    self.ligand_cnfrs_history_.append(torch.Tensor(_lig_cnfrs[0].detach()\
+                                                                   .numpy()[0]).reshape((1, -1)))
+                    self.ligand_scores_history_.append(_fitness * -1)
 
                     if self.receptor.cnfrs_ is not None:
-                        self.receptor_cnfrs_history_.append([[torch.Tensor(x.detach().numpy()) for x in _rec_cnfrs_]])
+                        self.receptor_cnfrs_history_.append([[torch.Tensor(x.detach().numpy()) 
+                                                              for x in _rec_cnfrs_]])
                     else:
                         self.receptor_cnfrs_history_.append(None)
 
@@ -299,10 +301,11 @@ class GeneticAlgorithmSampler(BaseSampler):
                 _fitness = self.objective_func(_chrom_decoded)
                 _lig_cnfrs, _rec_cnfrs_ = self._variables2cnfrs(_chrom_decoded)
                 self.ligand_cnfrs_history_.append(torch.Tensor(_lig_cnfrs[0].detach().numpy()))
-                self.ligand_scores_history_.append(_fitness.detach().numpy().ravel()[0] * -1)
+                self.ligand_scores_history_.append(_fitness * -1)
 
                 if self.receptor.cnfrs_ is not None:
-                    self.receptor_cnfrs_history_.append([[torch.Tensor(x.detach().numpy()) for x in _rec_cnfrs_]])
+                    self.receptor_cnfrs_history_.append([[torch.Tensor(x.detach().numpy()) 
+                                                          for x in _rec_cnfrs_]])
                 else:
                     self.receptor_cnfrs_history_.append(None)
 
@@ -324,10 +327,11 @@ class GeneticAlgorithmSampler(BaseSampler):
             #--------------------------------------------
             #verbose
             #--------------------------------------------
-            #if verbose:
             ind_best_chrom, best_chrom, best_chrom_decoded, best_chrom_fitness = self.get_best_chrom()
-            best_chrom_decoded = [np.around(this_var, decimals=self.num_dec_var) for this_var in best_chrom_decoded]
+            best_chrom_decoded = [np.around(this_var, decimals=self.num_dec_var) 
+                                  for this_var in best_chrom_decoded]
             best_chrom_fitness = np.around(best_chrom_fitness, decimals=self.num_dec_fit)
+            self.best_chrom_history.append(best_chrom_fitness)
             
             # save history 
             _lig_cnfrs, _rec_cnfrs_ = self._variables2cnfrs(best_chrom_decoded)
@@ -335,15 +339,17 @@ class GeneticAlgorithmSampler(BaseSampler):
             self.ligand_scores_history_.append(best_chrom_fitness)
 
             if self.receptor.cnfrs_ is not None:
-                self.receptor_cnfrs_history_.append([[torch.Tensor(x.detach().numpy()) for x in _rec_cnfrs_]])
+                self.receptor_cnfrs_history_.append([[torch.Tensor(x.detach().numpy()) 
+                                                      for x in _rec_cnfrs_]])
             else:
                 self.receptor_cnfrs_history_.append(None)
 
             print(f"[INFO] iter#{self.this_iter} {self.__class__.__name__}, fitness {best_chrom_fitness}")
 
             # save results
-            self.best_chrom_history.append([best_chrom_fitness, ] + best_chrom_decoded)
-            self.best_seqs_df = pd.DataFrame(self.best_chrom_history, columns=['fitness', ] + [f"v{x}" for x in range(self.n_var)])
+            #self.best_chrom_history.append([best_chrom_fitness, ] + best_chrom_decoded)
+            #self.best_seqs_df = pd.DataFrame(self.best_chrom_history, columns=['fitness', ] \
+            #                                 + [f"v{x}" for x in range(self.n_var)])
 
             # gradient zero check to aviod no changing score
             if len(self.ligand_cnfrs_history_) > 20 and \
@@ -351,11 +357,18 @@ class GeneticAlgorithmSampler(BaseSampler):
                 print("[WARNING] find no changing scores in sampling, exit now!!!")
                 break
 
+            # early stopping checking
+            if len(self.best_chrom_history) > self.early_stop_tolerance and \
+                self.best_chrom_history[-1 * self.early_stop_tolerance] \
+                    >= self.best_chrom_history[-1]:
+                print("[WARNING] find no changing scores in sampling, early stopping now!!!")
+                break
+
     def objective_func(self, x, **kwargs):
         """
         This is the default function object for "objective".
         It serves as a guideline when implementing your own objective function.
-        Particularly, input, x, is of the type "list".
+        Particularly, the data type of x is "list".
 
         Parameters
         ----------
@@ -363,7 +376,7 @@ class GeneticAlgorithmSampler(BaseSampler):
             list of variables of the problem (a potential solution to be
             assessed).
         **kwargs : dict
-            any extra parameters that you may need in your obj. function.
+            any extra parameters that you may need in your objective function.
 
         Returns
         -------
@@ -376,7 +389,7 @@ class GeneticAlgorithmSampler(BaseSampler):
             return -999.99
         else:
             return self._score(self.ligand.cnfrs_, \
-                               self.receptor.cnfrs_) * -1.0 
+                               self.receptor.cnfrs_).detach().numpy().ravel()[0] * -1.0 
 
     def get_best_chrom(self):
         """
@@ -422,7 +435,8 @@ class GeneticAlgorithmSampler(BaseSampler):
             try:
                 ind_end = ind_start+self.n_bit[sn_var]
             except:
-                print("self.n_var, chrom size, sn_var, ind_start, len_n_bit", self.n_var, len(chrom), sn_var, ind_start, len(self.n_bit))
+                print("self.n_var, chrom size, sn_var, ind_start, len_n_bit", 
+                      self.n_var, len(chrom), sn_var, ind_start, len(self.n_bit))
             this_var_decoded = self.decode(chrom[ind_start:ind_end],
                                            low=self.bound[sn_var][0],
                                            high=self.bound[sn_var][1])
@@ -628,10 +642,12 @@ class GeneticAlgorithmSampler(BaseSampler):
         _ec1 = self.decode_entire_chrom(np.array(chrom1))
         _lcnfrs_1, _ = self._variables2cnfrs(_ec1)
 
-        while self._out_of_box_check(_lcnfrs_1):
+        _ntry = 1
+        while self._out_of_box_check(_lcnfrs_1) and _ntry < 10:
             chrom1 = make_chrom()
             _ec1 = self.decode_entire_chrom(np.array(chrom1))
             _lcnfrs_1, _ = self._variables2cnfrs(_ec1)
+            _ntry += 1
         
         return chrom1
 
@@ -672,9 +688,12 @@ if __name__ == "__main__":
     GA = GeneticAlgorithmSampler(ligand, receptor, sf, 
                                  box_center=xyz_center, 
                                  box_size=[20, 20, 20], 
+                                 n_pop=100,
+                                 early_stop_tolerance=10,
+                                 minimization_ratio=0.2,
                                  minimizer=lbfgs_minimizer)
     #GA._initialize()
-    GA.sampling(n_gen=4, n_pop=10)
+    GA.sampling(n_gen=10)
 
     _vars = GA.best_chrom_history[-1][1:]
     _lcnfrs, _rcnfrs = GA._variables2cnfrs(_vars)

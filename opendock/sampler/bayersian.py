@@ -5,6 +5,7 @@ from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import Matern
 from opendock.sampler.base import BaseSampler
 import torch
+import random
 
 
 class BayesianOptimizationSampler(BaseSampler):
@@ -31,6 +32,7 @@ class BayesianOptimizationSampler(BaseSampler):
         self.box_size   = kwargs.pop('box_size', None)
         self.acquisition = kwargs.pop('acquisition', 'ucb')
         self.kappa = kwargs.pop('kappa', 2.576)
+        self.minimization_ratio = kwargs.pop('minimization_ratio', 1. / 3.)
 
         self.X = []
         self.y = []
@@ -123,7 +125,8 @@ class BayesianOptimizationSampler(BaseSampler):
             x.append(x_i)
 
         # minimize it if necessary
-        if self.minimizer is not None:
+        _random_num = random.random()
+        if self.minimizer is not None and _random_num < self.minimization_ratio:
             lcnfrs_, rcnfrs_ = self._variables2cnfrs(x)
             lcnfrs_, rcnfrs_ = self._minimize(lcnfrs_, rcnfrs_, 
                                             (lcnfrs_ is not None), 
@@ -193,7 +196,7 @@ if __name__ == '__main__':
     ba = BayesianOptimizationSampler(ligand, receptor, sf, 
                                      box_center=xyz_center, 
                                      box_size=[20, 20, 20], 
-                                     minimizer=None, 
-                                     kappa=5.0)
-    ba.sampling(200, 10)
+                                     minimizer=lbfgs_minimizer, 
+                                     kappa=1.0)
+    ba.sampling(200, 100)
 

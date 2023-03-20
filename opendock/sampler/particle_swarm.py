@@ -217,7 +217,7 @@ class ParticleSwarmOptimizer(BaseSampler):
                 self.receptor_cnfrs_history_.append(None)
 
             #_fitness = self.objective_func(self.global_best_position)
-            print(f"[INFO] #iter={_step} {self.global_best_position} {self.global_best_fitness}")
+            print(f"[INFO] #iter={_step} {self.__class__.__name__} {self.global_best_position} {self.global_best_fitness}")
             
             # early stopping checking
             if len(self.ligand_cnfrs_history_) > self.early_stop_tolerance and \
@@ -263,5 +263,5 @@ if __name__ == "__main__":
     
         _variables, _ = ps.sampling(50)
         ligand.cnfrs_, receptor.cnfrs_ = ps._variables2cnfrs(_variables)
-        ps._initialize_variables()
+        #ps._initialize_variables()
 
