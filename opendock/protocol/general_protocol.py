@@ -11,7 +11,10 @@ from opendock.sampler.minimizer import adam_minimizer, lbfgs_minimizer, sgd_mini
 # scorer
 from opendock.scorer.vina import VinaSF
 from opendock.scorer.onionnet_sfct import OnionNetSFCTSF
-from opendock.scorer.rtmscore import RtmscoreSF
+try:
+    from opendock.scorer.rtmscore import RtmscoreSF
+except:
+    RtmscoreSF = None
 from opendock.scorer.zPoseRanker import zPoseRankerSF
 from opendock.scorer.deeprmsd import DeepRmsdSF, CNN, DRmsdVinaSF
 
@@ -23,10 +26,10 @@ from opendock.core.io import write_ligand_traj, generate_new_configs
 
 samplers = {
     # sampler, number of sampling steps (per heavy atom)
-    "ga": [GeneticAlgorithmSampler, 5],
+    "ga": [GeneticAlgorithmSampler, 1],
     "bo": [BayesianOptimizationSampler, 20],
-    "mc": [MonteCarloSampler, 10],
-    "pso": [ParticleSwarmOptimizer, 10],
+    "mc": [MonteCarloSampler, 5],
+    "pso": [ParticleSwarmOptimizer, 1],
 }
 
 scorers = {
@@ -125,9 +128,6 @@ def main():
         scorer = scorers[args.scorer](receptor=receptor, ligand=ligand)
         _s = scorer.scoring().detach().numpy().ravel()[0] * 1.0
         _rescores.append([_s, _cnfrs])
-
-        #del scorer
-        #print(_s, _cnfrs)
     
     sorted_scores_cnfrs = list(sorted(_rescores, key=lambda x: x[0]))
     _scores = [x[0] for x in sorted_scores_cnfrs]

@@ -74,6 +74,24 @@ class OnionNetSFCTSF(ExternalScoringFunction):
         return torch.Tensor(scores).reshape((-1, 1))
 
 
+class SFCTVinaSF(OnionNetSFCTSF):
+    def __init__(self,
+                 receptor: Receptor = None,
+                 ligand: Ligand = None,
+                 weight_alpha: float = 0.8,
+                 ):
+        # inheritant from base class
+        super(SFCTVinaSF, self).__init__(receptor, ligand)
+        self.weight_alpha = weight_alpha # the vina score weight
+    
+    def scoring(self):
+        _vina_sf = VinaSF(ligand=self.ligand, 
+                          receptor=self.receptor)
+
+        return _vina_sf.scoring() * self.weight_alpha + \
+               self.scoring() * (1 - self.weight_alpha)
+
+
 if __name__ == "__main__":
 
     from opendock.core.conformation import ReceptorConformation
