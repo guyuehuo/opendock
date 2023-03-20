@@ -3,7 +3,10 @@ using prody to extract the pocket
 """
 import os, re
 import prody as pr
-from openbabel import openbabel as ob
+try:
+	from openbabel import openbabel as ob
+except:
+	import openbabel as ob
 #import subprocess
 #os.environ["BABEL_LIBDIR"] = "/home/shenchao/.conda/envs/my2/lib/openbabel/3.1.0"
 

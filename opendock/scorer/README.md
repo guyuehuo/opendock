@@ -93,6 +93,12 @@ The following external scoring functions are implemented:
     RTMscore (By Shen, et al in this paper: Boosting Protein–Ligand Binding Pose Prediction and Virtual Screening Based on Residue–Atom Distance Likelihood Potential and Graph Transformer)
     zPoseRanker (Zelixir's ligand pose rmsd prediction model used in CASP15)
 
+For user defined external scoring functions, some key functions (```_score``` and ```score_cnfrs```) 
+are defined by the user. The ```_score``` takes the protein (receptor) and the compound (ligand) 
+files as input, and runs the related methods or commands (using ```subprocess.Popen```) and generates
+related output files, which are further parsed by the user defined methods or codes. This function 
+returns a list of floats (the scoring values, generally the lower the better.)
+
 ### OnionNet-SFCT
 This scoring function is a machine-learning model trained with large-scale protein-ligand docking
 decoys to predict the decoy deviation to the native pose. The scoring function is a correction term 
@@ -122,3 +128,8 @@ Here is an example of calling this scoring function:
 
 The parameter ```SFCT_PY_BIN``` is the python binary executable file installed following the
 instructions in the OnionNet-SFCT github README file.
+
+### RTMscore
+This scoring function takes the ligand poses and the protein structure as the input files, 
+and return the scoring values (large the value, better the pose). Here in our implementation,
+we multiply -1 to the scoring value to make lower value meaning better pose.

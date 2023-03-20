@@ -144,7 +144,7 @@ def rtmsf(prot, lig, modpath=RTMScore_Model,
     # remove temporary directory
     shutil.rmtree(tmp_directory)
 
-    return list(np.array(preds).ravel()) #th.Tensor(np.array(preds).reshape((-1, 1)))
+    return list(np.array(preds).ravel()) * -1.0 #th.Tensor(np.array(preds).reshape((-1, 1)))
 
 
 class RtmscoreSF(ExternalScoringFunction):
@@ -173,9 +173,7 @@ class RtmscoreSF(ExternalScoringFunction):
     
         return _scores
     
-    def make_flexible_scoring(self, ligand_cnfrs, receptor_cnfrs_list):
-        #self.tmp_dpath = f"/tmp/{self.__class__.__name__}_{str(uuid.uuid4().hex)}"
-        #os.makedirs(self.tmp_dpath, exist_ok=True)  
+    def score_cnfrs(self, ligand_cnfrs, receptor_cnfrs_list):
 
         scores = []
         if len(ligand_cnfrs) == len(receptor_cnfrs_list):
@@ -206,31 +204,6 @@ class RtmscoreSF(ExternalScoringFunction):
                 shutil.rmtree(self.tmp_dpath)
         
         return th.Tensor(scores)
-
-    
-    def scoring(self) -> th.Tensor:
-        """Score the receptor and ligand conformations with RTMscore. 
-        
-        Returns:
-        scores, torch.Tensor, shape = (n, 1)
-        """
-        self.tmp_dpath = f"/tmp/{self.__class__.__name__}_{str(uuid.uuid4().hex)}"
-        os.makedirs(self.tmp_dpath, exist_ok=True) 
-
-        # generate receptor and ligand pdb file 
-        if self.receptor_fpath is None:
-            self.receptor_fpath = self._prepare_receptor_fpath()
-
-        if self.ligand_fpath is None:
-            self.ligand_fpath   = self._prepare_ligand_fpath()
-
-        _scores = self._score(self.receptor_fpath, self.ligand_fpath)
-        scores = th.Tensor([_scores, ])
-        
-        # clean temporary files
-        shutil.rmtree(self.tmp_dpath)
-
-        return scores
         
 
 if __name__ == "__main__":

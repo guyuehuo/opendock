@@ -2,7 +2,9 @@
 import torch
 import itertools
 import os, sys
+import uuid
 import time
+import shutil
 from opendock.core.utils import *
 from opendock.core.io import write_ligand_traj, write_receptor_traj
 
@@ -107,6 +109,31 @@ class ExternalScoringFunction(BaseScoringFunction):
             write_ligand_traj(cnfrs, self.ligand, self.ligand_fpath)
 
         return self.ligand_fpath
+    
+    def _score(self, receptor_fpath = None, ligand_fpath = None):
+        # to befined in each scoring function
+        return 0.0
+
+    def scoring(self, ligand_cnfrs=None, receptor_cnfrs_list=None, remove_temp=True):
+
+        if self.tmp_dpath is None:
+            self.tmp_dpath = f"/tmp/{self.__class__.__name__}_{str(uuid.uuid4().hex)[:8]}"
+            os.makedirs(self.tmp_dpath, exist_ok=True) 
+
+        # generate receptor and ligand pdb file 
+        if self.receptor_fpath is None:
+            self.receptor_fpath = self._prepare_receptor_fpath(cnfrs_list=receptor_cnfrs_list)
+
+        if self.ligand_fpath is None:
+            self.ligand_fpath   = self._prepare_ligand_fpath(cnfrs=ligand_cnfrs)
+
+        _scores = self._score(self.receptor_fpath, self.ligand_fpath)
+
+        # remove temp dpath 
+        if remove_temp:
+            shutil.rmtree(self.tmp_dpath)
+
+        return torch.Tensor(_scores).reshape((1, -1))
     
 
 if __name__ == "__main__":

@@ -46,30 +46,13 @@ class zPoseRankerSF(ExternalScoringFunction):
         if os.path.exists(self.output_csv_fpath):
             scores = pd.read_csv(self.output_csv_fpath, header=0)['l_mean_prmsd'].values #.tolist()
         else:
-            scores = [0, ] 
+            scores = [9.9, ] 
 
         return scores
 
-    def scoring(self, ligand_cnfrs=None, receptor_cnfrs_list=None, remove_temp=True):
+    def score_cnfrs(self, ligand_cnfrs=None, receptor_cnfrs_list=None):
 
-        if self.tmp_dpath is None:
-            self.tmp_dpath = f"/tmp/{self.__class__.__name__}_{str(uuid.uuid4().hex)[:8]}"
-            os.makedirs(self.tmp_dpath, exist_ok=True) 
-
-        # generate receptor and ligand pdb file 
-        if self.receptor_fpath is None:
-            self.receptor_fpath = self._prepare_receptor_fpath(cnfrs_list=receptor_cnfrs_list)
-
-        if self.ligand_fpath is None:
-            self.ligand_fpath   = self._prepare_ligand_fpath(cnfrs=ligand_cnfrs)
-
-        _scores = self._score(self.receptor_fpath, self.ligand_fpath)
-
-        # remove temp dpath 
-        if remove_temp:
-            shutil.rmtree(self.tmp_dpath)
-
-        return torch.Tensor(_scores).reshape((1, -1))
+        return self.scoring(ligand_cnfrs, receptor_cnfrs_list, remove_temp=True)
 
 
 if __name__ == "__main__":
