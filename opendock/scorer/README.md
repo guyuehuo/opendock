@@ -132,4 +132,5 @@ instructions in the OnionNet-SFCT github README file.
 ### RTMscore
 This scoring function takes the ligand poses and the protein structure as the input files, 
 and return the scoring values (large the value, better the pose). Here in our implementation,
-we multiply -1 to the scoring value to make lower value meaning better pose.
+we multiply -1 to the scoring value to make lower value meaning better pose. To use this scoring
+function.

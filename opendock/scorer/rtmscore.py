@@ -8,12 +8,17 @@ import uuid
 import shutil
 import MDAnalysis as mda
 from torch.utils.data import DataLoader
-from opendock.scorer.RTMScore.RTMScore.data.data \
-    import VSDataset
-from opendock.scorer.RTMScore.RTMScore.model.utils \
-    import collate, run_an_eval_epoch
-from opendock.scorer.RTMScore.RTMScore.model.model2 \
-    import RTMScore, DGLGraphTransformer 
+try:
+    from opendock.scorer.RTMScore.RTMScore.data.data \
+        import VSDataset
+    from opendock.scorer.RTMScore.RTMScore.model.utils \
+        import collate, run_an_eval_epoch
+    from opendock.scorer.RTMScore.RTMScore.model.model2 \
+        import RTMScore, DGLGraphTransformer 
+except:
+    RTMscore, DGLGraphTransformer = None, None
+    VSDataset, collate, run_an_eval_epoch = None, None, None
+
 import torch.multiprocessing
 from opendock.scorer.RTMScore.utils import obabel
 from opendock.scorer.scoring_function import BaseScoringFunction, ExternalScoringFunction
@@ -38,6 +43,12 @@ args["hidden_dim0"] = 128
 args["hidden_dim"] = 128
 args["n_gaussians"] = 10
 args["dropout_rate"] = 0.10
+
+
+# External RTMscore package
+PACKAGE_DPATH = "/share/zhengliangzhen/apps/RTMScore-main"
+OBABEL     = os.path.join(PACKAGE_DPATH, "envs/rtmscore/bin/obabel")
+RTM_PY_EXE = os.path.join(PACKAGE_DPATH, "envs/rtmscore/bin/python")
 
 
 def rtmsf(prot, lig, modpath=RTMScore_Model,
@@ -206,6 +217,50 @@ class RtmscoreSF(ExternalScoringFunction):
         return th.Tensor(scores)
         
 
+class RtmscoreExtSF(RtmscoreSF):
+
+    def __init__(self, receptor = None, ligand = None, **kwargs):
+        super(RtmscoreExtSF, self).__init__(receptor=receptor, ligand=ligand)
+
+        self.receptor = receptor
+        self.ligand = ligand
+
+        self.tmp_dpath = None
+        self.receptor_fpath = None
+        self.ligand_fpath   = None
+    
+    def _score(self, receptor_fpath=None, ligand_fpath=None):
+        rtm_out_fpath = f"{self.tmp_dpath}/rtmscore.csv" 
+
+        if not os.path.exists(rtm_out_fpath):
+            # convert protein
+            obabel(receptor_fpath, f'{self.tmp_dpath}/receptor.pdb')
+
+            # convert ligand
+            obabel(ligand_fpath, f'{self.tmp_dpath}/docked_ligands.sdf')
+
+            # convert ligand files
+            cmd = f'{OBABEL} {ligand_fpath} -O {self.tmp_dpath}/pocket_.sdf -m'
+            self._run_cmd(cmd)
+
+            rmt_script = os.path.join(PACKAGE_DPATH, "rtmscore.py")
+            cmd = [RTM_PY_EXE, rmt_script, f"-p {self.tmp_dpath}/receptor.pdb",
+                f"-l {self.tmp_dpath}/docked_ligands.sdf", "-gen_pocket",
+                f"-rl {self.tmp_dpath}/pocket_1.sdf", f"-o {self.tmp_dpath}/rtmscore",
+                f"-m {PACKAGE_DPATH}/trained_models/rtmscore_model1.pth"]
+            self._run_cmd(" ".join(cmd))
+        
+        if not os.path.exists(rtm_out_fpath):
+            return [99.99]
+        else:
+            with open(rtm_out_fpath) as lines:
+                try:
+                    scores = [-1. * float(x.split(",")[-1]) for x in lines if "id,score" not in x]
+                except:
+                    scores = [99.99,]
+            return scores
+        
+
 if __name__ == "__main__":
 
     from opendock.core.conformation import ReceptorConformation
@@ -216,6 +271,6 @@ if __name__ == "__main__":
     receptor = ReceptorConformation(sys.argv[2], 
                                     ligand.init_heavy_atoms_coords)
 
-    sf = RtmscoreSF(receptor=receptor, ligand=ligand)
+    sf = RtmscoreExtSF(receptor=receptor, ligand=ligand)
     print(sf.scoring())
     

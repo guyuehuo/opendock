@@ -1,4 +1,19 @@
 import os
+try:
+    from openbabel import openbabel as ob
+except:
+    import openbabel as ob
+
+
+def obabel_convert(infile, outfile):
+    basename = os.path.basename(infile).split(".")[0]
+    _format = outfile.split(".")[-1]
+
+    obConversion = ob.OBConversion()
+    obConversion.SetInAndOutFormats(basename, _format)
+    mol = ob.OBMol()
+    obConversion.ReadFile(mol, infile)
+    obConversion.WriteFile(mol, outfile)
 
 
 ALLOWED_CONFIGS_TERMS = ['receptor', 'ligand', 'out',

@@ -1,4 +1,9 @@
-from openbabel import openbabel as ob
+
+try:
+    from openbabel import openbabel as ob
+except:
+    import openbabel as ob
+    
 import os
 
 

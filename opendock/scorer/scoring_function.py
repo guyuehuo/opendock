@@ -5,6 +5,7 @@ import os, sys
 import uuid
 import time
 import shutil
+import subprocess as sp
 from opendock.core.utils import *
 from opendock.core.io import write_ligand_traj, write_receptor_traj
 
@@ -72,7 +73,7 @@ class BaseScoringFunction(object):
 
 class ExternalScoringFunction(BaseScoringFunction):
 
-    def __init__(self, receptor, ligand):
+    def __init__(self, receptor, ligand, **kwargs):
         super(ExternalScoringFunction, self).__init__(receptor, ligand)
         self.receptor = receptor
         self.ligand = ligand
@@ -80,6 +81,8 @@ class ExternalScoringFunction(BaseScoringFunction):
         self.tmp_dpath = None
         self.receptor_fpath = None
         self.ligand_fpath   = None
+
+        self.verbose = kwargs.pop('verbose', True)
 
     def _prepare_receptor_fpath(self, cnfrs_list = None):
 
@@ -131,9 +134,22 @@ class ExternalScoringFunction(BaseScoringFunction):
 
         # remove temp dpath 
         if remove_temp:
-            shutil.rmtree(self.tmp_dpath)
+            try:
+                shutil.rmtree(self.tmp_dpath)
+            except:
+                print(f"[WARNING] removing temp dpath {self.tmp_dpath} failed ...")
 
         return torch.Tensor(_scores).reshape((1, -1))
+    
+    def _run_cmd(self, cmd: str = None):
+        if self.verbose:
+            print("Running cmd: ", cmd)
+
+        try:
+            job = sp.Popen(cmd, shell=True)
+            job.communicate()
+        except:
+            print(f"[WARNING] running cmd {cmd} failed...")
     
 
 if __name__ == "__main__":

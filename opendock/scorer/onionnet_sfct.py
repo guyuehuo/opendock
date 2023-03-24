@@ -76,8 +76,8 @@ class OnionNetSFCTSF(ExternalScoringFunction):
 
 class SFCTVinaSF(OnionNetSFCTSF):
     def __init__(self,
-                 receptor: Receptor = None,
-                 ligand: Ligand = None,
+                 receptor = None,
+                 ligand = None,
                  weight_alpha: float = 0.8,
                  ):
         # inheritant from base class

@@ -11,10 +11,7 @@ from opendock.sampler.minimizer import adam_minimizer, lbfgs_minimizer, sgd_mini
 # scorer
 from opendock.scorer.vina import VinaSF
 from opendock.scorer.onionnet_sfct import OnionNetSFCTSF
-try:
-    from opendock.scorer.rtmscore import RtmscoreSF
-except:
-    RtmscoreSF = None
+from opendock.scorer.rtmscore import RtmscoreExtSF
 from opendock.scorer.zPoseRanker import zPoseRankerSF
 from opendock.scorer.deeprmsd import DeepRmsdSF, CNN, DRmsdVinaSF
 
@@ -28,7 +25,7 @@ samplers = {
     # sampler, number of sampling steps (per heavy atom)
     "ga": [GeneticAlgorithmSampler, 1],
     "bo": [BayesianOptimizationSampler, 20],
-    "mc": [MonteCarloSampler, 5],
+    "mc": [MonteCarloSampler, 100],
     "pso": [ParticleSwarmOptimizer, 1],
 }
 
@@ -37,7 +34,7 @@ scorers = {
     "deeprmsd": DeepRmsdSF,
     "rmsd-vina": DRmsdVinaSF,
     "sfct": OnionNetSFCTSF,
-    "rtm": RtmscoreSF,
+    "rtm": RtmscoreExtSF,
     "zranker": zPoseRankerSF,
 }
 
@@ -84,7 +81,6 @@ def main():
                                     torch.Tensor(xyz_center).reshape((1, 3)))
     #receptor.init_sidechain_cnfrs(box_sizes[0] / 2.0)
     print("Sidechain cnfrs", receptor.cnfrs_)
-    
     init_lig_cnfrs = [torch.Tensor(ligand.init_cnfrs.detach().numpy())]
     
     # define scoring function,m  
