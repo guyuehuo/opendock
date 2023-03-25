@@ -1,11 +1,97 @@
-import os, sys
+import os, sys, shutil
 import numpy as np
 import pandas as pd
 import torch
+import prody as pr
 from opendock.core.utils import ATOMTYPE_MAPPING, \
-    COVALENT_RADII_DICT, SIDECHAIN_TOPOL_DICT
+    COVALENT_RADII_DICT, SIDECHAIN_TOPOL_DICT, obabel
 
+class ClipReceptor():
+    def __init__(self, 
+                 rec_fpath: str=None, 
+                 ref_lig_file: str=None, 
+                 tmp_dir: str=".temp",
+                 cutoff=20.0):
 
+        self.rec_fpath = rec_fpath  # input, the source file of the protein (.pdb)
+        self.ref_lig_file = ref_lig_file  # input, the reference lignad pose (any format)
+        self.tmp_dir = tmp_dir
+        self.temp_ref_lig_fpath = self.tmp_dir + "/tmp_" + os.path.basename(ref_lig_file) + ".pdb"  # ligand's temporary file (.pdb format)
+
+        self.cutoff = cutoff  # cutting scale 
+        self.ref_lig_xyz = torch.tensor([])
+
+        if self.tmp_dir != "" and not os.path.exists(self.tmp_dir):
+            os.makedirs(self.tmp_dir)
+
+    def motify_ligand(self, infile, outfile):
+        with open(infile) as f:
+            lines = [x.strip() for x in f.readlines() if x.startswith("ATOM") or x.startswith("HETATM")]
+
+        with open(outfile, "w") as f:
+            for line in lines:
+                new_line = "ATOM  " + line[6:17] + "LIG A   1" + line[26:]
+                f.writelines(new_line + "\n")
+        
+    def motify_protein(self):
+
+        rec_pdb = self.tmp_dir + "/" + os.path.basename(self.rec_fpath) + ".pdb"
+        obabel(self.rec_fpath, rec_pdb)
+
+        return rec_pdb
+
+    def parse_ref_lig(self):
+        basename = os.path.basename(self.ref_lig_file)
+        infile = self.tmp_dir + "/_temp_ref_" + basename + ".pdb"
+        if self.ref_lig_file.split(".")[-1] != "pdb":
+            obabel(self.ref_lig_file, infile)
+        else:
+            shutil.copyfile(self.ref_lig_file, infile)
+
+        self.motify_ligand(infile, self.temp_ref_lig_fpath)
+        os.remove(infile)
+
+        return self
+
+    def clip_rec(self):
+        """
+        .pdb files
+        """
+        self.parse_ref_lig()
+        lig = pr.parsePDB(self.temp_ref_lig_fpath)
+
+        if self.rec_fpath.endswith("pdb"):
+            pro = pr.parsePDB(self.rec_fpath)
+            with open(self.rec_fpath) as f:
+                lines = [x.strip() for x in f.readlines() if x.startswith("ATOM") or x.startswith("HETATM")]
+        else:
+            tmp_file = self.motify_protein()
+            pro = pr.parsePDB(tmp_file)
+            with open(tmp_file) as f:
+                lines = [x.strip() for x in f.readlines() if x.startswith("ATOM") or x.startswith("HETATM")]
+
+        ha_num = -1
+        rec_series_to_index_dict = {}
+
+        rec_ha_indices = []
+        for num, line in enumerate(lines):
+            if line.split()[-1] != "H":
+                ha_num += 1
+                rec_ha_indices.append(num)
+                rec_series_to_index_dict[num] = ha_num
+
+        cplx = pro + lig
+        selec = cplx.select(f"same residue as exwithin %s of resname LIG" % self.cutoff)
+        
+        selec_all_indices = selec.getIndices()
+        selec_ha_indices = []
+        for i in selec_all_indices:
+            if lines[i].split()[-1] != "H":
+                selec_ha_indices.append(i)        
+        
+        return rec_ha_indices, selec_all_indices, selec_ha_indices
+
+       
 class Receptor(object):
     """Receptor Parser for receptor structure.
 
@@ -18,12 +104,15 @@ class Receptor(object):
         init_rec_all_atoms_xyz: torch.Tensor, receptor all atom coordinates
     """
 
-    def __init__(self, receptor_fpath: str = None):
+    def __init__(self, receptor_fpath: str = None,
+                ref_lig_fpath: str = None):
         """The receptor class.
         Args:
             receptor_fpath (str, optional): Input receptor file path. Defaults to None.
         """
         self.receptor_fpath = receptor_fpath  # the pdbqt file of protein
+
+        self.ref_lig_fpath = ref_lig_fpath  # the reference ligand pose
         self.cnfrs_ = None
         self.init_cnfrs = None
 
@@ -123,24 +212,46 @@ class Receptor(object):
             self.receptor_parsed_ = True
 
         return self
+    
+    def clip_rec(self):
+        
+        cliprec = ClipReceptor(rec_fpath=self.receptor_fpath, ref_lig_file=self.ref_lig_fpath)
+        self.rec_ha_indices, self.clp_all_indices, self.clp_ha_indices = cliprec.clip_rec() 
+        
+        rec_ha_idx_dict = dict(zip(self.rec_ha_indices, range(len(self.rec_ha_indices))))
+        self.clp_ha_idx = [rec_ha_idx_dict[i] for i in self.clp_ha_indices]
+        self.clp_ha_idx_to_line_num = dict(zip(self.clp_ha_idx, range(len(self.clp_ha_idx))))
+
+        return self
 
     def _read_pdbqt(self):
-        with open(self.receptor_fpath) as f:
-            #self.rec_lines = [x for x in f.readlines() if
-            #                  (len(x) > 4 and x[:4] == "ATOM")]
+
+        self.clip_rec()
+        with open(self.receptor_fpath) as f:   
             self.rec_lines = [x for x in f.readlines() if x.startswith("ATOM") or
                               x.startswith("HETATM")]
+        
+        clp_rec_lines = []
+        for num, line in enumerate(self.rec_lines):
+            if num in self.rec_ha_indices:
+                self.receptor_original_lines.append(line)
+            
+            if num in self.clp_all_indices:
+                clp_rec_lines.append(line)
+        
+        #selec_rec_lines = [self.rec_lines[i] for i in self.selec_cut_indices]
        
         rec_heavy_atoms_xyz = []
         rec_all_atoms_xyz = []
         temp_indices = []  # the indices of all atoms in each residue
         temp_heavy_atoms_indices = []  # the indices of heavy atoms in each residue
         temp_heavy_atoms_pdb_types = []
-        heavy_atom_num = -1 # the index of heavy atoms
         charges = []
 
         num = -1 # the index of atoms including H
-        for _num_line, line in enumerate(self.rec_lines):
+        heavy_atom_num = -1 # the index of heavy atoms
+
+        for _num_line, line in enumerate(clp_rec_lines):
             atom_ad4_type = line[77:79].strip()
             atom_xs_type = self.atomtype_mapping[atom_ad4_type]
             atom_ele = atom_xs_type.split('_')[0]
@@ -204,7 +315,7 @@ class Receptor(object):
                     self.residues_heavy_atoms_pairs.append(res_name + '-' + atom_ele)
                     self.rec_heavy_atoms_pdb_types.append(pdb_type)
 
-                    self.receptor_original_lines.append(line)
+                    #self.receptor_original_lines.append(line)
             else:
                 self.residues_all_atoms_indices.append(temp_indices)
                 self.residues_heavy_atoms_indices.append(temp_heavy_atoms_indices)
@@ -223,7 +334,7 @@ class Receptor(object):
                     self.residues_heavy_atoms_pairs.append(res_name + '-' + atom_ele)
                     self.rec_heavy_atoms_pdb_types.append(pdb_type)
 
-                    self.receptor_original_lines.append(line)
+                    #self.receptor_original_lines.append(line)
                 else:
                     pass
 
