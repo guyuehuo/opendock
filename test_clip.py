@@ -1,4 +1,5 @@
 import os, sys
+import torch
 from opendock.core.conformation import LigandConformation, ReceptorConformation
 from opendock.sampler.minimizer import adam_minimizer, sgd_minimizer, lbfgs_minimizer
 from opendock.sampler.minimizer import MinimizerSampler
@@ -11,15 +12,16 @@ from opendock.core.utils import merge_rec_hetatm
 
 lig_file = sys.argv[1]
 rec_file = sys.argv[2]
-ref_lig_file = sys.argv[3]
+#ref_lig_file = sys.argv[3]
 
 ligand = LigandConformation(lig_file)
 ligand.parse_ligand()
 init_lig_xyz = ligand.init_lig_heavy_atoms_xyz
 
-receptor = ReceptorConformation(rec_file, ref_lig_file, init_lig_xyz)
+docking_center = torch.tensor([51.31, 18.26, -6.47])
+receptor = ReceptorConformation(rec_file, docking_center, init_lig_xyz)
 receptor.parse_receptor()
-print("xyz:", receptor.init_rec_heavy_atoms_xyz.shape)
+
 rec_cnfr = receptor.init_sidechain_cnfrs()
 
 write_receptor_traj([rec_cnfr], receptor, "init_rec.pdb")

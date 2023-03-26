@@ -199,9 +199,10 @@ class ReceptorConformation(Receptor):
     """
     
     def __init__(self, receptor_fpath: str=None, 
+                 docking_center: torch.tensor=None,
                  init_lig_heavy_atoms_xyz: torch.tensor=None, 
                  pocket_dist_cutoff: float=8.0):
-        super(ReceptorConformation, self).__init__(receptor_fpath)
+        super(ReceptorConformation, self).__init__(receptor_fpath, docking_center)
         
         # load receptor
         self.parse_receptor()
@@ -353,7 +354,6 @@ class ReceptorConformation(Receptor):
         # if cnfrs is not a list of list
         if (type(cnfrs) != list):
             cnfrs = self._split_cnfr_tensor_to_list(cnfrs)
-        #print('cnfrs in side cnfr2xyz', cnfrs)
 
         for i in range(0, len(self.selected_residues_indices)):
             cnfr = cnfrs[i]
@@ -402,14 +402,13 @@ class ReceptorConformation(Receptor):
                 # normalize the torsion axis
                 new_rotorX_to_rotorY_vector = new_rotorY_coord - self.current_receptor_heavy_atoms_xyz[rotorX_index]
                 torsion_axis = F.normalize(new_rotorX_to_rotorY_vector, p=2, dim=0)
-                #print("Conformation torsion_id", torsion_id, cnfr[torsion_id])
                 torsion_R = rodrigues_single_pose(torsion_axis, cnfr[torsion_id])
 
                 # update the torsion matrix 
                 if torsion_id == 0:
                     current_torsion_matrix = torsion_R
                 else:
-                    current_torsion_matrix = torch.mm(all_torsion_matrix[torsion_id - 1], torsion_R)
+                    current_torsion_matrix = torch.mm(torsion_R, all_torsion_matrix[torsion_id - 1])
 
                 all_torsion_matrix[torsion_id] = current_torsion_matrix 
 

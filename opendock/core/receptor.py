@@ -4,90 +4,85 @@ import pandas as pd
 import torch
 import prody as pr
 from opendock.core.utils import ATOMTYPE_MAPPING, \
-    COVALENT_RADII_DICT, SIDECHAIN_TOPOL_DICT, obabel
+    COVALENT_RADII_DICT, SIDECHAIN_TOPOL_DICT
 
 class ClipReceptor():
     def __init__(self, 
                  rec_fpath: str=None, 
-                 ref_lig_file: str=None, 
-                 tmp_dir: str=".temp",
+                 docking_center: torch.tensor=None,  # shape: [3, ] or [1, 3]
                  cutoff=20.0):
 
         self.rec_fpath = rec_fpath  # input, the source file of the protein (.pdb)
-        self.ref_lig_file = ref_lig_file  # input, the reference lignad pose (any format)
-        self.tmp_dir = tmp_dir
-        self.temp_ref_lig_fpath = self.tmp_dir + "/tmp_" + os.path.basename(ref_lig_file) + ".pdb"  # ligand's temporary file (.pdb format)
+        self.docking_center = docking_center
 
         self.cutoff = cutoff  # cutting scale 
-        self.ref_lig_xyz = torch.tensor([])
 
-        if self.tmp_dir != "" and not os.path.exists(self.tmp_dir):
-            os.makedirs(self.tmp_dir)
-
-    def motify_ligand(self, infile, outfile):
-        with open(infile) as f:
-            lines = [x.strip() for x in f.readlines() if x.startswith("ATOM") or x.startswith("HETATM")]
-
-        with open(outfile, "w") as f:
-            for line in lines:
-                new_line = "ATOM  " + line[6:17] + "LIG A   1" + line[26:]
-                f.writelines(new_line + "\n")
+    def parse_receptor(self):
+        with open(self.rec_fpath) as f:
+            self.lines = [x.strip() for x in f.readlines() if x.startswith("ATOM") or x.startswith("HETATM")]
         
-    def motify_protein(self):
+        all_resid_xyz_list = []
+        all_resid_atom_indices = []
 
-        rec_pdb = self.tmp_dir + "/" + os.path.basename(self.rec_fpath) + ".pdb"
-        obabel(self.rec_fpath, rec_pdb)
+        resid_symbol_pool = []
+        temp_xyz_list = []
+        temp_indices_list = []
+        rec_ha_indices = []
+        for num, line in enumerate(self.lines):
+            resid_symbol = line[17:27].strip()
+            x = float(line[30:38].strip())
+            y = float(line[38:46].strip())
+            z = float(line[46:54].strip())
+            atom_xyz = np.c_[x, y, z]
+            if line.split()[-1] not in ["H", "HD"]:
+                rec_ha_indices.append(num)
+            
+            if num == 0:
+                resid_symbol_pool.append(resid_symbol)
+                temp_xyz_list.append(atom_xyz)
+                temp_indices_list.append(num)
+            
+            elif num == len(self.lines) - 1:
+                temp_xyz = np.concatenate(temp_xyz_list, axis=0)
+                temp_xyz = np.concatenate([temp_xyz, np.ones((25 - temp_xyz.shape[0], 3)) * 999.], axis=0)
+                all_resid_xyz_list.append(temp_xyz.reshape(1, -1, 3))
+                all_resid_atom_indices.append(temp_indices_list)
+            
+            else:
+                if resid_symbol != resid_symbol_pool[-1]:
+                    resid_symbol_pool.append(resid_symbol)
+                    
+                    temp_xyz = np.concatenate(temp_xyz_list, axis=0)
+                    temp_xyz = np.concatenate([temp_xyz, np.ones((25 - temp_xyz.shape[0], 3)) * 999.], axis=0)
+                    all_resid_xyz_list.append(temp_xyz.reshape(1, -1, 3))
+                    all_resid_atom_indices.append(temp_indices_list)
+                    
+                    temp_xyz_list = [atom_xyz]
+                    temp_indices_list = [num]
+                else:
+                    temp_xyz_list.append(atom_xyz)
+                    temp_indices_list.append(num)
 
-        return rec_pdb
+        all_resid_xyz_tensor = torch.from_numpy(np.concatenate(all_resid_xyz_list, axis=0))
+        dist_mtx = torch.sqrt(torch.sum(torch.square(all_resid_xyz_tensor - self.docking_center.reshape(1, 3)), axis=-1))
+        min_dist, _ = torch.min(dist_mtx, axis=1)
 
-    def parse_ref_lig(self):
-        basename = os.path.basename(self.ref_lig_file)
-        infile = self.tmp_dir + "/_temp_ref_" + basename + ".pdb"
-        if self.ref_lig_file.split(".")[-1] != "pdb":
-            obabel(self.ref_lig_file, infile)
-        else:
-            shutil.copyfile(self.ref_lig_file, infile)
+        selec_res_indices = torch.where(min_dist <= self.cutoff)[0]
+        selec_atoms_indices = []
+        for l in selec_res_indices:
+            selec_atoms_indices += all_resid_atom_indices[l]
+        selec_atoms_indices = sorted(selec_atoms_indices)
 
-        self.motify_ligand(infile, self.temp_ref_lig_fpath)
-        os.remove(infile)
-
-        return self
+        return selec_atoms_indices, rec_ha_indices
 
     def clip_rec(self):
-        """
-        .pdb files
-        """
-        self.parse_ref_lig()
-        lig = pr.parsePDB(self.temp_ref_lig_fpath)
+   
+        selec_all_indices, rec_ha_indices = self.parse_receptor()
 
-        if self.rec_fpath.endswith("pdb"):
-            pro = pr.parsePDB(self.rec_fpath)
-            with open(self.rec_fpath) as f:
-                lines = [x.strip() for x in f.readlines() if x.startswith("ATOM") or x.startswith("HETATM")]
-        else:
-            tmp_file = self.motify_protein()
-            pro = pr.parsePDB(tmp_file)
-            with open(tmp_file) as f:
-                lines = [x.strip() for x in f.readlines() if x.startswith("ATOM") or x.startswith("HETATM")]
-
-        ha_num = -1
-        rec_series_to_index_dict = {}
-
-        rec_ha_indices = []
-        for num, line in enumerate(lines):
-            if line.split()[-1] != "H":
-                ha_num += 1
-                rec_ha_indices.append(num)
-                rec_series_to_index_dict[num] = ha_num
-
-        cplx = pro + lig
-        selec = cplx.select(f"same residue as exwithin %s of resname LIG" % self.cutoff)
-        
-        selec_all_indices = selec.getIndices()
         selec_ha_indices = []
         for i in selec_all_indices:
-            if lines[i].split()[-1] != "H":
-                selec_ha_indices.append(i)        
+            if self.lines[i].split()[-1] not in ["H", "HD"]:
+                selec_ha_indices.append(i)    
         
         return rec_ha_indices, selec_all_indices, selec_ha_indices
 
@@ -105,14 +100,14 @@ class Receptor(object):
     """
 
     def __init__(self, receptor_fpath: str = None,
-                ref_lig_fpath: str = None):
+                docking_center: torch.tensor=None):
         """The receptor class.
         Args:
             receptor_fpath (str, optional): Input receptor file path. Defaults to None.
         """
         self.receptor_fpath = receptor_fpath  # the pdbqt file of protein
 
-        self.ref_lig_fpath = ref_lig_fpath  # the reference ligand pose
+        self.docking_center = docking_center
         self.cnfrs_ = None
         self.init_cnfrs = None
 
@@ -215,7 +210,7 @@ class Receptor(object):
     
     def clip_rec(self):
         
-        cliprec = ClipReceptor(rec_fpath=self.receptor_fpath, ref_lig_file=self.ref_lig_fpath)
+        cliprec = ClipReceptor(rec_fpath=self.receptor_fpath, docking_center=self.docking_center)
         self.rec_ha_indices, self.clp_all_indices, self.clp_ha_indices = cliprec.clip_rec() 
         
         rec_ha_idx_dict = dict(zip(self.rec_ha_indices, range(len(self.rec_ha_indices))))
