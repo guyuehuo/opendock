@@ -78,7 +78,9 @@ def main():
     # define a flexible ligand object 
     ligand = LigandConformation(configs['ligand'])
     receptor = ReceptorConformation(configs['receptor'], 
-                                    torch.Tensor(xyz_center).reshape((1, 3)))
+                                    torch.Tensor(xyz_center).reshape((1, 3)), 
+                                    init_lig_heavy_atoms_xyz=ligand.init_lig_heavy_atoms_xyz,
+                                    )
     #receptor.init_sidechain_cnfrs(box_sizes[0] / 2.0)
     print("Sidechain cnfrs", receptor.cnfrs_)
     init_lig_cnfrs = [torch.Tensor(ligand.init_cnfrs.detach().numpy())]

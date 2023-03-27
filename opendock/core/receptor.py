@@ -100,7 +100,7 @@ class Receptor(object):
     """
 
     def __init__(self, receptor_fpath: str = None,
-                docking_center: torch.tensor=None):
+                 docking_center: torch.tensor=None):
         """The receptor class.
         Args:
             receptor_fpath (str, optional): Input receptor file path. Defaults to None.

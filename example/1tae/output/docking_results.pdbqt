@@ -1,0 +1,693 @@
+MODEL        1
+REMARK VINA RESULT:  -8.030   0.000  0.000 
+REMARK 921   NORMALIZED FREE ENERGY PREDICTED BY IDOCK:   -8.03 KCAL/MOL
+REMARK 922        TOTAL FREE ENERGY PREDICTED BY IDOCK:  -15.06 KCAL/MOL
+REMARK 923 INTER-LIGAND FREE ENERGY PREDICTED BY IDOCK:  -13.20 KCAL/MOL
+REMARK 924 INTRA-LIGAND FREE ENERGY PREDICTED BY IDOCK:   -1.86 KCAL/MOL
+REMARK 927      BINDING AFFINITY PREDICTED BY RF-SCORE:    6.19 PKD
+ROOT
+ATOM      1  P   UNL     1      -8.150  57.858  30.595  0.00  0.00    -0.333 P 
+ATOM      2  O   UNL     1      -7.599  58.506  31.787  0.00  0.00     0.006 OA
+ATOM      3  O   UNL     1      -8.513  56.301  30.769  0.00  0.00    -0.291 OA
+ENDROOT
+BRANCH   1   4
+ATOM      4  O   UNL     1      -9.337  58.415  30.060  0.00  0.00    -0.373 OA
+BRANCH   4   5
+ATOM      5  C   UNL     1     -10.718  58.283  29.627  0.00  0.00    -0.227 C 
+BRANCH   5   6
+ATOM      6  C   UNL     1     -11.607  59.435  30.016  0.00  0.00    -0.324 C 
+ATOM      7  O   UNL     1     -11.212  59.838  31.351  0.00  0.00    -0.336 OA
+ATOM      8  C   UNL     1     -11.240  61.217  31.576  0.00  0.00    -0.357 C 
+ATOM      9  C   UNL     1     -11.639  61.816  30.238  0.00  0.00    -0.303 C 
+ATOM     10  O   UNL     1     -12.948  62.377  30.328  0.00  0.00    -0.408 OA
+ATOM     11  C   UNL     1     -11.525  60.710  29.194  0.00  0.00    -0.284 C 
+ATOM     12  O   UNL     1     -12.607  60.653  28.235  0.00  0.00    -0.360 OA
+BRANCH   8  13
+ATOM     13  N   UNL     1     -10.042  61.832  32.307  0.00  0.00    -0.341 N 
+ATOM     14  C   UNL     1      -9.980  61.941  33.659  0.00  0.00    -0.135 A 
+ATOM     15  N   UNL     1      -8.870  62.514  34.115  0.00  0.00    -0.338 NA
+ATOM     16  C   UNL     1      -8.179  62.791  32.994  0.00  0.00    -0.228 A 
+ATOM     17  C   UNL     1      -6.886  63.425  32.809  0.00  0.00    -0.309 A 
+ATOM     18  N   UNL     1      -6.129  63.856  33.751  0.00  0.00    -0.311 NA
+ATOM     19  N   UNL     1      -6.487  63.549  31.476  0.00  0.00    -0.328 NA
+ATOM     20  C   UNL     1      -7.263  63.101  30.396  0.00  0.00    -0.206 A 
+ATOM     21  N   UNL     1      -8.467  62.511  30.559  0.00  0.00    -0.148 NA
+ATOM     22  C   UNL     1      -8.881  62.377  31.841  0.00  0.00    -0.213 A 
+ENDBRANCH   8  13
+ENDBRANCH   5   6
+ENDBRANCH   4   5
+ENDBRANCH   1   4
+BRANCH   1  23
+ATOM     23  O   UNL     1      -7.201  57.846  29.301  0.00  0.00    -0.352 OA
+BRANCH  23  24
+ATOM     24  P   UNL     1      -6.713  59.130  28.498  0.00  0.00    -0.348 P 
+ATOM     25  O   UNL     1      -5.646  58.954  27.432  0.00  0.00    -0.066 OA
+ATOM     26  O   UNL     1      -8.067  59.688  27.865  0.00  0.00    -0.367 OA
+BRANCH  24  27
+ATOM     27  O   UNL     1      -6.401  60.315  29.584  0.00  0.00    -0.318 OA
+BRANCH  27  28
+ATOM     28  C   UNL     1      -5.057  60.024  30.021  0.00  0.00    -0.134 C 
+BRANCH  28  29
+ATOM     29  C   UNL     1      -4.765  60.767  31.332  0.00  0.00    -0.344 C 
+ATOM     30  C   UNL     1      -3.261  61.152  31.590  0.00  0.00    -0.348 C 
+ATOM     31  O   UNL     1      -3.125  62.492  32.134  0.00  0.00    -0.303 OA
+ATOM     32  C   UNL     1      -2.823  60.085  32.532  0.00  0.00    -0.339 C 
+ATOM     33  O   UNL     1      -1.624  60.391  33.213  0.00  0.00    -0.318 OA
+ATOM     34  C   UNL     1      -3.989  59.947  33.424  0.00  0.00    -0.288 C 
+ATOM     35  O   UNL     1      -5.144  60.004  32.522  0.00  0.00    -0.254 OA
+BRANCH  34  36
+ATOM     36  N   UNL     1      -4.039  58.654  34.181  0.00  0.00    -0.284 N 
+ATOM     37  C   UNL     1      -3.473  58.570  35.497  0.00  0.00    -0.136 C 
+ATOM     38  C   UNL     1      -3.534  57.335  36.177  0.00  0.00    -0.452 C 
+ATOM     39  C   UNL     1      -4.168  56.147  35.559  0.00  0.00    -0.457 C 
+ATOM     40  C   UNL     1      -4.724  56.271  34.239  0.00  0.00    -0.492 C 
+ATOM     41  C   UNL     1      -4.674  57.515  33.521  0.00  0.00    -0.376 C 
+BRANCH  38  42
+ATOM     42  C   UNL     1      -2.930  57.238  37.578  0.00  0.00    -0.356 C 
+ATOM     43  N   UNL     1      -3.397  57.959  38.583  0.00  0.00    -0.349 NA
+ATOM     44  O   UNL     1      -2.003  56.467  37.704  0.00  0.00    -0.373 OA
+ENDBRANCH  38  42
+ENDBRANCH  34  36
+ENDBRANCH  28  29
+ENDBRANCH  27  28
+ENDBRANCH  24  27
+ENDBRANCH  23  24
+ENDBRANCH   1  23
+TORSDOF 11
+ENDMDL
+MODEL        2
+REMARK VINA RESULT:  -7.540   0.000  0.000 
+REMARK 921   NORMALIZED FREE ENERGY PREDICTED BY IDOCK:   -7.54 KCAL/MOL
+REMARK 922        TOTAL FREE ENERGY PREDICTED BY IDOCK:  -14.24 KCAL/MOL
+REMARK 923 INTER-LIGAND FREE ENERGY PREDICTED BY IDOCK:  -12.77 KCAL/MOL
+REMARK 924 INTRA-LIGAND FREE ENERGY PREDICTED BY IDOCK:   -1.47 KCAL/MOL
+REMARK 927      BINDING AFFINITY PREDICTED BY RF-SCORE:    5.99 PKD
+ROOT
+ATOM      1  P   UNL     1      -6.630  64.214  32.356  0.00  0.00     0.096 P 
+ATOM      2  O   UNL     1      -7.059  64.809  33.624  0.00  0.00    -0.354 OA
+ATOM      3  O   UNL     1      -6.410  65.256  31.151  0.00  0.00    -0.101 OA
+ENDROOT
+BRANCH   1   4
+ATOM      4  O   UNL     1      -5.421  63.476  32.378  0.00  0.00    -0.303 OA
+BRANCH   4   5
+ATOM      5  C   UNL     1      -4.464  62.589  31.738  0.00  0.00    -0.178 C 
+BRANCH   5   6
+ATOM      6  C   UNL     1      -3.235  62.300  32.559  0.00  0.00    -0.305 C 
+ATOM      7  O   UNL     1      -3.664  61.499  33.689  0.00  0.00    -0.284 OA
+ATOM      8  C   UNL     1      -2.768  60.494  34.064  0.00  0.00    -0.410 C 
+ATOM      9  C   UNL     1      -1.642  60.584  33.049  0.00  0.00    -0.312 C 
+ATOM     10  O   UNL     1      -0.454  61.053  33.682  0.00  0.00    -0.455 OA
+ATOM     11  C   UNL     1      -2.123  61.487  31.917  0.00  0.00    -0.376 C 
+ATOM     12  O   UNL     1      -1.147  62.436  31.429  0.00  0.00    -0.377 OA
+BRANCH   8  13
+ATOM     13  N   UNL     1      -3.354  59.109  34.363  0.00  0.00    -0.323 N 
+ATOM     14  C   UNL     1      -4.097  58.413  33.465  0.00  0.00    -0.342 A 
+ATOM     15  N   UNL     1      -4.533  57.236  33.906  0.00  0.00    -0.373 NA
+ATOM     16  C   UNL     1      -4.045  57.171  35.158  0.00  0.00    -0.383 A 
+ATOM     17  C   UNL     1      -4.171  56.142  36.174  0.00  0.00    -0.321 A 
+ATOM     18  N   UNL     1      -4.814  55.040  36.038  0.00  0.00     0.568 NA
+ATOM     19  N   UNL     1      -3.521  56.431  37.376  0.00  0.00    -0.345 NA
+ATOM     20  C   UNL     1      -2.800  57.615  37.596  0.00  0.00    -0.362 A 
+ATOM     21  N   UNL     1      -2.679  58.578  36.657  0.00  0.00    -0.170 NA
+ATOM     22  C   UNL     1      -3.299  58.327  35.480  0.00  0.00    -0.104 A 
+ENDBRANCH   8  13
+ENDBRANCH   5   6
+ENDBRANCH   4   5
+ENDBRANCH   1   4
+BRANCH   1  23
+ATOM     23  O   UNL     1      -7.635  63.146  31.706  0.00  0.00    -0.032 OA
+BRANCH  23  24
+ATOM     24  P   UNL     1      -8.531  62.106  32.513  0.00  0.00    -0.286 P 
+ATOM     25  O   UNL     1      -9.064  62.516  33.875  0.00  0.00    -0.343 OA
+ATOM     26  O   UNL     1      -9.724  61.805  31.499  0.00  0.00    -0.243 OA
+BRANCH  24  27
+ATOM     27  O   UNL     1      -7.768  60.659  32.488  0.00  0.00    -0.260 OA
+BRANCH  27  28
+ATOM     28  C   UNL     1      -7.037  60.685  31.244  0.00  0.00    -0.263 C 
+BRANCH  28  29
+ATOM     29  C   UNL     1      -7.348  59.420  30.433  0.00  0.00    -0.291 C 
+ATOM     30  C   UNL     1      -7.285  59.568  28.867  0.00  0.00    -0.323 C 
+ATOM     31  O   UNL     1      -6.638  58.431  28.235  0.00  0.00    -0.226 OA
+ATOM     32  C   UNL     1      -8.725  59.702  28.508  0.00  0.00    -0.394 C 
+ATOM     33  O   UNL     1      -8.988  59.485  27.138  0.00  0.00    -0.226 OA
+ATOM     34  C   UNL     1      -9.369  58.717  29.396  0.00  0.00    -0.345 C 
+ATOM     35  O   UNL     1      -8.690  58.891  30.685  0.00  0.00    -0.316 OA
+BRANCH  34  36
+ATOM     36  N   UNL     1     -10.839  58.935  29.599  0.00  0.00    -0.383 N 
+ATOM     37  C   UNL     1     -11.529  58.246  30.651  0.00  0.00    -0.421 C 
+ATOM     38  C   UNL     1     -12.912  58.472  30.808  0.00  0.00    -0.446 C 
+ATOM     39  C   UNL     1     -13.646  59.400  29.916  0.00  0.00    -0.421 C 
+ATOM     40  C   UNL     1     -12.920  60.073  28.874  0.00  0.00    -0.412 C 
+ATOM     41  C   UNL     1     -11.511  59.860  28.688  0.00  0.00    -0.230 C 
+BRANCH  38  42
+ATOM     42  C   UNL     1     -13.655  57.737  31.924  0.00  0.00    -0.410 C 
+ATOM     43  N   UNL     1     -13.648  56.418  32.005  0.00  0.00    -0.601 NA
+ATOM     44  O   UNL     1     -14.245  58.436  32.719  0.00  0.00    -0.386 OA
+ENDBRANCH  38  42
+ENDBRANCH  34  36
+ENDBRANCH  28  29
+ENDBRANCH  27  28
+ENDBRANCH  24  27
+ENDBRANCH  23  24
+ENDBRANCH   1  23
+TORSDOF 11
+ENDMDL
+MODEL        3
+REMARK VINA RESULT:  -7.410   0.000  0.000 
+REMARK 921   NORMALIZED FREE ENERGY PREDICTED BY IDOCK:   -7.41 KCAL/MOL
+REMARK 922        TOTAL FREE ENERGY PREDICTED BY IDOCK:  -14.03 KCAL/MOL
+REMARK 923 INTER-LIGAND FREE ENERGY PREDICTED BY IDOCK:  -12.25 KCAL/MOL
+REMARK 924 INTRA-LIGAND FREE ENERGY PREDICTED BY IDOCK:   -1.77 KCAL/MOL
+REMARK 927      BINDING AFFINITY PREDICTED BY RF-SCORE:    6.02 PKD
+ROOT
+ATOM      1  P   UNL     1      -6.758  64.046  32.180  0.00  0.00     0.208 P 
+ATOM      2  O   UNL     1      -7.214  64.907  33.273  0.00  0.00    -0.167 OA
+ATOM      3  O   UNL     1      -6.202  64.820  30.884  0.00  0.00    -0.255 OA
+ENDROOT
+BRANCH   1   4
+ATOM      4  O   UNL     1      -5.723  63.128  32.483  0.00  0.00    -0.272 OA
+BRANCH   4   5
+ATOM      5  C   UNL     1      -4.902  61.981  32.135  0.00  0.00    -0.297 C 
+BRANCH   5   6
+ATOM      6  C   UNL     1      -3.531  61.981  32.758  0.00  0.00    -0.270 C 
+ATOM      7  O   UNL     1      -3.678  61.433  34.093  0.00  0.00    -0.320 OA
+ATOM      8  C   UNL     1      -2.624  60.611  34.504  0.00  0.00    -0.364 C 
+ATOM      9  C   UNL     1      -1.695  60.548  33.304  0.00  0.00    -0.314 C 
+ATOM     10  O   UNL     1      -0.481  61.238  33.594  0.00  0.00    -0.543 OA
+ATOM     11  C   UNL     1      -2.452  61.127  32.113  0.00  0.00    -0.356 C 
+ATOM     12  O   UNL     1      -1.682  62.008  31.262  0.00  0.00    -0.413 OA
+BRANCH   8  13
+ATOM     13  N   UNL     1      -2.993  59.294  35.196  0.00  0.00    -0.327 N 
+ATOM     14  C   UNL     1      -2.670  59.023  36.487  0.00  0.00     0.241 A 
+ATOM     15  N   UNL     1      -3.059  57.825  36.911  0.00  0.00    -0.402 NA
+ATOM     16  C   UNL     1      -3.665  57.293  35.834  0.00  0.00    -0.376 A 
+ATOM     17  C   UNL     1      -4.299  56.001  35.642  0.00  0.00    -0.262 A 
+ATOM     18  N   UNL     1      -4.399  55.083  36.534  0.00  0.00    -0.057 NA
+ATOM     19  N   UNL     1      -4.825  55.797  34.364  0.00  0.00    -0.342 NA
+ATOM     20  C   UNL     1      -4.753  56.754  33.340  0.00  0.00    -0.410 A 
+ATOM     21  N   UNL     1      -4.164  57.958  33.510  0.00  0.00    -0.305 NA
+ATOM     22  C   UNL     1      -3.645  58.185  34.739  0.00  0.00    -0.075 A 
+ENDBRANCH   8  13
+ENDBRANCH   5   6
+ENDBRANCH   4   5
+ENDBRANCH   1   4
+BRANCH   1  23
+ATOM     23  O   UNL     1      -7.864  63.071  31.547  0.00  0.00     0.003 OA
+BRANCH  23  24
+ATOM     24  P   UNL     1      -8.961  62.259  32.365  0.00  0.00    -0.250 P 
+ATOM     25  O   UNL     1      -9.332  62.746  33.756  0.00  0.00    -0.369 OA
+ATOM     26  O   UNL     1     -10.225  62.291  31.393  0.00  0.00    -0.375 OA
+BRANCH  24  27
+ATOM     27  O   UNL     1      -8.580  60.670  32.281  0.00  0.00    -0.103 OA
+BRANCH  27  28
+ATOM     28  C   UNL     1      -7.784  60.578  31.080  0.00  0.00    -0.285 C 
+BRANCH  28  29
+ATOM     29  C   UNL     1      -8.334  59.467  30.176  0.00  0.00    -0.320 C 
+ATOM     30  C   UNL     1      -8.572  59.854  28.670  0.00  0.00    -0.394 C 
+ATOM     31  O   UNL     1      -8.140  58.807  27.760  0.00  0.00    -0.295 OA
+ATOM     32  C   UNL     1     -10.042  60.095  28.637  0.00  0.00    -0.311 C 
+ATOM     33  O   UNL     1     -10.584  60.103  27.334  0.00  0.00     0.503 OA
+ATOM     34  C   UNL     1     -10.563  59.008  29.487  0.00  0.00    -0.394 C 
+ATOM     35  O   UNL     1      -9.632  58.955  30.619  0.00  0.00    -0.343 OA
+BRANCH  34  36
+ATOM     36  N   UNL     1     -11.945  59.246  30.017  0.00  0.00    -0.364 N 
+ATOM     37  C   UNL     1     -12.715  60.359  29.543  0.00  0.00    -0.287 C 
+ATOM     38  C   UNL     1     -14.010  60.554  30.068  0.00  0.00    -0.435 C 
+ATOM     39  C   UNL     1     -14.574  59.635  31.084  0.00  0.00    -0.554 C 
+ATOM     40  C   UNL     1     -13.772  58.530  31.534  0.00  0.00    -0.519 C 
+ATOM     41  C   UNL     1     -12.449  58.308  31.019  0.00  0.00    -0.457 C 
+BRANCH  38  42
+ATOM     42  C   UNL     1     -14.834  61.741  29.569  0.00  0.00    -0.326 C 
+ATOM     43  N   UNL     1     -15.114  61.897  28.287  0.00  0.00    -0.352 NA
+ATOM     44  O   UNL     1     -15.206  62.523  30.417  0.00  0.00    -0.348 OA
+ENDBRANCH  38  42
+ENDBRANCH  34  36
+ENDBRANCH  28  29
+ENDBRANCH  27  28
+ENDBRANCH  24  27
+ENDBRANCH  23  24
+ENDBRANCH   1  23
+TORSDOF 11
+ENDMDL
+MODEL        4
+REMARK VINA RESULT:  -6.670   0.000  0.000 
+REMARK 921   NORMALIZED FREE ENERGY PREDICTED BY IDOCK:   -6.67 KCAL/MOL
+REMARK 922        TOTAL FREE ENERGY PREDICTED BY IDOCK:  -12.81 KCAL/MOL
+REMARK 923 INTER-LIGAND FREE ENERGY PREDICTED BY IDOCK:  -11.54 KCAL/MOL
+REMARK 924 INTRA-LIGAND FREE ENERGY PREDICTED BY IDOCK:   -1.28 KCAL/MOL
+REMARK 927      BINDING AFFINITY PREDICTED BY RF-SCORE:    6.33 PKD
+ROOT
+ATOM      1  P   UNL     1      -2.007  61.304  32.618  0.00  0.00    -0.407 P 
+ATOM      2  O   UNL     1      -1.515  60.914  33.941  0.00  0.00    -0.474 OA
+ATOM      3  O   UNL     1      -0.902  61.304  31.449  0.00  0.00    -0.513 OA
+ENDROOT
+BRANCH   1   4
+ATOM      4  O   UNL     1      -3.059  60.526  32.077  0.00  0.00    -0.343 OA
+BRANCH   4   5
+ATOM      5  C   UNL     1      -4.197  60.375  31.186  0.00  0.00    -0.036 C 
+BRANCH   5   6
+ATOM      6  C   UNL     1      -4.984  59.106  31.386  0.00  0.00     0.133 C 
+ATOM      7  O   UNL     1      -4.151  58.216  32.172  0.00  0.00     0.553 OA
+ATOM      8  C   UNL     1      -4.844  57.455  33.118  0.00  0.00    -0.349 C 
+ATOM      9  C   UNL     1      -6.286  57.917  33.002  0.00  0.00    -0.236 C 
+ATOM     10  O   UNL     1      -7.087  56.873  32.452  0.00  0.00    -0.185 OA
+ATOM     11  C   UNL     1      -6.288  59.189  32.161  0.00  0.00    -0.309 C 
+ATOM     12  O   UNL     1      -7.346  59.277  31.178  0.00  0.00    -0.310 OA
+BRANCH   8  13
+ATOM     13  N   UNL     1      -4.233  57.356  34.520  0.00  0.00    -0.359 N 
+ATOM     14  C   UNL     1      -3.698  58.422  35.168  0.00  0.00    -0.057 A 
+ATOM     15  N   UNL     1      -3.202  58.143  36.371  0.00  0.00    -0.380 NA
+ATOM     16  C   UNL     1      -3.430  56.824  36.504  0.00  0.00    -0.395 A 
+ATOM     17  C   UNL     1      -3.119  55.912  37.590  0.00  0.00    -0.352 A 
+ATOM     18  N   UNL     1      -2.536  56.235  38.687  0.00  0.00     0.048 NA
+ATOM     19  N   UNL     1      -3.510  54.590  37.367  0.00  0.00    -0.378 NA
+ATOM     20  C   UNL     1      -4.152  54.165  36.193  0.00  0.00    -0.305 A 
+ATOM     21  N   UNL     1      -4.443  55.006  35.177  0.00  0.00    -0.323 NA
+ATOM     22  C   UNL     1      -4.076  56.295  35.365  0.00  0.00    -0.425 A 
+ENDBRANCH   8  13
+ENDBRANCH   5   6
+ENDBRANCH   4   5
+ENDBRANCH   1   4
+BRANCH   1  23
+ATOM     23  O   UNL     1      -2.623  62.781  32.506  0.00  0.00    -0.336 OA
+BRANCH  23  24
+ATOM     24  P   UNL     1      -4.007  63.258  33.133  0.00  0.00    -0.373 P 
+ATOM     25  O   UNL     1      -4.643  62.403  34.215  0.00  0.00    -0.357 OA
+ATOM     26  O   UNL     1      -3.664  64.715  33.683  0.00  0.00    -0.291 OA
+BRANCH  24  27
+ATOM     27  O   UNL     1      -5.009  63.651  31.900  0.00  0.00    -0.333 OA
+BRANCH  27  28
+ATOM     28  C   UNL     1      -6.015  62.617  31.941  0.00  0.00    -0.280 C 
+BRANCH  28  29
+ATOM     29  C   UNL     1      -7.405  63.251  32.086  0.00  0.00    -0.071 C 
+ATOM     30  C   UNL     1      -8.122  63.037  33.471  0.00  0.00    -0.372 C 
+ATOM     31  O   UNL     1      -8.782  64.245  33.937  0.00  0.00     0.257 OA
+ATOM     32  C   UNL     1      -9.069  61.929  33.165  0.00  0.00    -0.296 C 
+ATOM     33  O   UNL     1     -10.093  61.780  34.125  0.00  0.00    -0.096 OA
+ATOM     34  C   UNL     1      -9.565  62.293  31.824  0.00  0.00    -0.297 C 
+ATOM     35  O   UNL     1      -8.371  62.749  31.106  0.00  0.00    -0.155 OA
+BRANCH  34  36
+ATOM     36  N   UNL     1     -10.176  61.156  31.061  0.00  0.00    -0.249 N 
+ATOM     37  C   UNL     1     -11.360  60.514  31.552  0.00  0.00    -0.339 C 
+ATOM     38  C   UNL     1     -11.903  59.444  30.809  0.00  0.00    -0.396 C 
+ATOM     39  C   UNL     1     -11.275  58.987  29.548  0.00  0.00    -0.444 C 
+ATOM     40  C   UNL     1     -10.089  59.657  29.087  0.00  0.00    -0.395 C 
+ATOM     41  C   UNL     1      -9.512  60.747  29.824  0.00  0.00    -0.225 C 
+BRANCH  38  42
+ATOM     42  C   UNL     1     -13.163  58.753  31.330  0.00  0.00    -0.398 C 
+ATOM     43  N   UNL     1     -13.228  57.438  31.452  0.00  0.00    -0.367 NA
+ATOM     44  O   UNL     1     -14.088  59.481  31.618  0.00  0.00    -0.321 OA
+ENDBRANCH  38  42
+ENDBRANCH  34  36
+ENDBRANCH  28  29
+ENDBRANCH  27  28
+ENDBRANCH  24  27
+ENDBRANCH  23  24
+ENDBRANCH   1  23
+TORSDOF 11
+ENDMDL
+MODEL        5
+REMARK VINA RESULT:  -6.360   0.000  0.000 
+REMARK 921   NORMALIZED FREE ENERGY PREDICTED BY IDOCK:   -6.36 KCAL/MOL
+REMARK 922        TOTAL FREE ENERGY PREDICTED BY IDOCK:  -12.30 KCAL/MOL
+REMARK 923 INTER-LIGAND FREE ENERGY PREDICTED BY IDOCK:  -10.84 KCAL/MOL
+REMARK 924 INTRA-LIGAND FREE ENERGY PREDICTED BY IDOCK:   -1.46 KCAL/MOL
+REMARK 927      BINDING AFFINITY PREDICTED BY RF-SCORE:    6.05 PKD
+ROOT
+ATOM      1  P   UNL     1      -7.584  61.838  33.568  0.00  0.00    -0.272 P 
+ATOM      2  O   UNL     1      -8.394  61.554  34.754  0.00  0.00     0.429 OA
+ATOM      3  O   UNL     1      -7.132  63.373  33.399  0.00  0.00    -0.317 OA
+ENDROOT
+BRANCH   1   4
+ATOM      4  O   UNL     1      -6.370  61.121  33.440  0.00  0.00    -0.224 OA
+BRANCH   4   5
+ATOM      5  C   UNL     1      -5.624  59.959  32.988  0.00  0.00    -0.259 C 
+BRANCH   5   6
+ATOM      6  C   UNL     1      -4.128  60.096  33.095  0.00  0.00    -0.292 C 
+ATOM      7  O   UNL     1      -3.698  60.890  31.960  0.00  0.00    -0.307 OA
+ATOM      8  C   UNL     1      -2.664  61.789  32.237  0.00  0.00    -0.303 C 
+ATOM      9  C   UNL     1      -2.404  61.630  33.724  0.00  0.00    -0.183 C 
+ATOM     10  O   UNL     1      -1.130  61.023  33.933  0.00  0.00    -0.502 OA
+ATOM     11  C   UNL     1      -3.561  60.822  34.303  0.00  0.00    -0.315 C 
+ATOM     12  O   UNL     1      -3.185  59.802  35.258  0.00  0.00    -0.348 OA
+BRANCH   8  13
+ATOM     13  N   UNL     1      -2.804  63.211  31.682  0.00  0.00    -0.395 N 
+ATOM     14  C   UNL     1      -2.229  63.608  30.518  0.00  0.00    -0.167 A 
+ATOM     15  N   UNL     1      -2.447  64.882  30.202  0.00  0.00    -0.289 NA
+ATOM     16  C   UNL     1      -3.205  65.330  31.221  0.00  0.00    -0.209 A 
+ATOM     17  C   UNL     1      -3.772  66.642  31.476  0.00  0.00    -0.386 A 
+ATOM     18  N   UNL     1      -3.639  67.668  30.718  0.00  0.00     0.131 NA
+ATOM     19  N   UNL     1      -4.511  66.734  32.658  0.00  0.00    -0.520 NA
+ATOM     20  C   UNL     1      -4.698  65.654  33.535  0.00  0.00    -0.339 A 
+ATOM     21  N   UNL     1      -4.173  64.431  33.305  0.00  0.00    -0.305 NA
+ATOM     22  C   UNL     1      -3.451  64.311  32.166  0.00  0.00    -0.260 A 
+ENDBRANCH   8  13
+ENDBRANCH   5   6
+ENDBRANCH   4   5
+ENDBRANCH   1   4
+BRANCH   1  23
+ATOM     23  O   UNL     1      -8.278  61.529  32.154  0.00  0.00    -0.236 OA
+BRANCH  23  24
+ATOM     24  P   UNL     1      -7.947  62.260  30.780  0.00  0.00    -0.286 P 
+ATOM     25  O   UNL     1      -6.851  63.312  30.767  0.00  0.00    -0.329 OA
+ATOM     26  O   UNL     1      -7.585  61.046  29.811  0.00  0.00    -0.367 OA
+BRANCH  24  27
+ATOM     27  O   UNL     1      -9.361  62.743  30.112  0.00  0.00     0.743 OA
+BRANCH  27  28
+ATOM     28  C   UNL     1     -10.355  62.240  31.029  0.00  0.00    -0.387 C 
+BRANCH  28  29
+ATOM     29  C   UNL     1     -11.209  61.171  30.335  0.00  0.00    -0.260 C 
+ATOM     30  C   UNL     1     -11.500  59.868  31.169  0.00  0.00    -0.345 C 
+ATOM     31  O   UNL     1     -12.876  59.423  31.026  0.00  0.00    -0.326 OA
+ATOM     32  C   UNL     1     -10.509  58.909  30.607  0.00  0.00    -0.348 C 
+ATOM     33  O   UNL     1     -10.790  57.560  30.915  0.00  0.00    -0.298 OA
+ATOM     34  C   UNL     1     -10.558  59.207  29.163  0.00  0.00    -0.360 C 
+ATOM     35  O   UNL     1     -10.608  60.671  29.096  0.00  0.00    -0.180 OA
+BRANCH  34  36
+ATOM     36  N   UNL     1      -9.361  58.735  28.393  0.00  0.00    -0.363 N 
+ATOM     37  C   UNL     1      -9.035  59.337  27.133  0.00  0.00    -0.013 C 
+ATOM     38  C   UNL     1      -7.904  58.864  26.434  0.00  0.00    -0.499 C 
+ATOM     39  C   UNL     1      -7.063  57.774  26.980  0.00  0.00    -0.217 C 
+ATOM     40  C   UNL     1      -7.422  57.196  28.247  0.00  0.00     0.216 C 
+ATOM     41  C   UNL     1      -8.569  57.655  28.980  0.00  0.00    -0.308 C 
+BRANCH  38  42
+ATOM     42  C   UNL     1      -7.554  59.499  25.088  0.00  0.00    -0.493 C 
+ATOM     43  N   UNL     1      -6.307  59.542  24.649  0.00  0.00    -0.394 NA
+ATOM     44  O   UNL     1      -8.483  59.957  24.459  0.00  0.00    -0.161 OA
+ENDBRANCH  38  42
+ENDBRANCH  34  36
+ENDBRANCH  28  29
+ENDBRANCH  27  28
+ENDBRANCH  24  27
+ENDBRANCH  23  24
+ENDBRANCH   1  23
+TORSDOF 11
+ENDMDL
+MODEL        6
+REMARK VINA RESULT:  -6.210   0.000  0.000 
+REMARK 921   NORMALIZED FREE ENERGY PREDICTED BY IDOCK:   -6.21 KCAL/MOL
+REMARK 922        TOTAL FREE ENERGY PREDICTED BY IDOCK:  -12.05 KCAL/MOL
+REMARK 923 INTER-LIGAND FREE ENERGY PREDICTED BY IDOCK:  -11.02 KCAL/MOL
+REMARK 924 INTRA-LIGAND FREE ENERGY PREDICTED BY IDOCK:   -1.03 KCAL/MOL
+REMARK 927      BINDING AFFINITY PREDICTED BY RF-SCORE:    5.95 PKD
+ROOT
+ATOM      1  P   UNL     1      -8.242  62.149  33.732  0.00  0.00    -0.411 P 
+ATOM      2  O   UNL     1      -8.796  61.593  34.969  0.00  0.00     0.696 OA
+ATOM      3  O   UNL     1      -8.273  63.754  33.628  0.00  0.00    -0.351 OA
+ENDROOT
+BRANCH   1   4
+ATOM      4  O   UNL     1      -6.896  61.825  33.437  0.00  0.00    -0.301 OA
+BRANCH   4   5
+ATOM      5  C   UNL     1      -5.903  61.144  32.623  0.00  0.00    -0.258 C 
+BRANCH   5   6
+ATOM      6  C   UNL     1      -4.479  61.352  33.069  0.00  0.00    -0.275 C 
+ATOM      7  O   UNL     1      -4.382  60.832  34.419  0.00  0.00     0.055 OA
+ATOM      8  C   UNL     1      -3.181  60.176  34.705  0.00  0.00    -0.388 C 
+ATOM      9  C   UNL     1      -2.408  60.203  33.398  0.00  0.00    -0.314 C 
+ATOM     10  O   UNL     1      -1.276  61.063  33.522  0.00  0.00    -0.470 OA
+ATOM     11  C   UNL     1      -3.380  60.635  32.304  0.00  0.00    -0.345 C 
+ATOM     12  O   UNL     1      -2.852  61.586  31.351  0.00  0.00    -0.383 OA
+BRANCH   8  13
+ATOM     13  N   UNL     1      -3.273  58.843  35.456  0.00  0.00    -0.278 N 
+ATOM     14  C   UNL     1      -2.892  58.699  36.751  0.00  0.00    -0.076 A 
+ATOM     15  N   UNL     1      -3.030  57.466  37.232  0.00  0.00    -0.371 NA
+ATOM     16  C   UNL     1      -3.526  56.778  36.187  0.00  0.00    -0.379 A 
+ATOM     17  C   UNL     1      -3.891  55.378  36.059  0.00  0.00    -0.354 A 
+ATOM     18  N   UNL     1      -3.797  54.499  36.989  0.00  0.00    -0.464 NA
+ATOM     19  N   UNL     1      -4.375  55.018  34.800  0.00  0.00    -0.473 NA
+ATOM     20  C   UNL     1      -4.505  55.925  33.736  0.00  0.00    -0.317 A 
+ATOM     21  N   UNL     1      -4.167  57.228  33.846  0.00  0.00    -0.285 NA
+ATOM     22  C   UNL     1      -3.694  57.608  35.057  0.00  0.00    -0.156 A 
+ENDBRANCH   8  13
+ENDBRANCH   5   6
+ENDBRANCH   4   5
+ENDBRANCH   1   4
+BRANCH   1  23
+ATOM     23  O   UNL     1      -8.973  61.705  32.374  0.00  0.00    -0.258 OA
+BRANCH  23  24
+ATOM     24  P   UNL     1      -8.756  62.370  30.945  0.00  0.00     0.025 P 
+ATOM     25  O   UNL     1      -7.751  63.503  30.820  0.00  0.00     0.219 OA
+ATOM     26  O   UNL     1      -8.333  61.129  30.037  0.00  0.00    -0.342 OA
+BRANCH  24  27
+ATOM     27  O   UNL     1     -10.229  62.694  30.310  0.00  0.00     0.390 OA
+BRANCH  27  28
+ATOM     28  C   UNL     1     -11.133  61.965  31.167  0.00  0.00    -0.434 C 
+BRANCH  28  29
+ATOM     29  C   UNL     1     -11.760  60.800  30.389  0.00  0.00    -0.253 C 
+ATOM     30  C   UNL     1     -12.116  59.518  31.229  0.00  0.00    -0.376 C 
+ATOM     31  O   UNL     1     -13.404  58.959  30.855  0.00  0.00    -0.371 OA
+ATOM     32  C   UNL     1     -10.971  58.616  30.924  0.00  0.00    -0.242 C 
+ATOM     33  O   UNL     1     -11.213  57.265  31.254  0.00  0.00    -0.297 OA
+ATOM     34  C   UNL     1     -10.760  58.843  29.482  0.00  0.00    -0.423 C 
+ATOM     35  O   UNL     1     -10.898  60.294  29.319  0.00  0.00    -0.299 OA
+BRANCH  34  36
+ATOM     36  N   UNL     1      -9.407  58.433  28.982  0.00  0.00    -0.364 N 
+ATOM     37  C   UNL     1      -9.018  58.734  27.635  0.00  0.00    -0.081 C 
+ATOM     38  C   UNL     1      -7.739  58.328  27.199  0.00  0.00    -0.462 C 
+ATOM     39  C   UNL     1      -6.809  57.611  28.102  0.00  0.00     0.321 C 
+ATOM     40  C   UNL     1      -7.235  57.329  29.446  0.00  0.00    -0.233 C 
+ATOM     41  C   UNL     1      -8.533  57.726  29.917  0.00  0.00    -0.362 C 
+BRANCH  38  42
+ATOM     42  C   UNL     1      -7.319  58.642  25.763  0.00  0.00    -0.453 C 
+ATOM     43  N   UNL     1      -6.090  58.407  25.336  0.00  0.00    -0.441 NA
+ATOM     44  O   UNL     1      -8.177  59.117  25.051  0.00  0.00    -0.387 OA
+ENDBRANCH  38  42
+ENDBRANCH  34  36
+ENDBRANCH  28  29
+ENDBRANCH  27  28
+ENDBRANCH  24  27
+ENDBRANCH  23  24
+ENDBRANCH   1  23
+TORSDOF 11
+ENDMDL
+MODEL        7
+REMARK VINA RESULT:  -5.680   0.000  0.000 
+REMARK 921   NORMALIZED FREE ENERGY PREDICTED BY IDOCK:   -5.68 KCAL/MOL
+REMARK 922        TOTAL FREE ENERGY PREDICTED BY IDOCK:  -11.18 KCAL/MOL
+REMARK 923 INTER-LIGAND FREE ENERGY PREDICTED BY IDOCK:  -10.24 KCAL/MOL
+REMARK 924 INTRA-LIGAND FREE ENERGY PREDICTED BY IDOCK:   -0.94 KCAL/MOL
+REMARK 927      BINDING AFFINITY PREDICTED BY RF-SCORE:    6.07 PKD
+ROOT
+ATOM      1  P   UNL     1      -8.821  62.049  33.786  0.00  0.00    -0.240 P 
+ATOM      2  O   UNL     1      -9.376  61.536  35.040  0.00  0.00     0.739 OA
+ATOM      3  O   UNL     1      -8.638  63.645  33.720  0.00  0.00    -0.313 OA
+ENDROOT
+BRANCH   1   4
+ATOM      4  O   UNL     1      -7.549  61.556  33.406  0.00  0.00    -0.323 OA
+BRANCH   4   5
+ATOM      5  C   UNL     1      -6.714  60.707  32.573  0.00  0.00    -0.312 C 
+BRANCH   5   6
+ATOM      6  C   UNL     1      -5.241  60.784  32.880  0.00  0.00    -0.274 C 
+ATOM      7  O   UNL     1      -5.031  60.048  34.112  0.00  0.00     0.333 OA
+ATOM      8  C   UNL     1      -3.847  59.308  34.153  0.00  0.00    -0.173 C 
+ATOM      9  C   UNL     1      -3.216  59.515  32.787  0.00  0.00    -0.276 C 
+ATOM     10  O   UNL     1      -2.030  60.298  32.913  0.00  0.00    -0.376 OA
+ATOM     11  C   UNL     1      -4.272  60.156  31.892  0.00  0.00    -0.323 C 
+ATOM     12  O   UNL     1      -3.795  61.228  31.045  0.00  0.00    -0.319 OA
+BRANCH   8  13
+ATOM     13  N   UNL     1      -3.934  57.875  34.692  0.00  0.00    -0.293 N 
+ATOM     14  C   UNL     1      -4.426  56.842  33.961  0.00  0.00    -0.419 A 
+ATOM     15  N   UNL     1      -4.438  55.674  34.598  0.00  0.00    -0.509 NA
+ATOM     16  C   UNL     1      -3.927  55.973  35.807  0.00  0.00    -0.385 A 
+ATOM     17  C   UNL     1      -3.682  55.135  36.967  0.00  0.00    -0.427 A 
+ATOM     18  N   UNL     1      -3.926  53.878  37.040  0.00  0.00    -0.534 NA
+ATOM     19  N   UNL     1      -3.135  55.808  38.062  0.00  0.00    -0.125 NA
+ATOM     20  C   UNL     1      -2.842  57.180  38.055  0.00  0.00    -0.355 A 
+ATOM     21  N   UNL     1      -3.068  57.967  36.980  0.00  0.00    -0.404 NA
+ATOM     22  C   UNL     1      -3.597  57.343  35.902  0.00  0.00    -0.378 A 
+ENDBRANCH   8  13
+ENDBRANCH   5   6
+ENDBRANCH   4   5
+ENDBRANCH   1   4
+BRANCH   1  23
+ATOM     23  O   UNL     1      -9.679  61.748  32.464  0.00  0.00    -0.287 OA
+BRANCH  23  24
+ATOM     24  P   UNL     1      -9.346  62.283  31.002  0.00  0.00     0.117 P 
+ATOM     25  O   UNL     1      -8.279  63.353  30.849  0.00  0.00     0.440 OA
+ATOM     26  O   UNL     1      -8.938  60.953  30.222  0.00  0.00    -0.307 OA
+BRANCH  24  27
+ATOM     27  O   UNL     1     -10.762  62.624  30.256  0.00  0.00     0.266 OA
+BRANCH  27  28
+ATOM     28  C   UNL     1     -11.747  61.986  31.096  0.00  0.00    -0.372 C 
+BRANCH  28  29
+ATOM     29  C   UNL     1     -12.355  60.783  30.363  0.00  0.00    -0.261 C 
+ATOM     30  C   UNL     1     -12.829  59.587  31.269  0.00  0.00    -0.365 C 
+ATOM     31  O   UNL     1     -14.104  59.042  30.834  0.00  0.00    -0.361 OA
+ATOM     32  C   UNL     1     -11.699  58.625  31.134  0.00  0.00    -0.428 C 
+ATOM     33  O   UNL     1     -12.021  57.314  31.549  0.00  0.00    -0.499 OA
+ATOM     34  C   UNL     1     -11.364  58.725  29.702  0.00  0.00    -0.368 C 
+ATOM     35  O   UNL     1     -11.430  60.162  29.413  0.00  0.00    -0.273 OA
+BRANCH  34  36
+ATOM     36  N   UNL     1      -9.992  58.232  29.352  0.00  0.00    -0.335 N 
+ATOM     37  C   UNL     1      -9.087  57.828  30.389  0.00  0.00    -0.326 C 
+ATOM     38  C   UNL     1      -7.803  57.374  30.022  0.00  0.00    -0.349 C 
+ATOM     39  C   UNL     1      -7.387  57.308  28.602  0.00  0.00     0.083 C 
+ATOM     40  C   UNL     1      -8.322  57.720  27.590  0.00  0.00    -0.381 C 
+ATOM     41  C   UNL     1      -9.636  58.190  27.934  0.00  0.00     0.157 C 
+BRANCH  38  42
+ATOM     42  C   UNL     1      -6.833  56.946  31.124  0.00  0.00    -0.366 C 
+ATOM     43  N   UNL     1      -5.687  56.351  30.841  0.00  0.00    -0.080 NA
+ATOM     44  O   UNL     1      -7.181  57.185  32.260  0.00  0.00    -0.257 OA
+ENDBRANCH  38  42
+ENDBRANCH  34  36
+ENDBRANCH  28  29
+ENDBRANCH  27  28
+ENDBRANCH  24  27
+ENDBRANCH  23  24
+ENDBRANCH   1  23
+TORSDOF 11
+ENDMDL
+MODEL        8
+REMARK VINA RESULT:  -5.610   0.000  0.000 
+REMARK 921   NORMALIZED FREE ENERGY PREDICTED BY IDOCK:   -5.61 KCAL/MOL
+REMARK 922        TOTAL FREE ENERGY PREDICTED BY IDOCK:  -11.08 KCAL/MOL
+REMARK 923 INTER-LIGAND FREE ENERGY PREDICTED BY IDOCK:  -10.41 KCAL/MOL
+REMARK 924 INTRA-LIGAND FREE ENERGY PREDICTED BY IDOCK:   -0.66 KCAL/MOL
+REMARK 927      BINDING AFFINITY PREDICTED BY RF-SCORE:    5.75 PKD
+ROOT
+ATOM      1  P   UNL     1      -6.379  57.670  31.603  0.00  0.00    -0.371 P 
+ATOM      2  O   UNL     1      -7.010  58.087  32.857  0.00  0.00     0.077 OA
+ATOM      3  O   UNL     1      -5.206  56.580  31.756  0.00  0.00    -0.221 OA
+ENDROOT
+BRANCH   1   4
+ATOM      4  O   UNL     1      -7.229  57.104  30.622  0.00  0.00    -0.339 OA
+BRANCH   4   5
+ATOM      5  C   UNL     1      -8.546  56.920  30.038  0.00  0.00     0.124 C 
+BRANCH   5   6
+ATOM      6  C   UNL     1      -8.736  57.585  28.700  0.00  0.00    -0.256 C 
+ATOM      7  O   UNL     1     -10.110  58.048  28.653  0.00  0.00    -0.373 OA
+ATOM      8  C   UNL     1     -10.287  59.282  28.021  0.00  0.00     0.202 C 
+ATOM      9  C   UNL     1      -8.884  59.731  27.653  0.00  0.00    -0.349 C 
+ATOM     10  O   UNL     1      -8.721  59.702  26.236  0.00  0.00    -0.231 OA
+ATOM     11  C   UNL     1      -7.908  58.822  28.394  0.00  0.00    -0.282 C 
+ATOM     12  O   UNL     1      -6.771  58.375  27.618  0.00  0.00    -0.164 OA
+BRANCH   8  13
+ATOM     13  N   UNL     1     -11.206  60.296  28.712  0.00  0.00    -0.353 N 
+ATOM     14  C   UNL     1     -10.823  61.020  29.794  0.00  0.00    -0.136 A 
+ATOM     15  N   UNL     1     -11.758  61.840  30.267  0.00  0.00    -0.332 NA
+ATOM     16  C   UNL     1     -12.802  61.631  29.444  0.00  0.00    -0.325 A 
+ATOM     17  C   UNL     1     -14.131  62.215  29.429  0.00  0.00    -0.356 A 
+ATOM     18  N   UNL     1     -14.564  63.095  30.256  0.00  0.00    -0.304 NA
+ATOM     19  N   UNL     1     -14.961  61.742  28.410  0.00  0.00    -0.349 NA
+ATOM     20  C   UNL     1     -14.555  60.781  27.471  0.00  0.00    -0.394 A 
+ATOM     21  N   UNL     1     -13.321  60.232  27.478  0.00  0.00    -0.091 NA
+ATOM     22  C   UNL     1     -12.493  60.671  28.455  0.00  0.00    -0.376 A 
+ENDBRANCH   8  13
+ENDBRANCH   5   6
+ENDBRANCH   4   5
+ENDBRANCH   1   4
+BRANCH   1  23
+ATOM     23  O   UNL     1      -5.660  58.830  30.760  0.00  0.00    -0.277 OA
+BRANCH  23  24
+ATOM     24  P   UNL     1      -5.749  60.390  31.066  0.00  0.00    -0.307 P 
+ATOM     25  O   UNL     1      -6.764  61.220  30.298  0.00  0.00    -0.290 OA
+ATOM     26  O   UNL     1      -6.048  60.428  32.632  0.00  0.00    -0.262 OA
+BRANCH  24  27
+ATOM     27  O   UNL     1      -4.228  60.994  31.055  0.00  0.00    -0.353 OA
+BRANCH  27  28
+ATOM     28  C   UNL     1      -4.414  62.380  31.411  0.00  0.00     0.003 C 
+BRANCH  28  29
+ATOM     29  C   UNL     1      -3.490  62.743  32.582  0.00  0.00    -0.333 C 
+ATOM     30  C   UNL     1      -3.552  61.792  33.834  0.00  0.00    -0.289 C 
+ATOM     31  O   UNL     1      -2.233  61.512  34.375  0.00  0.00     0.075 OA
+ATOM     32  C   UNL     1      -4.421  62.561  34.768  0.00  0.00    -0.219 C 
+ATOM     33  O   UNL     1      -4.349  62.113  36.105  0.00  0.00     0.347 OA
+ATOM     34  C   UNL     1      -3.945  63.944  34.583  0.00  0.00    -0.045 C 
+ATOM     35  O   UNL     1      -3.757  64.073  33.134  0.00  0.00    -0.340 OA
+BRANCH  34  36
+ATOM     36  N   UNL     1      -4.912  64.998  35.034  0.00  0.00    -0.187 N 
+ATOM     37  C   UNL     1      -4.798  65.562  36.347  0.00  0.00    -0.002 C 
+ATOM     38  C   UNL     1      -5.729  66.548  36.738  0.00  0.00    -0.223 C 
+ATOM     39  C   UNL     1      -6.802  66.999  35.822  0.00  0.00    -0.520 C 
+ATOM     40  C   UNL     1      -6.883  66.410  34.513  0.00  0.00    -0.428 C 
+ATOM     41  C   UNL     1      -5.951  65.402  34.088  0.00  0.00    -0.317 C 
+BRANCH  38  42
+ATOM     42  C   UNL     1      -5.616  67.151  38.138  0.00  0.00    -0.460 C 
+ATOM     43  N   UNL     1      -4.509  67.036  38.851  0.00  0.00    -0.401 NA
+ATOM     44  O   UNL     1      -6.598  67.731  38.547  0.00  0.00    -0.385 OA
+ENDBRANCH  38  42
+ENDBRANCH  34  36
+ENDBRANCH  28  29
+ENDBRANCH  27  28
+ENDBRANCH  24  27
+ENDBRANCH  23  24
+ENDBRANCH   1  23
+TORSDOF 11
+ENDMDL
+MODEL        9
+REMARK VINA RESULT:  -5.300   0.000  0.000 
+REMARK 921   NORMALIZED FREE ENERGY PREDICTED BY IDOCK:   -5.30 KCAL/MOL
+REMARK 922        TOTAL FREE ENERGY PREDICTED BY IDOCK:  -10.56 KCAL/MOL
+REMARK 923 INTER-LIGAND FREE ENERGY PREDICTED BY IDOCK:   -8.91 KCAL/MOL
+REMARK 924 INTRA-LIGAND FREE ENERGY PREDICTED BY IDOCK:   -1.65 KCAL/MOL
+REMARK 927      BINDING AFFINITY PREDICTED BY RF-SCORE:    6.24 PKD
+ROOT
+ATOM      1  P   UNL     1      -3.551  61.856  32.924  0.00  0.00    -0.284 P 
+ATOM      2  O   UNL     1      -3.373  61.515  34.337  0.00  0.00    -0.211 OA
+ATOM      3  O   UNL     1      -2.207  62.278  32.147  0.00  0.00    -0.337 OA
+ENDROOT
+BRANCH   1   4
+ATOM      4  O   UNL     1      -4.109  60.854  32.094  0.00  0.00    -0.272 OA
+BRANCH   4   5
+ATOM      5  C   UNL     1      -4.990  60.448  31.011  0.00  0.00    -0.353 C 
+BRANCH   5   6
+ATOM      6  C   UNL     1      -5.489  59.030  31.110  0.00  0.00    -0.200 C 
+ATOM      7  O   UNL     1      -4.486  58.283  31.844  0.00  0.00     0.530 OA
+ATOM      8  C   UNL     1      -5.001  57.326  32.722  0.00  0.00    -0.247 C 
+ATOM      9  C   UNL     1      -6.509  57.479  32.617  0.00  0.00    -0.298 C 
+ATOM     10  O   UNL     1      -7.070  56.331  31.983  0.00  0.00     0.185 OA
+ATOM     11  C   UNL     1      -6.781  58.779  31.868  0.00  0.00    -0.314 C 
+ATOM     12  O   UNL     1      -7.834  58.711  30.877  0.00  0.00    -0.325 OA
+BRANCH   8  13
+ATOM     13  N   UNL     1      -4.384  57.257  34.124  0.00  0.00    -0.352 N 
+ATOM     14  C   UNL     1      -3.923  58.353  34.781  0.00  0.00    -0.074 A 
+ATOM     15  N   UNL     1      -3.408  58.099  35.980  0.00  0.00    -0.358 NA
+ATOM     16  C   UNL     1      -3.544  56.765  36.103  0.00  0.00    -0.387 A 
+ATOM     17  C   UNL     1      -3.170  55.869  37.181  0.00  0.00    -0.388 A 
+ATOM     18  N   UNL     1      -2.610  56.222  38.280  0.00  0.00    -0.172 NA
+ATOM     19  N   UNL     1      -3.469  54.524  36.947  0.00  0.00    -0.453 NA
+ATOM     20  C   UNL     1      -4.080  54.066  35.769  0.00  0.00    -0.340 A 
+ATOM     21  N   UNL     1      -4.430  54.893  34.761  0.00  0.00    -0.283 NA
+ATOM     22  C   UNL     1      -4.153  56.203  34.960  0.00  0.00    -0.391 A 
+ENDBRANCH   8  13
+ENDBRANCH   5   6
+ENDBRANCH   4   5
+ENDBRANCH   1   4
+BRANCH   1  23
+ATOM     23  O   UNL     1      -4.525  63.093  32.618  0.00  0.00    -0.308 OA
+BRANCH  23  24
+ATOM     24  P   UNL     1      -6.078  63.156  32.960  0.00  0.00    -0.311 P 
+ATOM     25  O   UNL     1      -6.656  62.106  33.894  0.00  0.00    -0.335 OA
+ATOM     26  O   UNL     1      -6.248  64.619  33.571  0.00  0.00    -0.322 OA
+BRANCH  24  27
+ATOM     27  O   UNL     1      -6.897  63.340  31.555  0.00  0.00    -0.288 OA
+BRANCH  27  28
+ATOM     28  C   UNL     1      -7.708  62.149  31.479  0.00  0.00    -0.277 C 
+BRANCH  28  29
+ATOM     29  C   UNL     1      -9.115  62.443  32.017  0.00  0.00    -0.187 C 
+ATOM     30  C   UNL     1      -9.804  61.282  32.824  0.00  0.00     0.258 C 
+ATOM     31  O   UNL     1     -10.494  61.771  34.006  0.00  0.00    -0.082 OA
+ATOM     32  C   UNL     1     -10.721  60.695  31.807  0.00  0.00    -0.130 C 
+ATOM     33  O   UNL     1     -11.726  59.871  32.360  0.00  0.00     0.132 OA
+ATOM     34  C   UNL     1     -11.248  61.891  31.124  0.00  0.00    -0.431 C 
+ATOM     35  O   UNL     1     -10.079  62.761  30.961  0.00  0.00    -0.149 OA
+BRANCH  34  36
+ATOM     36  N   UNL     1     -11.834  61.622  29.770  0.00  0.00    -0.285 N 
+ATOM     37  C   UNL     1     -12.989  62.349  29.329  0.00  0.00    -0.004 C 
+ATOM     38  C   UNL     1     -13.515  62.065  28.051  0.00  0.00     0.171 C 
+ATOM     39  C   UNL     1     -12.896  61.044  27.174  0.00  0.00    -0.286 C 
+ATOM     40  C   UNL     1     -11.739  60.337  27.650  0.00  0.00     0.294 C 
+ATOM     41  C   UNL     1     -11.183  60.602  28.949  0.00  0.00    -0.272 C 
+BRANCH  38  42
+ATOM     42  C   UNL     1     -14.748  62.834  27.578  0.00  0.00     0.042 C 
+ATOM     43  N   UNL     1     -15.064  62.911  26.296  0.00  0.00    -0.416 NA
+ATOM     44  O   UNL     1     -15.408  63.366  28.444  0.00  0.00    -0.393 OA
+ENDBRANCH  38  42
+ENDBRANCH  34  36
+ENDBRANCH  28  29
+ENDBRANCH  27  28
+ENDBRANCH  24  27
+ENDBRANCH  23  24
+ENDBRANCH   1  23
+TORSDOF 11
+ENDMDL

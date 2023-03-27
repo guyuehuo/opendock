@@ -69,7 +69,10 @@ class BaseSampler(object):
         if receptor_cnfrs is not None:
             self.receptor.cnfr2xyz(receptor_cnfrs)
 
-        return self.scoring_function.scoring()
+        try:
+            return self.scoring_function.scoring()
+        except:
+            return torch.Tensor([[99.99, ]]).requires_grad_()
 
     def _minimize(self, x_ligand=None, x_receptor=None, 
                   is_ligand=True, is_receptor=False, 
