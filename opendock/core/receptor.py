@@ -1,11 +1,92 @@
-import os, sys
+import os, sys, shutil
 import numpy as np
 import pandas as pd
 import torch
+import prody as pr
 from opendock.core.utils import ATOMTYPE_MAPPING, \
     COVALENT_RADII_DICT, SIDECHAIN_TOPOL_DICT
 
+class ClipReceptor():
+    def __init__(self, 
+                 rec_fpath: str=None, 
+                 docking_center: torch.tensor=None,  # shape: [3, ] or [1, 3]
+                 cutoff=20.0):
 
+        self.rec_fpath = rec_fpath  # input, the source file of the protein (.pdb)
+        self.docking_center = docking_center
+
+        self.cutoff = cutoff  # cutting scale 
+
+    def parse_receptor(self):
+        with open(self.rec_fpath) as f:
+            self.lines = [x.strip() for x in f.readlines() if x.startswith("ATOM") or x.startswith("HETATM")]
+        
+        all_resid_xyz_list = []
+        all_resid_atom_indices = []
+
+        resid_symbol_pool = []
+        temp_xyz_list = []
+        temp_indices_list = []
+        rec_ha_indices = []
+        for num, line in enumerate(self.lines):
+            resid_symbol = line[17:27].strip()
+            x = float(line[30:38].strip())
+            y = float(line[38:46].strip())
+            z = float(line[46:54].strip())
+            atom_xyz = np.c_[x, y, z]
+            if line.split()[-1] not in ["H", "HD"]:
+                rec_ha_indices.append(num)
+            
+            if num == 0:
+                resid_symbol_pool.append(resid_symbol)
+                temp_xyz_list.append(atom_xyz)
+                temp_indices_list.append(num)
+            
+            elif num == len(self.lines) - 1:
+                temp_xyz = np.concatenate(temp_xyz_list, axis=0)
+                temp_xyz = np.concatenate([temp_xyz, np.ones((25 - temp_xyz.shape[0], 3)) * 999.], axis=0)
+                all_resid_xyz_list.append(temp_xyz.reshape(1, -1, 3))
+                all_resid_atom_indices.append(temp_indices_list)
+            
+            else:
+                if resid_symbol != resid_symbol_pool[-1]:
+                    resid_symbol_pool.append(resid_symbol)
+                    
+                    temp_xyz = np.concatenate(temp_xyz_list, axis=0)
+                    temp_xyz = np.concatenate([temp_xyz, np.ones((25 - temp_xyz.shape[0], 3)) * 999.], axis=0)
+                    all_resid_xyz_list.append(temp_xyz.reshape(1, -1, 3))
+                    all_resid_atom_indices.append(temp_indices_list)
+                    
+                    temp_xyz_list = [atom_xyz]
+                    temp_indices_list = [num]
+                else:
+                    temp_xyz_list.append(atom_xyz)
+                    temp_indices_list.append(num)
+
+        all_resid_xyz_tensor = torch.from_numpy(np.concatenate(all_resid_xyz_list, axis=0))
+        dist_mtx = torch.sqrt(torch.sum(torch.square(all_resid_xyz_tensor - self.docking_center.reshape(1, 3)), axis=-1))
+        min_dist, _ = torch.min(dist_mtx, axis=1)
+
+        selec_res_indices = torch.where(min_dist <= self.cutoff)[0]
+        selec_atoms_indices = []
+        for l in selec_res_indices:
+            selec_atoms_indices += all_resid_atom_indices[l]
+        selec_atoms_indices = sorted(selec_atoms_indices)
+
+        return selec_atoms_indices, rec_ha_indices
+
+    def clip_rec(self):
+   
+        selec_all_indices, rec_ha_indices = self.parse_receptor()
+
+        selec_ha_indices = []
+        for i in selec_all_indices:
+            if self.lines[i].split()[-1] not in ["H", "HD"]:
+                selec_ha_indices.append(i)    
+        
+        return rec_ha_indices, selec_all_indices, selec_ha_indices
+
+       
 class Receptor(object):
     """Receptor Parser for receptor structure.
 
@@ -18,12 +99,15 @@ class Receptor(object):
         init_rec_all_atoms_xyz: torch.Tensor, receptor all atom coordinates
     """
 
-    def __init__(self, receptor_fpath: str = None):
+    def __init__(self, receptor_fpath: str = None,
+                docking_center: torch.tensor=None):
         """The receptor class.
         Args:
             receptor_fpath (str, optional): Input receptor file path. Defaults to None.
         """
         self.receptor_fpath = receptor_fpath  # the pdbqt file of protein
+
+        self.docking_center = docking_center
         self.cnfrs_ = None
         self.init_cnfrs = None
 
@@ -123,24 +207,46 @@ class Receptor(object):
             self.receptor_parsed_ = True
 
         return self
+    
+    def clip_rec(self):
+        
+        cliprec = ClipReceptor(rec_fpath=self.receptor_fpath, docking_center=self.docking_center)
+        self.rec_ha_indices, self.clp_all_indices, self.clp_ha_indices = cliprec.clip_rec() 
+        
+        rec_ha_idx_dict = dict(zip(self.rec_ha_indices, range(len(self.rec_ha_indices))))
+        self.clp_ha_idx = [rec_ha_idx_dict[i] for i in self.clp_ha_indices]
+        self.clp_ha_idx_to_line_num = dict(zip(self.clp_ha_idx, range(len(self.clp_ha_idx))))
+
+        return self
 
     def _read_pdbqt(self):
-        with open(self.receptor_fpath) as f:
-            #self.rec_lines = [x for x in f.readlines() if
-            #                  (len(x) > 4 and x[:4] == "ATOM")]
+
+        self.clip_rec()
+        with open(self.receptor_fpath) as f:   
             self.rec_lines = [x for x in f.readlines() if x.startswith("ATOM") or
                               x.startswith("HETATM")]
+        
+        clp_rec_lines = []
+        for num, line in enumerate(self.rec_lines):
+            if num in self.rec_ha_indices:
+                self.receptor_original_lines.append(line)
+            
+            if num in self.clp_all_indices:
+                clp_rec_lines.append(line)
+        
+        #selec_rec_lines = [self.rec_lines[i] for i in self.selec_cut_indices]
        
         rec_heavy_atoms_xyz = []
         rec_all_atoms_xyz = []
         temp_indices = []  # the indices of all atoms in each residue
         temp_heavy_atoms_indices = []  # the indices of heavy atoms in each residue
         temp_heavy_atoms_pdb_types = []
-        heavy_atom_num = -1 # the index of heavy atoms
         charges = []
 
         num = -1 # the index of atoms including H
-        for _num_line, line in enumerate(self.rec_lines):
+        heavy_atom_num = -1 # the index of heavy atoms
+
+        for _num_line, line in enumerate(clp_rec_lines):
             atom_ad4_type = line[77:79].strip()
             atom_xs_type = self.atomtype_mapping[atom_ad4_type]
             atom_ele = atom_xs_type.split('_')[0]
@@ -204,7 +310,7 @@ class Receptor(object):
                     self.residues_heavy_atoms_pairs.append(res_name + '-' + atom_ele)
                     self.rec_heavy_atoms_pdb_types.append(pdb_type)
 
-                    self.receptor_original_lines.append(line)
+                    #self.receptor_original_lines.append(line)
             else:
                 self.residues_all_atoms_indices.append(temp_indices)
                 self.residues_heavy_atoms_indices.append(temp_heavy_atoms_indices)
@@ -223,7 +329,7 @@ class Receptor(object):
                     self.residues_heavy_atoms_pairs.append(res_name + '-' + atom_ele)
                     self.rec_heavy_atoms_pdb_types.append(pdb_type)
 
-                    self.receptor_original_lines.append(line)
+                    #self.receptor_original_lines.append(line)
                 else:
                     pass
 

@@ -1,19 +1,4 @@
 import os
-try:
-    from openbabel import openbabel as ob
-except:
-    import openbabel as ob
-
-
-def obabel_convert(infile, outfile):
-    basename = os.path.basename(infile).split(".")[0]
-    _format = outfile.split(".")[-1]
-
-    obConversion = ob.OBConversion()
-    obConversion.SetInAndOutFormats(basename, _format)
-    mol = ob.OBMol()
-    obConversion.ReadFile(mol, infile)
-    obConversion.WriteFile(mol, outfile)
 
 
 ALLOWED_CONFIGS_TERMS = ['receptor', 'ligand', 'out',
@@ -131,6 +116,9 @@ def write_receptor_traj(cnfrs,
     ----- 
     receptor: the receptor object. 
     output: str, the output file name.
+
+    1. 2023/3/25: Changed by wzc. Allows coenzymes beginning with HETATM to be read.        
+
     """
     # obtain the original receptor pdbqt file lines
     rec_original_lines = receptor.receptor_original_lines
@@ -140,14 +128,16 @@ def write_receptor_traj(cnfrs,
     for (idx, cnfr_list) in enumerate(cnfrs):
         lines.append("MODEL%9s" % (str(idx+1)))
         new_rec_ha_xyz = receptor.cnfr2xyz(cnfr_list)
-        num = 0
-        for line in rec_original_lines:
+        #num = 0
+        for N, line in enumerate(rec_original_lines):
             ad4_type = line.split()[-1]
-            if ad4_type.endswith("H") or ad4_type.endswith("HD") \
-                or (not line.startswith("ATOM")):
+            #if ad4_type.endswith("H") or ad4_type.endswith("HD") \
+            #    or (not line.startswith("ATOM")): 
+            
+            if ad4_type.endswith("H") or ad4_type.endswith("HD"):
                 continue
             
-            num += 1
+            #num += 1
             atom_type = line.split()[2]
             if atom_type[:2] == "CL":
                 element = "Cl"
@@ -158,13 +148,15 @@ def write_receptor_traj(cnfrs,
 
             try:
                 #print(num, line)
-                x = new_rec_ha_xyz[num-1][0].detach().numpy()
-                y = new_rec_ha_xyz[num-1][1].detach().numpy()
-                z = new_rec_ha_xyz[num-1][2].detach().numpy()
-                
-                line = "ATOM%7s%16s%11s%8s%8s%12s%12s" % (
-                    str(num), line[11:27], "%.3f" % x, 
-                    "%.3f" % y, "%.3f" % z, line[54:66], element)
+                if N in receptor.clp_ha_idx:
+                    idx = receptor.clp_ha_idx_to_line_num[N]
+                    x = new_rec_ha_xyz[idx][0].detach().numpy()
+                    y = new_rec_ha_xyz[idx][1].detach().numpy()
+                    z = new_rec_ha_xyz[idx][2].detach().numpy()
+                    
+                    line = "ATOM%7s%16s%11s%8s%8s%12s%12s" % (
+                        str(N+1), line[11:27], "%.3f" % x, 
+                        "%.3f" % y, "%.3f" % z, line[54:66], element)
                 
                 lines.append(line)
                 
