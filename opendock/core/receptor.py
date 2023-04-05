@@ -45,8 +45,7 @@ class ClipReceptor():
             
             elif num == len(self.lines) - 1:
                 temp_xyz = np.concatenate(temp_xyz_list, axis=0)
-                temp_xyz = np.concatenate([temp_xyz, np.ones((25 - temp_xyz.shape[0], 3)) * 999.], axis=0)
-                all_resid_xyz_list.append(temp_xyz.reshape(1, -1, 3))
+                all_resid_xyz_list.append(temp_xyz)
                 all_resid_atom_indices.append(temp_indices_list)
             
             else:
@@ -54,8 +53,7 @@ class ClipReceptor():
                     resid_symbol_pool.append(resid_symbol)
                     
                     temp_xyz = np.concatenate(temp_xyz_list, axis=0)
-                    temp_xyz = np.concatenate([temp_xyz, np.ones((25 - temp_xyz.shape[0], 3)) * 999.], axis=0)
-                    all_resid_xyz_list.append(temp_xyz.reshape(1, -1, 3))
+                    all_resid_xyz_list.append(temp_xyz)
                     all_resid_atom_indices.append(temp_indices_list)
                     
                     temp_xyz_list = [atom_xyz]
@@ -64,7 +62,21 @@ class ClipReceptor():
                     temp_xyz_list.append(atom_xyz)
                     temp_indices_list.append(num)
 
-        all_resid_xyz_tensor = torch.from_numpy(np.concatenate(all_resid_xyz_list, axis=0))
+        max_num_atoms = 0
+        for xyz in all_resid_xyz_list:
+            if xyz.shape[0] > max_num_atoms:
+                max_num_atoms = xyz.shape[0]
+
+        final_all_resid_xyz_list = []
+        for xyz in all_resid_xyz_list:
+            if xyz.shape[0] < max_num_atoms:
+                temp_xyz = np.concatenate([xyz, np.ones((max_num_atoms - xyz.shape[0], 3)) * 999.])
+            else:
+                temp_xyz = xyz
+
+            final_all_resid_xyz_list.append(temp_xyz.reshape(1, -1, 3))
+
+        all_resid_xyz_tensor = torch.from_numpy(np.concatenate(final_all_resid_xyz_list, axis=0))
         dist_mtx = torch.sqrt(torch.sum(torch.square(all_resid_xyz_tensor - self.docking_center.reshape(1, 3)), axis=-1))
         min_dist, _ = torch.min(dist_mtx, axis=1)
 
@@ -334,7 +346,7 @@ class Receptor(object):
                 else:
                     pass
 
-            if num == len(self.rec_lines) - 1:
+            if num == len(clp_rec_lines) - 1:
                 self.residues_all_atoms_indices.append(temp_indices)
                 self.residues_heavy_atoms_indices.append(temp_heavy_atoms_indices)
 
