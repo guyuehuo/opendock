@@ -374,13 +374,21 @@ class ReceptorConformation(Receptor):
             # the indices of heavy atoms of each frame in this residue
             sidechain_ha_indices_in_each_frame = []
             for f_list in sidechain_frames:
-                indices = [pdb_type_2_heavy_atom_indices[x] for x in f_list]
+                try:
+                    indices = [pdb_type_2_heavy_atom_indices[x] for x in f_list]
+                except:
+                    # TODO: fix potential bug here
+                    indices = [pdb_type_2_heavy_atom_indices[x] for x in f_list if x in pdb_type_2_heavy_atom_indices.keys()] 
+
                 sidechain_ha_indices_in_each_frame.append(indices)
 
             # the indices of heavy atoms of each torsion bond in this residue
             sidechain_ha_indices_in_each_torsion = []
             for t_list in sidechain_torsion:
-                indices = [pdb_type_2_heavy_atom_indices[x] for x in t_list]
+                try:
+                    indices = [pdb_type_2_heavy_atom_indices[x] for x in t_list]
+                except:
+                    indices = [pdb_type_2_heavy_atom_indices[x] for x in t_list if x in pdb_type_2_heavy_atom_indices.keys()]
                 sidechain_ha_indices_in_each_torsion.append(indices)
                 
             # update coords

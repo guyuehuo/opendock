@@ -27,7 +27,7 @@ def write_config(fpath, rec, lig, out, center, size=15, ntasks=16):
     content = f"""
 receptor = {rec}
 ligand = {lig}
-out = {out}/docking_results.pdbqt
+out = {out}/output_clusters.pdbqt
 size_x = {size}
 size_y = {size}
 size_z = {size}

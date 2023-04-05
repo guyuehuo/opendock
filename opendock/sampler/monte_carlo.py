@@ -26,6 +26,7 @@ class MonteCarloSampler(BaseSampler):
         self.box_center = kwargs.pop('box_center', None)
         self.box_size   = kwargs.pop('box_size', None)
         self.random_start = kwargs.pop('random_start', False)
+        self.early_stop_tolerance = kwargs.pop("early_stop_tolerance", 100)
 
         self.index_ = 0
         self.best_cnfrs_ = [None, None]
@@ -42,7 +43,7 @@ class MonteCarloSampler(BaseSampler):
             (self.ligand.cnfrs_, self.receptor.cnfrs_) = \
                  self._mutate(self.ligand.cnfrs_, 
                               self.receptor.cnfrs_, 
-                              10, np.pi * 0.1)
+                              5, np.pi * 0.1)
             #print("Random Start: ", self.ligand.cnfrs_, self.receptor.cnfrs_)
 
         self.init_score = self._score() 
@@ -63,7 +64,8 @@ class MonteCarloSampler(BaseSampler):
     def _step(self, minimize=False):
         # make mutations
         _lig_cnfrs, _rec_cnfrs = self._mutate(self.ligand.cnfrs_, 
-                                              self.receptor.cnfrs_, 
+                                              self.receptor.cnfrs_,
+                                              5.0, 0.1,
                                               minimize=minimize)
         #self.ligand.cnfrs_, self.receptor.cnfrs_ = self._mutate(self.ligand.cnfrs_, self.receptor.cnfrs_)
 
@@ -78,7 +80,7 @@ class MonteCarloSampler(BaseSampler):
             # accept now
             prob = 1.0 
         else:
-            prob = np.power(np.e, -1.0 * delta_score / self.kt_)
+            prob = np.power(np.e, -2.0 * delta_score / self.kt_)
 
         rnd_num = random.random()
         if prob >= rnd_num:
@@ -94,9 +96,6 @@ class MonteCarloSampler(BaseSampler):
         else:
             print(f'[INFO] #{self.index_} {self.__class__.__name__} reject prob {prob:.2f} and rnd_num {rnd_num:.2f}')
 
-        # compare cnfrs
-        #print("Cnfrs ", self.ligand.cnfrs_, self.receptor.cnfrs_)
-
         if score < self.best[0]:
             self.best = [score, 1, prob]
             self.best_cnfrs_ = [_lig_cnfrs, _rec_cnfrs]
@@ -109,7 +108,7 @@ class MonteCarloSampler(BaseSampler):
 
         return self
 
-    def sampling(self, nsteps=None, minimize_stride=10):
+    def sampling(self, nsteps=None, minimize_stride=1):
         # initialize the parameters
         if not self.initialized_:
             self._initialize()
@@ -144,6 +143,12 @@ class MonteCarloSampler(BaseSampler):
                 print("[WARNING] find no changing scores in sampling, exit now!!!")
                 break
 
+            # early stop checking
+            if len(self.ligand_cnfrs_history_) > self.early_stop_tolerance and \
+                np.array(self.ligand_scores_history_[-1 * self.early_stop_tolerance:]).min() \
+                    >= self.ligand_scores_history_[-1 * self.early_stop_tolerance]:
+                print(f"[WARNING] find no changing scores in sampling for over {self.early_stop_tolerance} steps, exit now!!!")
+                break
     
     def save_traj(self, output_fpath_ligand=None, output_fpath_receptor=None):
         if output_fpath_ligand is not None:

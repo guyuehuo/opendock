@@ -153,11 +153,11 @@ class Ligand(object):
 
         branch_start_numbers = []
         for num, line in enumerate(lines):
-            if line.startswith("ROOT"):
+            if line.startswith("ROOT") or line.split()[0] == "ROOT":
                 root_start_number = num
-            if line.startswith("ENDROOT"):
+            if line.startswith("ENDROOT") or line.split()[0] == "ENDROOT":
                 root_end_number = num
-            if line.startswith("BRANCH"):
+            if line.startswith("BRANCH") or line.split()[0] == "BRANCH":
                 branch_start_numbers.append(num)
 
         # Root

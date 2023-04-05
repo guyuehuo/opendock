@@ -58,15 +58,15 @@ class GeneticAlgorithmSampler(BaseSampler):
         self.box_center = kwargs.pop('box_center', None)
         self.box_size   = kwargs.pop('box_size', None)
         self.n_gen = kwargs.pop("n_gen", 100)
-        self.n_pop = kwargs.pop("n_pop", 200)
-        self.minimization_ratio = kwargs.pop("minimization_ratio", 1. /3.)
-        self.early_stop_tolerance = kwargs.pop("early_stop_tolerance", 20)
+        self.n_pop = kwargs.pop("n_pop", 100)
+        self.minimization_ratio = kwargs.pop("minimization_ratio", 1. /5.)
+        self.early_stop_tolerance = kwargs.pop("early_stop_tolerance", 10)
 
         #--------------------------------------------------
         #probability of crossover and mutation.
         #--------------------------------------------------
-        self.p_c = kwargs.pop("p_c", 0.3)
-        self.p_m = kwargs.pop("p_m", 0.001)
+        self.p_c = kwargs.pop("p_c", 0.5)
+        self.p_m = kwargs.pop("p_m", 0.01)
         #--------------------------------------------------
         #The "k" parameter in tournament selection
         #--------------------------------------------------
@@ -78,11 +78,10 @@ class GeneticAlgorithmSampler(BaseSampler):
         #--------------------------------------------------
         #setting the number of bits
         #--------------------------------------------------
-        #self._random_move()
         self._init_variables = self._cnfrs2variables(self.ligand.cnfrs_, 
                                                      self.receptor.cnfrs_)
         self.n_var = int(len(self._init_variables))
-        self.n_bit = kwargs.pop("n_bit", [16, ] * self.n_var)
+        self.n_bit = kwargs.pop("n_bit", [8, ] * self.n_var)
 
         self.initialized_ = False
         self.ligand_is_flexible = False
@@ -118,7 +117,7 @@ class GeneticAlgorithmSampler(BaseSampler):
         self.ligand_cnfrs_history_.append(torch.Tensor(self.ligand.cnfrs_[0].detach().numpy())) 
         self.ligand_scores_history_.append(_fitness * -1.)
         _pop = [_init_chrom, ]
-
+  
         for i in range(self.n_pop - 1):
 
             def make_chrom():
@@ -352,8 +351,8 @@ class GeneticAlgorithmSampler(BaseSampler):
             #                                 + [f"v{x}" for x in range(self.n_var)])
 
             # gradient zero check to aviod no changing score
-            if len(self.ligand_cnfrs_history_) > 20 and \
-                (np.array(self.ligand_scores_history_[-20:]) == 0).sum() >= 19:
+            if len(self.ligand_cnfrs_history_) > 10 and \
+                (np.array(self.ligand_scores_history_[-10:]) == 0).sum() >= 9:
                 print("[WARNING] find no changing scores in sampling, exit now!!!")
                 break
 

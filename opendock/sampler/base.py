@@ -115,21 +115,21 @@ class BaseSampler(object):
     def _out_of_box_check(self, ligand_cnfrs=None):
         xyz_ranges = []
         for i in range(3):
-            _range = [self.box_center[i] - self.box_size[i] * 1.2 / 2, 
-                      self.box_center[i] + self.box_size[i] * 1.2 / 2]
+            _range = [self.box_center[i] - self.box_size[i] * 1.5 / 2, 
+                      self.box_center[i] + self.box_size[i] * 1.5 / 2]
             xyz_ranges.append(_range)
 
         # setup box bound
         self.box_ranges_ = xyz_ranges
 
         # xyz coords shape (1, N, 3)
-        xyz_coords = self.ligand.cnfr2xyz(ligand_cnfrs).detach()[0]
+        xyz_coords = self.ligand.cnfr2xyz(ligand_cnfrs).detach()[0] 
         #print("XYZ coords shape ", xyz_coords, xyz_coords.shape)
 
         for i in range(3):
             # check whether xyz out of boundaries
-            if torch.min(xyz_coords[:, i] - xyz_ranges[i][0]) < 0 or \
-                torch.max(xyz_coords[:, i] - xyz_ranges[i][1]) > 0:
+            if torch.min(xyz_coords[:, i] - xyz_ranges[i][0]) <= 0 or \
+                torch.max(xyz_coords[:, i] - xyz_ranges[i][1]) >= 0:
                 return True
         
         return False
@@ -140,10 +140,10 @@ class BaseSampler(object):
         self.ligand.cnfrs_, self.receptor.cnfrs_ = \
                 self._mutate(ligand_cnfrs, 
                              receptor_cnfrs, 
-                             10, np.pi, minimize=False)
+                             5, 0.5 * np.pi, minimize=False)
         print("[INFO] Random Start: ", self.ligand.cnfrs_, self.receptor.cnfrs_)
     
-        return self
+        return self.ligand.cnfrs_, self.receptor.cnfrs_
 
     def _mutate(self, ligand_cnfrs = None, 
                 receptor_cnfrs = None, 
@@ -182,12 +182,12 @@ class BaseSampler(object):
             # minimize the cnfrs
             try:
             #if True:
-                _cnfr = torch.Tensor(_new_ligand_cnfrs[0].detach().numpy()).requires_grad_()
+                _cnfr = torch.Tensor(_new_ligand_cnfrs[0].detach().numpy() * 1.0).requires_grad_()
                 _new_ligand_cnfrs = [_cnfr, ]
                 if minimize:
                     _new_ligand_cnfrs, _ = self._minimize(_new_ligand_cnfrs, 
-                                                        None, is_ligand=True, 
-                                                        is_receptor=False)
+                                                          None, is_ligand=True, 
+                                                          is_receptor=False)
             except:
                 print("[WARNING] minimize failed, skipping")
         
@@ -201,7 +201,7 @@ class BaseSampler(object):
                 _new_receptor_cnfrs.append(receptor_cnfrs[i].clone() + _sc_mutate_size * self.kt_)
                 #print(receptor_cnfrs)
             # minimze the receptor sidechains if necessary
-            _new_receptor_cnfrs = [torch.Tensor(x.detach().numpy()).requires_grad_() for x in _new_receptor_cnfrs]
+            _new_receptor_cnfrs = [torch.Tensor(x.detach().numpy() * 1.0).requires_grad_() for x in _new_receptor_cnfrs]
 
             try:
                 if minimize:

@@ -11,9 +11,10 @@ from opendock.sampler.minimizer import adam_minimizer, lbfgs_minimizer, sgd_mini
 # scorer
 from opendock.scorer.vina import VinaSF
 from opendock.scorer.onionnet_sfct import OnionNetSFCTSF
-from opendock.scorer.rtmscore import RtmscoreExtSF
+#from opendock.scorer.rtmscore import RtmscoreExtSF
 from opendock.scorer.zPoseRanker import zPoseRankerSF
 from opendock.scorer.deeprmsd import DeepRmsdSF, CNN, DRmsdVinaSF
+from opendock.scorer.xscore import XscoreSF
 
 from opendock.core.conformation import ReceptorConformation
 from opendock.core.conformation import LigandConformation
@@ -23,10 +24,10 @@ from opendock.core.io import write_ligand_traj, generate_new_configs
 
 samplers = {
     # sampler, number of sampling steps (per heavy atom)
-    "ga": [GeneticAlgorithmSampler, 1],
+    "ga": [GeneticAlgorithmSampler, 10],
     "bo": [BayesianOptimizationSampler, 20],
     "mc": [MonteCarloSampler, 100],
-    "pso": [ParticleSwarmOptimizer, 1],
+    "pso": [ParticleSwarmOptimizer, 10],
 }
 
 scorers = {
@@ -34,14 +35,16 @@ scorers = {
     "deeprmsd": DeepRmsdSF,
     "rmsd-vina": DRmsdVinaSF,
     "sfct": OnionNetSFCTSF,
-    "rtm": RtmscoreExtSF,
+#    "rtm": RtmscoreExtSF,
     "zranker": zPoseRankerSF,
+    "xscore": XscoreSF
 }
 
 minimizers = {
     "lbfgs": lbfgs_minimizer,
     "adam": adam_minimizer,
     "sgd": sgd_minimizer,
+    "none": None,
 }
 
 
@@ -96,7 +99,7 @@ def main():
                                          minimizer=minimizers[args.minimizer],
                                          )
     for i in range(configs['tasks']):
-        sampler._random_move(init_lig_cnfrs, receptor.init_cnfrs)
+        ligand.cnfrs_, receptor.cnfrs_ = sampler._random_move(init_lig_cnfrs, receptor.init_cnfrs)
         #ligand.cnfrs_, receptor.cnfrs_ = ligand.init_cnfrs, receptor.init_cnfrs
         sampler = samplers[args.sampler][0](ligand, receptor, sf, 
                                          box_center=xyz_center, 
@@ -138,7 +141,7 @@ def main():
         pass
 
     write_ligand_traj(_cnfrs_list, ligand, 
-                      os.path.join(configs['out'], 'output_clusters.pdb'), 
+                      os.path.join(configs['out'], 'output_clusters.pdbqt'), 
                       information={args.scorer: _scores},
                       )
 

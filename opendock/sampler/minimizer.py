@@ -17,7 +17,11 @@ def sgd_minimizer(x, target_function, **kwargs):
         optimizer.zero_grad()
         loss = target_function(x)
         loss.backward(retain_graph=True)
-        optimizer.step()
+        # optimize now
+        try:
+            optimizer.step()
+        except:
+            print("[WARNING] minimization failed, skip it...")
 
     return x
 
@@ -33,15 +37,19 @@ def adam_minimizer(x, target_function, **kwargs):
         optimizer.zero_grad()
         loss = target_function(x)
         loss.backward(retain_graph=True)
-        optimizer.step()
+        # optimize now
+        try:
+            optimizer.step()
+        except:
+            print("[WARNING] minimization failed, skip it...")
 
     return x
 
 
 def lbfgs_minimizer(x, target_function, **kwargs):
     # Define the optimizer
-    nsteps=kwargs.pop('nsteps', 20)
-    lr    = kwargs.pop('lr', 0.1) 
+    nsteps=kwargs.pop('nsteps', 5)
+    lr    = kwargs.pop('lr', 0.05) 
 
     if nsteps <= 2:
         nsteps = 2
@@ -61,7 +69,10 @@ def lbfgs_minimizer(x, target_function, **kwargs):
         return loss
     
     # optimize now
-    optimizer.step(closure)
+    try:
+        optimizer.step(closure)
+    except:
+        print("[WARNING] minimization failed, skip it...")
 
     return x
 

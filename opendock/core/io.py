@@ -130,6 +130,8 @@ def write_receptor_traj(cnfrs,
         new_rec_ha_xyz = receptor.cnfr2xyz(cnfr_list)
         #num = 0
         for N, line in enumerate(rec_original_lines):
+            # zlz fix: remove the change-line symbol
+            line = line.strip("\n")
             ad4_type = line.split()[-1]
             #if ad4_type.endswith("H") or ad4_type.endswith("HD") \
             #    or (not line.startswith("ATOM")): 
@@ -147,18 +149,19 @@ def write_receptor_traj(cnfrs,
                 element = atom_type[0]
 
             try:
-                #print(num, line)
+                #print(N, line)
                 if N in receptor.clp_ha_idx:
                     idx = receptor.clp_ha_idx_to_line_num[N]
                     x = new_rec_ha_xyz[idx][0].detach().numpy()
                     y = new_rec_ha_xyz[idx][1].detach().numpy()
                     z = new_rec_ha_xyz[idx][2].detach().numpy()
                     
-                    line = "ATOM%7s%16s%11s%8s%8s%12s%12s" % (
+                    nline = "ATOM%7s%16s%11s%8s%8s%12s%12s" % (
                         str(N+1), line[11:27], "%.3f" % x, 
                         "%.3f" % y, "%.3f" % z, line[54:66], element)
-                
-                lines.append(line)
+                else:
+                    nline = line
+                lines.append(nline)
                 
             except:
                 pass

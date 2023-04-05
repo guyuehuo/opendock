@@ -19,7 +19,8 @@ class ClipReceptor():
 
     def parse_receptor(self):
         with open(self.rec_fpath) as f:
-            self.lines = [x.strip() for x in f.readlines() if x.startswith("ATOM") or x.startswith("HETATM")]
+            self.lines = [x.strip() for x in f.readlines() if \
+                x.startswith("ATOM") or x.startswith("HETATM")]
         
         all_resid_xyz_list = []
         all_resid_atom_indices = []

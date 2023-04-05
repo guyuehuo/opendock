@@ -214,16 +214,18 @@ class XscoreSF(ExternalScoringFunction):
         self.tmp_dpath = None
         self.receptor_fpath = None
         self.ligand_fpath   = None
+        self.verbose = kwargs.pop('verbose', False)
     
     def _score(self, receptor_fpath=None, ligand_fpath=None):
+        print(self.tmp_dpath)
         # convert protein
-        obabel(receptor_fpath, f'{self.tmp_dpath}/receptor.pdb')
+        #obabel(receptor_fpath, f'{self.tmp_dpath}/receptor.pdb')
 
         # convert ligand
         obabel(ligand_fpath, f'{self.tmp_dpath}/docked_ligands.mol2')
 
         # xscore
-        xscore = Xscore(f'{self.tmp_dpath}/receptor.pdb', 
+        xscore = Xscore(receptor_fpath, 
                         f'{self.tmp_dpath}/docked_ligands.mol2', 
                         xscore_root=XSCORE_DPATH)
         scores = xscore.run_xscore()
@@ -236,10 +238,28 @@ if __name__ == "__main__":
     from opendock.core.conformation import ReceptorConformation
     from opendock.core.conformation import LigandConformation
 
-    # define a flexible ligand object 
+    if len(sys.argv) < 2:
+        print("usage: xscore.py protein.pdbqt ligand.pdbqt output tag")
+        sys.exit(0)
+    
+    # ligand center
     ligand = LigandConformation(sys.argv[1])
-    receptor = ReceptorConformation(sys.argv[2], 
-                                    ligand.init_heavy_atoms_coords)
+    xyz_center = ligand._get_geo_center().detach().numpy()[0]
+    print("Ligand XYZ COM", xyz_center) 
 
-    sf = XscoreSF(receptor=receptor, ligand=ligand)
-    print(sf.scoring())
+    # define a flexible ligand object 
+    receptor = ReceptorConformation(sys.argv[2], 
+                                    xyz_center,
+                                    ligand.init_heavy_atoms_coords)
+    tf = open(sys.argv[3], 'w')
+    try:
+        tag = sys.argv[4]
+    except:
+        tag = "decoy"
+
+    sf = XscoreSF(receptor=receptor, ligand=ligand, verbose=True)
+    #print(sf.scoring())
+    score = sf.scoring(remove_temp=False) 
+    score = score.detach().numpy().ravel()[0] 
+    tf.write(f'{tag},{score}\n')
+    tf.close()

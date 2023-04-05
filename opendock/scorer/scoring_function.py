@@ -87,13 +87,16 @@ class ExternalScoringFunction(BaseScoringFunction):
     def _prepare_receptor_fpath(self, cnfrs_list = None):
 
         if cnfrs_list is None:
+            self.receptor_fpath = os.path.join(self.tmp_dpath, "receptor.pdb")
+
             if self.receptor.cnfrs_ is not None:
                 _cnfrs_list = self.receptor.cnfrs_ 
+                write_receptor_traj([_cnfrs_list], self.receptor, self.receptor_fpath)
             else:
-                _cnfrs_list = self.receptor.init_sidechain_cnfrs()
-
-            self.receptor_fpath = os.path.join(self.tmp_dpath, "receptor.pdb")
-            write_receptor_traj([_cnfrs_list], self.receptor, self.receptor_fpath)
+                #_cnfrs_list = self.receptor.init_sidechain_cnfrs()
+                with open(self.receptor_fpath, 'w') as tf:
+                    for l in self.receptor.receptor_original_lines:
+                        tf.write(l.strip("\n") + "\n")
         else:
             self.receptor_fpath = []
             for i, _cnfrs_list in enumerate(cnfrs_list):
