@@ -228,6 +228,7 @@ class RtmscoreExtSF(RtmscoreSF):
         self.tmp_dpath = None
         self.receptor_fpath = None
         self.ligand_fpath   = None
+        self.output_fpath   = None
     
     def _score(self, receptor_fpath=None, ligand_fpath=None):
         rtm_out_fpath = f"{self.tmp_dpath}/rtmscore.csv" 
@@ -237,7 +238,10 @@ class RtmscoreExtSF(RtmscoreSF):
             obabel(receptor_fpath, f'{self.tmp_dpath}/receptor.pdb')
 
             # convert ligand
-            obabel(ligand_fpath, f'{self.tmp_dpath}/docked_ligands.sdf')
+            # convert ligand files
+            cmd = f'{OBABEL} {ligand_fpath} -O {self.tmp_dpath}/docked_ligands.sdf'
+            self._run_cmd(cmd)
+            #obabel(ligand_fpath, f'{self.tmp_dpath}/docked_ligands.sdf')
 
             # convert ligand files
             cmd = f'{OBABEL} {ligand_fpath} -O {self.tmp_dpath}/pocket_.sdf -m'
@@ -249,6 +253,9 @@ class RtmscoreExtSF(RtmscoreSF):
                 f"-rl {self.tmp_dpath}/pocket_1.sdf", f"-o {self.tmp_dpath}/rtmscore",
                 f"-m {PACKAGE_DPATH}/trained_models/rtmscore_model1.pth"]
             self._run_cmd(" ".join(cmd))
+
+            if self.output_fpath is not None and os.path.exists(rtm_out_fpath):
+                shutil.copy(rtm_out_fpath, self.output_fpath)
         
         if not os.path.exists(rtm_out_fpath):
             return [99.99]
@@ -268,9 +275,17 @@ if __name__ == "__main__":
 
     # define a flexible ligand object 
     ligand = LigandConformation(sys.argv[1])
+    print(ligand.init_heavy_atoms_coords.shape)
+    xyz_center = ligand.init_heavy_atoms_coords.mean(axis=1)
     receptor = ReceptorConformation(sys.argv[2], 
+                                    torch.Tensor(xyz_center).reshape((1, 3)), 
                                     ligand.init_heavy_atoms_coords)
 
     sf = RtmscoreExtSF(receptor=receptor, ligand=ligand)
-    print(sf.scoring())
+    sf.receptor_fpath = sys.argv[2]
+    sf.ligand_fpath = sys.argv[1]
+    sf.output_fpath = sys.argv[3]
+    scores = sf.scoring() 
+    print(scores)
+
     

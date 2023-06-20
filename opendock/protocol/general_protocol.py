@@ -14,7 +14,10 @@ from opendock.scorer.onionnet_sfct import OnionNetSFCTSF
 #from opendock.scorer.rtmscore import RtmscoreExtSF
 from opendock.scorer.zPoseRanker import zPoseRankerSF
 from opendock.scorer.deeprmsd import DeepRmsdSF, CNN, DRmsdVinaSF
-from opendock.scorer.xscore import XscoreSF
+try:
+    from opendock.scorer.xscore import XscoreSF
+except:
+    pass
 
 from opendock.core.conformation import ReceptorConformation
 from opendock.core.conformation import LigandConformation
@@ -37,7 +40,7 @@ scorers = {
     "sfct": OnionNetSFCTSF,
 #    "rtm": RtmscoreExtSF,
     "zranker": zPoseRankerSF,
-    "xscore": XscoreSF
+#    "xscore": XscoreSF
 }
 
 minimizers = {

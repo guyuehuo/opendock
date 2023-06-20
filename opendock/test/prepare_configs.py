@@ -4,17 +4,14 @@ import shutil
 import argparse
 import subprocess as sp 
 #from openbabel import openbabel as ob
-import openbabel as ob
+#import openbabel as ob
 from opendock.core.ligand import Ligand
 
 
 def convert_mol(inp, out):
-     
-    obConversion = ob.OBConversion()
-    obConversion.SetInAndOutFormats(inp.split('.')[-1], "pdbqt")
-    ligand = ob.OBMol()
-    obConversion.ReadFile(ligand, inp)
-    obConversion.WriteFile(ligand, out)
+
+    cmd = f"obabel {inp} -O {out}"   
+    run_cmd(cmd)  
 
 def run_cmd(cmd):
 
@@ -82,13 +79,18 @@ if __name__ == "__main__":
     # make ligand file
     lig_fpath = os.path.abspath(os.path.join(args.output, "ligand.pdbqt"))
     if not os.path.exists(lig_fpath):
-        convert_mol(args.ligand, lig_fpath)
+        if args.ligand.endswith("pdbqt"):
+            shutil.copy(args.ligand, lig_fpath)
+        else:
+            convert_mol(args.ligand, lig_fpath)
 
     # make reference file
     ref_fpath = os.path.join(args.output, "refer.pdbqt")
     if not os.path.exists(ref_fpath):
-        convert_mol(args.reference, ref_fpath)
-    
+       if args.reference.endswith(".pdbqt"):
+           shutil.copy(args.reference, ref_fpath)
+       else:
+           convert_mol(args.reference, lig_fpath) 
     # pocket center
     lig = Ligand(ref_fpath)
     lig.parse_ligand()

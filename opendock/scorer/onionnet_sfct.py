@@ -101,30 +101,53 @@ if __name__ == "__main__":
         print(f"find previous output {sys.argv[3]}, exit now!!!")
         sys.exit(0)
 
-    from opendock.core.conformation import ReceptorConformation
-    from opendock.core.conformation import LigandConformation
-
-    # define a flexible ligand object 
-    ligand = LigandConformation(sys.argv[1])
-    xyz_center = ligand._get_geo_center().detach().numpy()[0]
-    print("Ligand XYZ COM", xyz_center) 
-    receptor = ReceptorConformation(sys.argv[2], 
-                                    xyz_center,
-                                    ligand.init_heavy_atoms_coords)
-
-    sf = OnionNetSFCTSF(receptor, ligand, 
-                        python_exe=SFCT_PY_BIN, 
-                        scorer_bin=SFCT_PY_SCRIPT, 
-                        verbose=True)
-    score = sf.scoring(remove_temp=True)
-    print("SFCT score ", score)
-
     tf = open(sys.argv[3], 'w')
     try:
         tag = sys.argv[4]
     except:
         tag = "decoy"
 
-    score = score.detach().numpy().ravel()[0] 
-    tf.write(f'{tag},{score:.3f}\n')
-    tf.close()
+    try:
+        from opendock.core.conformation import ReceptorConformation
+        from opendock.core.conformation import LigandConformation
+
+        # define a flexible ligand object 
+        ligand = LigandConformation(sys.argv[1])
+        xyz_center = ligand._get_geo_center().detach().numpy()[0]
+        print("Ligand XYZ COM", xyz_center) 
+        receptor = ReceptorConformation(sys.argv[2], 
+                                        xyz_center,
+                                        ligand.init_heavy_atoms_coords)
+        sf = OnionNetSFCTSF(receptor, ligand, 
+                            python_exe=SFCT_PY_BIN, 
+                            scorer_bin=SFCT_PY_SCRIPT, 
+                            verbose=True)
+        score = sf.scoring(remove_temp=True)
+        print("SFCT score ", score)
+
+        score = score.detach().numpy().ravel()[0] 
+        tf.write(f'{tag},{score:.3f}\n')
+        tf.close()
+    except:
+        import subprocess as sp
+        import uuid
+
+        tmpid = str(uuid.uuid4().hex)[:8]
+        cmd = f"/user/zhengliangzhen/bin/run_sfct.sh {sys.argv[2]} {sys.argv[1]} /tmp/sfct_{tmpid}.txt 1.0 general"
+        print("Running cmd: ", cmd)
+        job = sp.Popen(cmd, shell=True)
+        job.communicate()
+
+        if os.path.exists(f"/tmp/sfct_{tmpid}.txt"):
+            with open(f"/tmp/sfct_{tmpid}.txt") as lines:
+                try:
+                    score = [float(x.strip('\n').split()[-1]) for x in lines if "#" not in x][0]
+                except:
+                    score = 99.9
+            tf.write(f'{tag},{score:.3f}\n')
+            tf.close()
+
+            os.remove(f"/tmp/sfct_{tmpid}.txt")
+
+    #tf.write(f'{tag},{score:.3f}\n')
+    #tf.close()
