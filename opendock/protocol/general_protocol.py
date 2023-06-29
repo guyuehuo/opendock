@@ -2,6 +2,7 @@
 import os, sys 
 import argparse
 import torch
+import multiprocessing
 # sampler
 from opendock.sampler.bayesian import BayesianOptimizationSampler
 from opendock.sampler.monte_carlo import MonteCarloSampler
