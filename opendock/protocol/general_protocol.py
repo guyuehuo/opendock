@@ -114,6 +114,7 @@ def main():
                                          box_size=box_sizes, 
                                          minimizer=minimizers[args.minimizer],
                                          )
+    torch.multiprocessing.set_sharing_strategy('file_system')
     print(f"The current number of CPU cores in the computer is: {multiprocessing.cpu_count()}")
     #exit()
     available_cpu_cores = multiprocessing.cpu_count()  # Obtain the number of CPU cores in the system
