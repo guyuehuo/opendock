@@ -14,7 +14,10 @@ from opendock.scorer.onionnet_sfct import OnionNetSFCTSF
 #from opendock.scorer.rtmscore import RtmscoreExtSF
 from opendock.scorer.zPoseRanker import zPoseRankerSF
 from opendock.scorer.deeprmsd import DeepRmsdSF, CNN, DRmsdVinaSF
-from opendock.scorer.xscore import XscoreSF
+try:
+    from opendock.scorer.xscore import XscoreSF
+except:
+    pass
 
 from opendock.core.conformation import ReceptorConformation
 from opendock.core.conformation import LigandConformation
@@ -37,7 +40,7 @@ scorers = {
     "sfct": OnionNetSFCTSF,
 #    "rtm": RtmscoreExtSF,
     "zranker": zPoseRankerSF,
-    "xscore": XscoreSF
+#    "xscore": XscoreSF
 }
 
 minimizers = {
@@ -65,7 +68,19 @@ def argument():
         sys.exit(0)
 
     return args
-
+    
+def worker(cpu_core_index,args,ligand, receptor, sf, init_lig_cnfrs, xyz_center, box_sizes, minimizer, sampler, num_samples, results_cnfrs, results_scores, process_id):
+        os.sched_setaffinity(0, [cpu_core_index])  # Set CPU affinity for the current process,Suitable for Linux systems
+        ligand.cnfrs_, receptor.cnfrs_ = sampler._random_move(init_lig_cnfrs, receptor.init_cnfrs)
+        sampler = samplers[args.sampler][0](ligand, receptor, sf, 
+                                         box_center=xyz_center, 
+                                         box_size=box_sizes, 
+                                         minimizer=minimizers[minimizer],
+                                         )
+        print(f"[INFO] {args.sampler} Round #{process_id}")
+        sampler.sampling(num_samples)
+        results_cnfrs+=sampler.ligand_cnfrs_history_
+        results_scores+=sampler.ligand_scores_history_
 
 def main():
 
@@ -98,18 +113,27 @@ def main():
                                          box_size=box_sizes, 
                                          minimizer=minimizers[args.minimizer],
                                          )
-    for i in range(configs['tasks']):
-        ligand.cnfrs_, receptor.cnfrs_ = sampler._random_move(init_lig_cnfrs, receptor.init_cnfrs)
-        #ligand.cnfrs_, receptor.cnfrs_ = ligand.init_cnfrs, receptor.init_cnfrs
-        sampler = samplers[args.sampler][0](ligand, receptor, sf, 
-                                         box_center=xyz_center, 
-                                         box_size=box_sizes, 
-                                         minimizer=minimizers[args.minimizer],
-                                         )
-        print(f"[INFO] {args.sampler} Round #{i}")
-        sampler.sampling(samplers[args.sampler][1] * ligand.number_of_heavy_atoms)
-        collected_cnfrs += sampler.ligand_cnfrs_history_
-        collected_scores+= sampler.ligand_scores_history_ 
+    print(f"The current number of CPU cores in the computer is: {multiprocessing.cpu_count()}")
+    #exit()
+    available_cpu_cores = multiprocessing.cpu_count()  # Obtain the number of CPU cores in the system
+    #num_processes = configs['tasks']
+    num_processes = available_cpu_cores # Set the parallel number to the number of CPU cores
+    num_samples = samplers[args.sampler][1] * ligand.number_of_heavy_atoms
+
+    results_cnfrs = multiprocessing.Manager().list()
+    results_scores = multiprocessing.Manager().list()
+    mi = args.minimizer
+    processes = []
+    for i in range(num_processes):
+        cpu_core_index = i % available_cpu_cores
+        p = multiprocessing.Process(target=worker, args=(cpu_core_index,args, ligand, receptor, sf, init_lig_cnfrs, xyz_center, box_sizes, mi, sampler, num_samples, results_cnfrs, results_scores, i))
+        processes.append(p)
+        p.start()
+    for p in processes:
+         p.join()
+
+    collected_cnfrs = results_cnfrs
+    collected_scores = results_scores
 
     print("[INFO] Number of collected conformations: ", len(collected_cnfrs))
     # make clustering
@@ -148,4 +172,3 @@ def main():
 if __name__ == '__main__':
 
     main()
-
