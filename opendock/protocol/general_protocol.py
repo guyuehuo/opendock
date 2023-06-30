@@ -132,7 +132,7 @@ def main():
         processes.append(p)
         p.start()
     for p in processes:
-         p.join()
+        p.join()
 
     collected_cnfrs = results_cnfrs
     collected_scores = results_scores
