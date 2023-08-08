@@ -26,8 +26,8 @@ class MonteCarloSampler(BaseSampler):
         self.box_center = kwargs.pop('box_center', None)
         self.box_size   = kwargs.pop('box_size', None)
         self.random_start = kwargs.pop('random_start', False)
-        self.early_stop_tolerance = kwargs.pop("early_stop_tolerance", 1000)
-        self.ntasks=kwargs.pop("ntasks", 1)
+        self.ntasks = kwargs.pop("ntasks", 1)
+        self.early_stop_tolerance = kwargs.pop("early_stop_tolerance", 100*self.ntasks)
         self.index_ = 0
         self.best_cnfrs_ = [None, None]
         self.history_ = [[] for _ in range(self.ntasks)]
