@@ -54,6 +54,10 @@ class BaseScoringFunction(object):
         Returns:
             matrix: torch.Tensor, the returned matrix
         """
+        if self.receptor.rec_heavy_atoms_xyz.shape is []:
+            return None 
+
+        #print(self.receptor.rec_heavy_atoms_xyz.shape)
         rec_heavy_atoms_xyz = self.receptor.rec_heavy_atoms_xyz.expand(len(self.ligand.pose_heavy_atoms_coords), -1, 3)
 
         # Generate the distance matrix of heavy atoms between the protein and the ligand.
