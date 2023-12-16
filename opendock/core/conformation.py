@@ -148,10 +148,8 @@ class LigandConformation(Ligand):
         self.number_of_cnfr_tensor = len(cnfr_tensor[0])
         self.pose_heavy_atoms_coords = [0] * self.number_of_heavy_atoms
 
-        # print('完整cnfrs:',cnfr_tensor )
         self.cnfr_tensor = cnfr_tensor[0]
         # self.cnfr_tensor = cnfr_tensor
-        # print('第一维cnfrs:',self.cnfr_tensor)
         self._update_root_coords()
 
         for i in range(1, 1 + self.number_of_frames):
