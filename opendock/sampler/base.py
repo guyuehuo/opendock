@@ -137,6 +137,7 @@ class BaseSampler(object):
     def _random_move(self, ligand_cnfrs, receptor_cnfrs):
         # make a random move
         print("[INFO] Initial Vector: ", ligand_cnfrs, receptor_cnfrs)
+        self.kt_=1.0
         self.ligand.cnfrs_, self.receptor.cnfrs_ = \
                 self._mutate(ligand_cnfrs, 
                              receptor_cnfrs, 
