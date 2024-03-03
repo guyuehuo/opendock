@@ -87,9 +87,6 @@ class ParticleSwarmOptimizer(BaseSampler):
         self.box_center = kwargs.pop('box_center', None)
         self.box_size = kwargs.pop('box_size', None)
         self.early_stop_tolerance = kwargs.pop('early_stop_tolerance', 20)
-
-        # 已经全部改为了MC
-
         self.minimization_ratio = kwargs.pop('minimization_ratio', 1. / 3.)
 
         # make boundary points
@@ -213,9 +210,6 @@ class ParticleSwarmOptimizer(BaseSampler):
             # print("self.swarm[0].fitness",self.swarm[0].fitness)
             #print("step", _step)
             for i in range(self.size):
-
-                # 这里要不要修改注释掉
-
 
                 particle = self.swarm[i]
                 particle.fitness = self.objective_func(particle.position)
