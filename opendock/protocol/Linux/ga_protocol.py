@@ -90,7 +90,7 @@ def worker(cpu_core_index, ligand, receptor, sf, init_lig_cnfrs, init_recp_cnfrs
                                  box_center=xyz_center,
                                  box_size=box_sizes,
                                  minimizer=adam_minimizer,
-                                 minimization_ratio=1.0,   #0.6
+                                 minimization_ratio=0.6,   #0.6
                                  n_pop=2,  #2
                                  p_c=0.3,
                                  p_m=0.2,
