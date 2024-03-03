@@ -74,7 +74,7 @@ class BaseSampler(object):
 
     def _minimize(self, x_ligand=None, x_receptor=None, 
                   is_ligand=True, is_receptor=False, 
-                  lr=0.1, nsteps=15):
+                  lr=0.1, nsteps=5):
         """
         Minimize the cnfrs if required.
         """
