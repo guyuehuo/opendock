@@ -1,0 +1,10 @@
+#!/bin/bash
+#SBATCH --nodes=1
+#SBATCH --ntasks=32
+#SBATCH --cpus-per-task=1
+#SBATCH --job-name=opendock
+#SBATCH --output=opendock.out
+#SBATCH --error=opendock.err
+
+srun python ../../opendock/protocol/mc_protocol.py -c vina.config
+python ../../opendock/protocol/integration.py -c vina.config
