@@ -26,8 +26,8 @@ class MonteCarloSampler(BaseSampler):
         self.box_center = kwargs.pop('box_center', None)
         self.box_size   = kwargs.pop('box_size', None)
         self.random_start = kwargs.pop('random_start', False)
-        self.ntasks = kwargs.pop("ntasks", 1)
-        self.early_stop_tolerance = kwargs.pop("early_stop_tolerance", 100*self.ntasks)
+        self.early_stop_tolerance = kwargs.pop("early_stop_tolerance", 50)
+        self.ntasks=kwargs.pop("ntasks", 1)
         self.index_ = 0
         self.best_cnfrs_ = [None, None]
         self.history_ = [[] for _ in range(self.ntasks)]
@@ -64,7 +64,7 @@ class MonteCarloSampler(BaseSampler):
         _lig_cnfrs, _rec_cnfrs = self._mutate(self.ligand.cnfrs_, 
                                               self.receptor.cnfrs_,
                                               5.0, 0.1,
-                                              minimize=minimize)
+                                              minimize=minimize,lr=self.kt_)
         t2=time.time()
         # calculate score
         score = self._score(_lig_cnfrs, _rec_cnfrs).detach().numpy()
@@ -74,7 +74,8 @@ class MonteCarloSampler(BaseSampler):
           his=self.history_[i][-1][0]
           #print('his:',his)
           delta_score= score[i][0] - his
-          print(f'[INFO] #{self.index_} {self.__class__.__name__} curr {score[i][0]:.2f} prev {his:.2f} dG {delta_score:.2f}')
+          #print(f'[INFO] #{self.index_} {self.__class__.__name__} curr {score[i][0]:.2f} prev {his:.2f} dG {delta_score:.2f}')
+          print(f'[INFO] #{self.index_} {self.__class__.__name__} curr {score[i][0]:.2f}')
 
           # metropolis
           if delta_score < 0:
@@ -99,12 +100,13 @@ class MonteCarloSampler(BaseSampler):
                 #self.receptor.cnfrs_ = _rec_cnfrs
 
             self.history_[i].append([score[i][0], prob, 1.])
-            print(f'[INFO] #{self.index_} {self.__class__.__name__} accept prob {prob:.2f} and rnd_num {rnd_num:.2f}')
+            #print(f'[INFO] #{self.index_} {self.__class__.__name__} accept prob {prob:.2f} and rnd_num {rnd_num:.2f}')
+            #print(f'[INFO] #{self.index_} {self.__class__.__name__} accept prob {prob:.2f} and rnd_num {rnd_num:.2f}')
             self.ligand_cnfrs_history_.append(torch.Tensor([self.ligand.cnfrs_[0].detach().numpy()[i]]))
             self.ligand_scores_history_.append(score[i][0])
-          else:
+          #else:
             #self.history_.append([his, prob, 0.])
-            print(f'[INFO] #{self.index_} {self.__class__.__name__} reject prob {prob:.2f} and rnd_num {rnd_num:.2f}')
+            #print(f'[INFO] #{self.index_} {self.__class__.__name__} reject prob {prob:.2f} and rnd_num {rnd_num:.2f}')
           if score[i][0] < self.best[0]:
             self.best = [score[i][0], 1, prob]
             self.best_cnfrs_ = [torch.Tensor([self.ligand.cnfrs_[0].detach().numpy()[i]]), _rec_cnfrs]
@@ -125,6 +127,7 @@ class MonteCarloSampler(BaseSampler):
         if nsteps is not None:
             self.nsteps_ = nsteps
 
+        is_a_success_sampling=True
         # score, prob, is_accept
         _score = self._score(self.ligand.cnfrs_, self.receptor.cnfrs_)
         #print('_score',_score)
@@ -149,10 +152,11 @@ class MonteCarloSampler(BaseSampler):
             else:
                 self._step(minimize=False)
 
-            # gradient zero check to aviod no changing score
+            #gradient zero check to aviod no changing score
             if len(self.ligand_cnfrs_history_) > 20 and \
                 (np.array(self.ligand_scores_history_[-20:]) == 0).sum() >= 19:
                 print("[WARNING] find no changing scores in sampling, exit now!!!")
+                is_a_success_sampling=False
                 break
 
             # early stop checking
@@ -160,9 +164,11 @@ class MonteCarloSampler(BaseSampler):
                 np.array(self.ligand_scores_history_[-1 * self.early_stop_tolerance:]).min() \
                     >= self.ligand_scores_history_[-1 * self.early_stop_tolerance]:
                 print(f"[WARNING] find no changing scores in sampling for over {self.early_stop_tolerance} steps, exit now!!!")
+                is_a_success_sampling=False
                 break
         print('mutate time：',t_m/60)
         print('scoring time：',t_s/60)
+        return is_a_success_sampling
 
     def save_traj(self, output_fpath_ligand=None, output_fpath_receptor=None):
         if output_fpath_ligand is not None:
