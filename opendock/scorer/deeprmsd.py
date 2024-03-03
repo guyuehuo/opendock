@@ -212,7 +212,7 @@ class DRmsdVinaSF(DeepRmsdSF):
         _vina_sf = VinaSF(ligand=self.ligand, 
                           receptor=self.receptor)
         return _vina_sf.scoring() * self.weight_alpha + \
-               self.scoring() * (1 - self.weight_alpha)
+               super.scoring() * (1 - self.weight_alpha)
 
 
 if __name__ == "__main__":
