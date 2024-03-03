@@ -182,5 +182,5 @@ indices of residue GLU5 in chain A are determined.
 # Performance
 
 # Documentation
-The installation instructions, documentation and tutorials can be found on https://readthedocs-idock.readthedocs.io/en/latest/
+The installation instructions, documentation and tutorials can be found on [readthedocs.org](https://readthedocs-idock.readthedocs.io/en/latest/)
 # Citation
