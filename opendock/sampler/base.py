@@ -90,7 +90,6 @@ class BaseSampler(object):
                 self.ligand.cnfr2xyz(x)
                 #print('d1')
                 score = torch.sum(self.scoring_function.scoring())
-                #print('优化采用的loss',score)
                 #print('d2')
                 return score
             #print("Current Minimimzer ", self.minimizer)
@@ -134,7 +133,6 @@ class BaseSampler(object):
 
         # xyz coords shape (1, N, 3)
         xyz_coords = self.ligand.cnfr2xyz(ligand_cnfrs).detach()[0]
-        #print('所有的xyz',self.ligand.cnfr2xyz(ligand_cnfrs).detach())
         #print('xyz_coord',xyz_coords)
         #print("XYZ coords shape ", xyz_coords, xyz_coords.shape)
 
@@ -155,10 +153,8 @@ class BaseSampler(object):
         # ligand.ligand_center[0][0] = box_center[0]
         # ligand.ligand_center[0][1] = box_center[1]
         # ligand.ligand_center[0][2] = box_center[2]
-        #print("初始化的、未突变的：")
         self._out_of_box_check(ligand_cnfrs)
         print("[INFO] Initial Vector: ", ligand_cnfrs, receptor_cnfrs)
-        #print("随机初始化：")
         self.ligand.cnfrs_, self.receptor.cnfrs_ = \
                 self.initial_mutate(ligand_cnfrs,
                              receptor_cnfrs,
@@ -544,7 +540,7 @@ class BaseSampler(object):
                 print("[WARNING] minimize failed, skipping")
 
         return _new_ligand_cnfrs, _new_receptor_cnfrs
-    #原版的mutate
+    #origin mutate
     # def _mutate(self, ligand_cnfrs = None,
     #             receptor_cnfrs = None,
     #             coords_max=5.0,
