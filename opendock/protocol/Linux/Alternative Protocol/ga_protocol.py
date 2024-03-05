@@ -136,7 +136,7 @@ def main():
         sampler= GeneticAlgorithmSampler(ligand, receptor, sf,
                                      box_center=xyz_center,
                                      box_size=box_sizes,
-                                     minimizer=lbfgs_minimizer,
+                                     minimizer=adam_minimizer,
                                      minimization_ratio=0.6,
                                      n_pop=2,
                                      p_c=0.3,
