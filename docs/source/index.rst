@@ -31,11 +31,9 @@ Contents
    framework
    docking_requirements
    docking_basic
-   docking_flexible
-   docking_multiple_ligands
-   docking_zinc
-   docking_hydrated
-   docking_macrocycle
+   docking_multiple
+   docking_constrained
+   side-chain_optimization
    docking_python
    usage
 

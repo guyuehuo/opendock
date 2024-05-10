@@ -98,3 +98,14 @@ finely control the ligand or receptor conformations guided by the scoring functi
     
     # save ligand conformations
     mc.save_traj("traj_saved_100.pdb")
+
+For this tutorial, all the basic material are provided and can be found 
+in the ``opendock/opendock/protocol`` directory
+
+You can find this script in the `example` folder of OpenDock available on Github. To execute it from a command line,
+go to your terminal/console/command prompt window. Navigate to the `examples` folder by typing
+
+.. code-block:: console
+
+    $ cd opendock/example/1gpn
+    $ python first_example.py -c vina.config # waiting to finish
