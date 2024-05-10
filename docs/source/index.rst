@@ -34,8 +34,7 @@ Contents
    docking_multiple
    docking_constrained
    side-chain_optimization
-   docking_python
-   usage
+
 
 .. toctree::
    :maxdepth: 2
