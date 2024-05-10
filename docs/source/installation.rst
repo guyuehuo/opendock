@@ -25,12 +25,14 @@ The Anaconda Python distribution, which can be download from `https://docs.conti
     $ conda config --env --add channels conda-forge
 
 3. Before you can use the framework, you may install the following python packages:
+
 .. code-block:: bash   
     $ pip install numpy
     $ pip install pytorch 
     $ pip install pandas 
 
 4. Install `OpenDock` package by using pip install:
+
 .. code-block:: bash  
     $ cd opendock/
     $ pip install . 
