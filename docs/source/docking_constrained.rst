@@ -46,3 +46,8 @@ When you can predict the position information of atoms,
 you can generate a distance matrix and use this distance
 matrix as a constraint to guide the docking to the direction you expect.
 
+In the following example,you can import a distance matrix from outside as a constraint.
+
+.. code-block:: bash
+
+    waiting for updates
