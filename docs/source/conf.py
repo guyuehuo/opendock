@@ -2,7 +2,7 @@
 
 # -- Project information
 
-project = 'idock-readthedocs'
+project = 'opendock-readthedocs'
 copyright = '2021, Graziella'
 author = 'Huqiuyue'
 
