@@ -28,6 +28,7 @@ Contents
    :hidden:
    :caption: Tutorials
 
+   framework
    usage
    docking_requirements
    docking_basic
