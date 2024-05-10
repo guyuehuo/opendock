@@ -43,3 +43,58 @@ This step is very similar to the previous step. We will also create a PDBQT file
 ------------------------------
 
 You can generate a configuration file by running the prepare_configs.py file,which is located in ``opendock/opendock/test/Prepare_configs.py``
+
+4. A simple example of running opendock
+--------------------
+
+create a simple Monte Carlo based sampling strategy with Vinascore for scoring. 
+In this example, the ligand is parsed by the `LigandConformation` class, and the receptor 
+is defined by the `ReceptorConformation` class. The scoring function here is `VinaSF`, which 
+needs the ligand object and the receptor object. Then the sampler (`MonteCarloSampler`) is
+defined by providing the ligand the receptor object as well as the scoring function object. 
+After 100 steps of the sampling, the ligand poses are output.
+In this example, the `adam_minimizer` is a minimizer function that could be used to
+finely control the ligand or receptor conformations guided by the scoring function object.
+
+    ```
+    from opendock.core.conformation import ReceptorConformation
+    from opendock.core.conformation import LigandConformation
+    from opendock.scorer.vina import VinaSF
+    from opendock.scorer.deeprmsd import DeepRmsdSF, CNN, DRmsdVinaSF
+    from opendock.scorer.constraints import rmsd_to_reference
+    from opendock.core import io
+
+    # define a flexible ligand object 
+    ligand = LigandConformation(sys.argv[1])
+    # define the receptor object
+    receptor = ReceptorConformation(sys.argv[2], 
+                                    ligand.init_heavy_atoms_coords)
+    receptor.init_sidechain_cnfrs()
+    
+    # define scoring function
+    sf = VinaSF(receptor, ligand)
+    vs = sf.scoring()
+    print("Vina Score ", vs)
+
+    # ligand center
+    xyz_center = ligand._get_geo_center().detach().numpy()[0]
+    print("Ligand XYZ COM", xyz_center)
+
+    # define sampler
+    print("Cnfrs: ",ligand.cnfrs_, receptor.cnfrs_)
+    mc = MonteCarloSampler(ligand, receptor, sf, 
+                           box_center=xyz_center, 
+                           box_size=[20, 20, 20], 
+                           random_start=True,
+                           minimizer=adam_minimizer,
+                           )
+    init_score = mc._score(ligand.cnfrs_, receptor.cnfrs_)
+    print("Initial Score", init_score)
+
+    # run mc sampling
+    mc._random_move()
+    mc.sampling(100)
+    
+    # save ligand conformations
+    mc.save_traj("traj_saved_100.pdb")
+    ```
