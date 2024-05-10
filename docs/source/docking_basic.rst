@@ -47,16 +47,17 @@ You can generate a configuration file by running the prepare_configs.py file,whi
 4. A simple example of running opendock
 --------------------
 
-create a simple Monte Carlo based sampling strategy with Vinascore for scoring. 
-In this example, the ligand is parsed by the `LigandConformation` class, and the receptor 
-is defined by the `ReceptorConformation` class. The scoring function here is `VinaSF`, which 
-needs the ligand object and the receptor object. Then the sampler (`MonteCarloSampler`) is
+Create a simple Monte Carlo based sampling strategy with Vinascore for scoring. 
+In this example, the ligand is parsed by the ``LigandConformation`` class, and the receptor 
+is defined by the ``ReceptorConformation`` class. The scoring function here is ``VinaSF``, which 
+needs the ligand object and the receptor object. Then the sampler (``MonteCarloSampler``) is
 defined by providing the ligand the receptor object as well as the scoring function object. 
 After 100 steps of the sampling, the ligand poses are output.
-In this example, the `adam_minimizer` is a minimizer function that could be used to
+In this example, the ``adam_minimizer`` is a minimizer function that could be used to
 finely control the ligand or receptor conformations guided by the scoring function object.
 
-    ```
+.. code-block:: bash
+
     from opendock.core.conformation import ReceptorConformation
     from opendock.core.conformation import LigandConformation
     from opendock.scorer.vina import VinaSF
@@ -97,4 +98,3 @@ finely control the ligand or receptor conformations guided by the scoring functi
     
     # save ligand conformations
     mc.save_traj("traj_saved_100.pdb")
-    ```
