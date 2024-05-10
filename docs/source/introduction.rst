@@ -10,6 +10,3 @@ Distance and angle constraints are also implemented to allow covalent docking or
 Overall, this framework serves as a valuable tool in drug design and small molecule modeling, 
 offering great flexibility for most of the protein-ligand complex docking and modelling tasks.
 
-The following is the overall framework diagram of OpenDock
-.. image:: ../picture/workflow.png
-   :alt: Overall framework diagram

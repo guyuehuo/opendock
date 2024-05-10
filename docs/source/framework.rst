@@ -7,7 +7,6 @@ Opendock can support various sampling strategies and scoring functions.
 The following is the overall framework diagram of OpenDock
 
 .. image:: ../picture/workflow.png
-
    :alt: Overall framework diagram
 
 Opendock employs numerous classes. The diagram below reveals the inheritance relationships 
@@ -16,5 +15,4 @@ Understanding these aspects can facilitate more customized usage of Opendock.
 
 
 .. image:: ../picture/class-relationship.png
-
    :alt: Class relationship diagram

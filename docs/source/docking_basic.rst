@@ -39,4 +39,7 @@ This step is very similar to the previous step. We will also create a PDBQT file
 
     $ obabel 1gpn_ligand.sdf -o 1gpn_ligand.pdbqt
 
-Other options are available for ``mk_prepare_ligand.py`` by typing ``mk_prepare_ligand.py --help``. If you are not sure about this step, the output PDBQT file ``1iep_ligand.pdbqt`` is available in ``solution`` directory.
+3. Prepare configuration files
+
+You can generate a configuration file by running the prepare_configs.py file,which is located in ``opendock/opendock/test
+/Prepare_configs.py``
