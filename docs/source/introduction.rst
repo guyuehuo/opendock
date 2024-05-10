@@ -6,5 +6,6 @@ for post-processing scoring. In terms of sampling, the current version of this f
 annealing and Monte Carlo optimization. Additionally, it can be extended to include methods such as genetic 
 algorithms and particle swarm optimization for optimizing docking poses and protein side chain orientations. 
 Distance and angle constraints are also implemented to allow covalent docking or constraints guided pose sampling.
- Overall, this framework serves as a valuable tool in drug design and small molecule modeling, 
- offering great flexibility for most of the protein-ligand complex docking and modelling tasks.
+
+Overall, this framework serves as a valuable tool in drug design and small molecule modeling, 
+offering great flexibility for most of the protein-ligand complex docking and modelling tasks.
