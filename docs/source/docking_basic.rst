@@ -7,7 +7,7 @@ Let's start with our first example of docking, where the typical usage pattern w
 In this example, Monte Carlo sampling(``MonteCarloSampler``) will be used, and the scoring function will employ Vinascore (``VinaSF``).
 In this example we will dock the PDB entry 1gpn using OpenDock.
 
-1. Preparing the receptor and ligand
+1. Preparing the receptor
 -------------------------
 
 During this step, we will create a PDBQT file of our receptor containing only the polar hydrogen atoms as well as partial charges.
@@ -40,6 +40,6 @@ This step is very similar to the previous step. We will also create a PDBQT file
     $ obabel 1gpn_ligand.sdf -o 1gpn_ligand.pdbqt
 
 3. Prepare configuration files
+------------------------------
 
-You can generate a configuration file by running the prepare_configs.py file,which is located in ``opendock/opendock/test
-/Prepare_configs.py``
+You can generate a configuration file by running the prepare_configs.py file,which is located in ``opendock/opendock/test/Prepare_configs.py``

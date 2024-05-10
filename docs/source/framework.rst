@@ -4,7 +4,7 @@ Framework architecture
 =============
 Before starting molecular docking, we need to have a basic understanding of the overall framework architecture. 
 Opendock can support various sampling strategies and scoring functions.
-The following is the overall framework diagram of OpenDock
+The following is the overall framework diagram of OpenDock.
 
 .. image:: ../picture/workflow.png
    :alt: Overall framework diagram
