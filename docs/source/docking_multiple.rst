@@ -49,6 +49,7 @@ weights. This scoring function (hybrid scoring function by ``VinaSF`` and ``Deep
 could be used to guide pose optimization or global docking.  
 
 .. code-block:: bash
+
     # define scoring function
     sf1 = VinaSF(receptor, ligand)
     vs = sf1.scoring()
@@ -67,6 +68,7 @@ could be used to guide pose optimization or global docking.
 The following hybrid scoring function could be used for sampling. 
 
 .. code-block:: bash
+    
     from opendock.scorer.hybrid import HybridSF
 
     # sf is the hybrid scoring function
