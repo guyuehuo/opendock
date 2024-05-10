@@ -6,9 +6,9 @@ OpenDock
 
 OpenDock is a scientific software that is described in academics publications. Please cite these papers when you used OpenDock in your work:
 
-Waiting...
+Waiting for further updates
 
 Related publications
 --------------------
 
-Waiting...
+Waiting for further updates
