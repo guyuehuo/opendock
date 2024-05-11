@@ -38,11 +38,3 @@ from `github.com/guyuehuo/opendock-open <https://github.com/guyuehuo/opendock-op
    docking_multiple
    docking_constrained
    side-chain_optimization
-
-
-.. toctree::
-   :maxdepth: 2
-   :hidden:
-   :caption: Python Documentation
-
-   vina
