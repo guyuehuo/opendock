@@ -100,5 +100,5 @@ go to your terminal/console/command prompt window. Navigate to the ``examples`` 
 .. code-block:: console
 
     $ cd opendock/example/1gpn
-    $ python atom_pair_distance_constraint_example.py -c vina.config # waiting to finish. Using multiple sampling strategies
-    $ python third_example.py -c vina.config # waiting to finish. Using multiple scoring functions
+    $ python atom_pair_distance_constraint_example.py -c vina.config # waiting to finish.
+    $ python distance_matrix_constraint_example.py -c vina.config # waiting to finish. 
