@@ -92,12 +92,12 @@ The following hybrid scoring function could be used for sampling.
 For this tutorial, all the basic material are provided and can be found 
 in the ``opendock/opendock/protocol`` directory
 
-You can find this script in the `example` folder of OpenDock available on Github. To execute it from a command line,
-go to your terminal/console/command prompt window. Navigate to the `examples` folder by typing
+You can find this script in the ``example`` folder of OpenDock available on Github. To execute it from a command line,
+go to your terminal/console/command prompt window. Navigate to the ``examples`` folder by typing
 
 .. code-block:: console
 
     $ cd opendock/example/1gpn
-    $ python second_example.py -c vina.config # waiting to finish. Using multiple sampling strategies
-    $ python third_example.py -c vina.config # waiting to finish. Using multiple scoring functions
+    $ python multiple_sampling_strategies_example.py -c vina.config # waiting to finish. Using multiple sampling strategies
+    $ python multiple_scoring_functions_example.py -c vina.config # waiting to finish. Using multiple scoring functions
 
