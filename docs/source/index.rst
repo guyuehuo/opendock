@@ -9,8 +9,12 @@ docking by implementing several different traditional and machine learning
 scoring functions. 
 Check out the :doc:`installation` section for installing, and the :doc:`docking_basic` section for further information.
 
-Contents
---------
+Availability
+------------
+
+All **source code** is available under the `Apache License, version 2.0 <https://www.apache.org/licenses/LICENSE-2.0>`_ 
+from `github.com/guyuehuo/opendock-open <https://github.com/guyuehuo/opendock-open>`_
+
 
 .. toctree::
    :maxdepth: 2
@@ -42,4 +46,3 @@ Contents
    :caption: Python Documentation
 
    vina
-OpenDock has its documentation hosted on Read the Docs.
