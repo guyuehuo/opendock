@@ -7,6 +7,7 @@ Currently working on Linux. We did not test on Windows and Mac.
 .. note::
 
     When using ``pip``, it's good pratice to use a virtual environment and also the easiest solution. An example with the `Conda package manager <https://docs.conda.io/en/latest/>`_ is available further down.
+
 .. code-block:: bash
     
     $ pip install opendock #(not functional by now...)
@@ -20,7 +21,7 @@ The Anaconda Python distribution, which can be download from `https://docs.conti
 
 .. code-block:: bash
 
-    $ conda create -n opendock python=3
+    $ conda create -n opendock python=3.8
     $ conda activate opendock
     $ conda config --env --add channels conda-forge
 
@@ -28,9 +29,12 @@ The Anaconda Python distribution, which can be download from `https://docs.conti
 
 .. code-block:: bash
 
+    $ pip install prody
     $ pip install numpy
     $ pip install pytorch 
     $ pip install pandas 
+    $ pip install scipy
+    $ pip install scikit-learn
 
 4. Install `OpenDock` package by using pip install
 
