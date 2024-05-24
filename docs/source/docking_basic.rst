@@ -116,8 +116,8 @@ finely control the ligand or receptor conformations guided by the scoring functi
     ligand.cnfrs_,receptor.cnfrs_= mc._random_move(init_lig_cnfrs ,receptor.cnfrs_)
     mc.sampling(100)
 
-# save ligand conformations
-mc.save_traj("traj_saved_100.pdb")
+    # save ligand conformations
+    mc.save_traj("traj_saved_100.pdb")
 
 For this tutorial, all the basic material are provided and can be found 
 in the ``opendock/opendock/protocol`` directory
