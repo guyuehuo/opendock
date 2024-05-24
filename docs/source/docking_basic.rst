@@ -74,39 +74,50 @@ finely control the ligand or receptor conformations guided by the scoring functi
     from opendock.scorer.constraints import rmsd_to_reference
     from opendock.core import io
 
-    # define a flexible ligand object 
-    ligand = LigandConformation(sys.argv[1])
-    # define the receptor object
-    receptor = ReceptorConformation(sys.argv[2], 
-                                    ligand.init_heavy_atoms_coords)
-    receptor.init_sidechain_cnfrs()
-    
+    args = argument()
+    configs = generate_new_configs(args.config, None)
+    # box information
+    xyz_center = float(configs['center_x']), \
+        float(configs["center_y"]), float(configs["center_z"])
+    box_sizes = float(configs['size_x']), \
+        float(configs['size_y']), float(configs['size_z'])
+
+    # define a flexible ligand object
+    ligand = LigandConformation(configs['ligand'])
+    ligand.ligand_center[0][0] = xyz_center[0]
+    ligand.ligand_center[0][1] = xyz_center[1]
+    ligand.ligand_center[0][2] = xyz_center[2]
+    # define the receptor object)
+    receptor = ReceptorConformation(configs['receptor'],
+                                    torch.Tensor(xyz_center).reshape((1, 3)),
+                                    init_lig_heavy_atoms_xyz=ligand.init_lig_heavy_atoms_xyz,
+                                    )
+
     # define scoring function
     sf = VinaSF(receptor, ligand)
     vs = sf.scoring()
     print("Vina Score ", vs)
 
-    # ligand center
-    xyz_center = ligand._get_geo_center().detach().numpy()[0]
     print("Ligand XYZ COM", xyz_center)
 
     # define sampler
     print("Cnfrs: ",ligand.cnfrs_, receptor.cnfrs_)
-    mc = MonteCarloSampler(ligand, receptor, sf, 
-                           box_center=xyz_center, 
-                           box_size=[20, 20, 20], 
-                           random_start=True,
-                           minimizer=adam_minimizer,
-                           )
+    mc = MonteCarloSampler(ligand, receptor, sf,
+                        box_center=xyz_center,
+                        box_size=[20, 20, 20],
+                        random_start=True,
+                        minimizer=adam_minimizer,
+                        )
     init_score = mc._score(ligand.cnfrs_, receptor.cnfrs_)
     print("Initial Score", init_score)
 
     # run mc sampling
-    mc._random_move()
+    init_lig_cnfrs =[torch.Tensor(ligand.init_cnfrs.detach().numpy())]
+    ligand.cnfrs_,receptor.cnfrs_= mc._random_move(init_lig_cnfrs ,receptor.cnfrs_)
     mc.sampling(100)
-    
-    # save ligand conformations
-    mc.save_traj("traj_saved_100.pdb")
+
+# save ligand conformations
+mc.save_traj("traj_saved_100.pdb")
 
 For this tutorial, all the basic material are provided and can be found 
 in the ``opendock/opendock/protocol`` directory
@@ -117,4 +128,4 @@ go to your terminal/console/command prompt window. Navigate to the ``examples`` 
 .. code-block:: console
 
     $ cd opendock/example/1gpn
-    $ python basic_docking_example.py -c vina.config # waiting to finish
+    $ python basic_docking_example.py -c vina.config
