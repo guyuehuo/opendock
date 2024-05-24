@@ -75,7 +75,7 @@ In the following example,you can import a distance matrix from outside as a cons
     distances_mean, distances_matrix = cnstr.get_distance_matrix()
     # Define external distance matrix,default to txt file
 
-    external_distances_matrix_file_path = os.path.join('./example/1gpn/', 'external_distances_matrix.txt')
+    external_distances_matrix_file_path = os.path.join('./', 'external_distances_matrix.txt')
     distances_matrix_from_file = np.loadtxt(external_distances_matrix_file_path)
 
     #Set the distance matrix for constraints
@@ -100,5 +100,5 @@ go to your terminal/console/command prompt window. Navigate to the ``examples`` 
 .. code-block:: console
 
     $ cd opendock/example/1gpn
-    $ python atom_pair_distance_constraint_example.py -c vina.config # waiting to finish.
-    $ python distance_matrix_constraint_example.py -c vina.config # waiting to finish. 
+    $ python atom_pair_distance_constraint_example.py -c vina.config # Distance constraint between atomic pairs
+    $ python distance_matrix_constraint_example.py -c vina.config # Distance matrix constraint
