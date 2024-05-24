@@ -38,3 +38,4 @@ from `github.com/guyuehuo/opendock-open <https://github.com/guyuehuo/opendock-op
    docking_multiple
    docking_constrained
    side-chain_optimization
+   multi-CPU
