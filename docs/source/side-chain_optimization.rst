@@ -38,5 +38,5 @@ go to your terminal/console/command prompt window. Navigate to the ``examples`` 
 .. code-block:: console
 
     $ cd opendock/example/1gpn
-    $ python side_chain_optimization_example.py -c vina.config # waiting to finish.
+    $ python side_chain_optimization_example.py -c vina.config # Protein side chain optimization.
    
