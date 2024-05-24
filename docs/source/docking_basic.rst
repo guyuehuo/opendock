@@ -42,7 +42,16 @@ This step is very similar to the previous step. We will also create a PDBQT file
 3. Prepare configuration files
 ------------------------------
 
-You can generate a configuration file by running the prepare_configs.py file,which is located in ``opendock/opendock/test/Prepare_configs.py``
+A ``vina.config`` file is required during the docking process,
+you can generate a configuration file by running the prepare_configs.py file,which is located in ``opendock/opendock/test/prepare_configs.py``
+
+.. code-block:: bash
+
+    $ python prepare_configs.py -r your_receptor_path -l your_ligand_path -ref your_refer_path -o your_output_path
+
+.. note::
+
+    ``refer`` usually to the natural structure of the ligand.
 
 4. A simple example of running opendock
 --------------------
