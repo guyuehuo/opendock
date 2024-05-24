@@ -31,13 +31,23 @@ scoring function is ``VinaSF`` class.
     GA = GeneticAlgorithmSampler(ligand, receptor, sf, 
                                  box_center=xyz_center, 
                                  box_size=[20, 20, 20], )
-    GA._initialize()
-    GA.run(n_gen=4)
+    # run ga sampling
+    init_lig_cnfrs =[torch.Tensor(ligand.init_cnfrs.detach().numpy())]
+    ligand.cnfrs_,receptor.cnfrs_= ga._random_move(init_lig_cnfrs ,receptor.cnfrs_)
+    ga.sampling(100)
+    
+    collected_cnfrs += ga.ligand_cnfrs_history_
+    collected_scores += ga.ligand_scores_history_
 
-    _vars = GA.best_chrom_history[-1][1:]
-    _lcnfrs, _rcnfrs = GA._variables2cnfrs(_vars)
-
-    print("Last Ligand Cnfrs ", _lcnfrs)
+    # make clustering
+    ...
+    # final scoring and ranking
+    ...
+    # save ligand conformations
+    write_ligand_traj(_cnfrs_list, ligand,
+                      os.path.join(configs['out'], 'test_ga.pdbqt'),
+                      information={"VinaScore": _scores},
+                      )
 
 2. Using multiple scoring functions
 -------------------------------------
@@ -88,6 +98,8 @@ The following hybrid scoring function could be used for sampling.
                            )
     init_score = mc._score(ligand.cnfrs_, receptor.cnfrs_)
     print("Initial Score", init_score)
+    #sampling
+    ...
 
 For this tutorial, all the basic material are provided and can be found 
 in the ``opendock/opendock/protocol`` directory
@@ -98,6 +110,6 @@ go to your terminal/console/command prompt window. Navigate to the ``examples`` 
 .. code-block:: console
 
     $ cd opendock/example/1gpn
-    $ python multiple_sampling_strategies_example.py -c vina.config # waiting to finish. Using multiple sampling strategies
-    $ python multiple_scoring_functions_example.py -c vina.config # waiting to finish. Using multiple scoring functions
+    $ python multiple_sampling_strategies_example.py -c vina.config #Using multiple sampling strategies
+    $ python multiple_scoring_functions_example.py -c vina.config #Using multiple scoring functions
 
