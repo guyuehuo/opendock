@@ -13,8 +13,10 @@ of constraint positions and strengths using harmonic functions and corresponding
 1. Distance constraint between atomic pairs
 -------------------------------------------
 
-Atom selection example. In the following example, the heavy atom 
-indices of residue GLU5 in chain A are determined. 
+Atom selection example. In the following example (pdb: 3JZY), the OG
+atom of the SER-87 side chain of the protein and the CAF atom of the
+ligand are chosen as the constraint targets, with a constraint distance of 1.5. 
+The modeling code is as follows:
 
 .. code-block:: bash
 
@@ -22,34 +24,48 @@ indices of residue GLU5 in chain A are determined.
     from opendock.scorer.hybrid import HybridSF
     from opendock.core.asl import AtomSelection 
 
+     #set constrain
     asl = AtomSelection(molecule=receptor)
-    indices = asl.select_atom(atomnames=['OE1,OE2',], chains=['A'], residx=['5'], resnames=['GLU'])
-    print(indices)
-
-    asl = AtomSelection(molecule=receptor)
-    indices_r = asl.select_atom(atomnames=['C,O,N,CA',], chains=['A'], residx=['120-122'])
-    print(indices_r, receptor.dataframe_ha_.head())
-
+    indices_r = asl.select_atom(atomnames=['OG', ], chains=['A'], residx=['87'],resnames=['SER'] )
+    
     asl = AtomSelection(molecule=ligand)
-    indices_l = asl.select_atom(atomnames=['N2,C13',])
-    print(indices_l, ligand.dataframe_ha_.head())
+    indices_l = asl.select_atom(atomnames=['CAF', ])
 
     # constraints
-    cnstr = DistanceConstraintSF(receptor, ligand, 
-                                 grpA_ha_indices=indices_r, 
+    costr = DistanceConstraintSF(receptor, ligand,
+                                 grpA_ha_indices=indices_r,
                                  grpB_ha_indices=indices_l,
                                  constraint='wall',
-                                 bounds=[5.0,5.2]
+                                 bounds=[1.5, 1.5]
                                  )
-    print(cnstr.scoring())
-    #Set Vinascore to avoid atomic conflicts
+    # vina scoring function
     vina_sf = VinaSF(receptor, ligand)
-    print("Vina Score ", vina_sf.scoring())
 
     # combined scoring function
-    sf = HybridSF(receptor, ligand, scorers=[vina_sf, cnstr], weights=[0.5, 0.5])
-    vs = sf.scoring()
-    print("HybridSF Score ", vs)
+    sf = HybridSF(receptor, ligand, scorers=[vina_sf, costr], weights=[0.5, 0.5])
+    
+    #set sampling strategy
+    sampler = samplers[args.sampler][0](ligand, receptor, sf,
+                                            box_center=xyz_center,
+                                            box_size=box_sizes,
+                                            minimizer=minimizers[args.minimizer],
+                                            )
+    #sampling
+    ……
+The modeling results with and without constraints are as follows:
+
+.. image:: ../picture/example.png
+   :alt: 3JZY example
+
+For more details, when docking is performed without constraints, the atom pairs selected in the resulting structure often have greater distances.
+In the figure, the unconstrained atomic distance is 6.9, and the docking conformation also differs significantly from the natural conformation (blue).
+When constraints are used, the atomic distance is 1.9, and the docking conformation is very close to the natural conformation.
+
+.. image:: ../picture/no_costr.png
+   :alt: 3JZY no_costr
+
+.. image:: ../picture/costr.png
+   :alt: 3JZY costr 
 
 2. Distance matrix constraint
 ------------------------------
