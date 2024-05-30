@@ -62,13 +62,10 @@ For more details, when docking is performed without constraints, the atom pairs 
 In the figure, the unconstrained atomic distance is 6.9, and the docking conformation also differs significantly from the natural conformation (blue).
 When constraints are used, the atomic distance is 1.9, and the docking conformation is very close to the natural conformation.
 
-.. image:: ../picture/no_costr.png
-   :alt: 3JZY no_costr
+.. image:: ../picture/costr_nocostr.png
+   :alt: 3JZY costr
    :width: 50%
 
-.. image:: ../picture/costr.png
-   :alt: 3JZY costr 
-   :width: 50%
 
 2. Distance matrix constraint
 ------------------------------
