@@ -64,7 +64,6 @@ When constraints are used, the atomic distance is 1.9, and the docking conformat
 
 .. image:: ../picture/costr_nocostr.png
    :alt: 3JZY costr
-   :width: 50%
 
 
 2. Distance matrix constraint
