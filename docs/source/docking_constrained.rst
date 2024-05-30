@@ -52,7 +52,8 @@ The modeling code is as follows:
                                             )
     #sampling
     ……
-The modeling results with and without constraints are as follows:
+The modeling results with and without constraints are as follows,where gray represents the native conformation, and yellow and pink represent the
+conformations after docking with OpenDock.:
 
 .. image:: ../picture/example.png
    :alt: 3JZY example
@@ -63,9 +64,11 @@ When constraints are used, the atomic distance is 1.9, and the docking conformat
 
 .. image:: ../picture/no_costr.png
    :alt: 3JZY no_costr
+   :scale: 60%
 
 .. image:: ../picture/costr.png
    :alt: 3JZY costr 
+   :scale: 60%
 
 2. Distance matrix constraint
 ------------------------------
