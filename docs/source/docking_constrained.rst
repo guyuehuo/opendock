@@ -13,7 +13,7 @@ of constraint positions and strengths using harmonic functions and corresponding
 1. Distance constraint between atomic pairs
 -------------------------------------------
 
-Atom selection example. In the following example (pdb: 3JZY), the OG
+Atom selection example. In the following example (pdb: 3gzj), the OG
 atom of the SER-87 side chain of the protein and the CAF atom of the
 ligand are chosen as the constraint targets, with a constraint distance of 1.5. 
 The modeling code is as follows:
@@ -115,6 +115,7 @@ go to your terminal/console/command prompt window. Navigate to the ``examples`` 
 
 .. code-block:: console
 
-    $ cd opendock/example/1gpn
+    $ cd opendock/example/3gzj
     $ python atom_pair_distance_constraint_example.py -c vina.config # Distance constraint between atomic pairs
+    $ cd opendock/example/1gpn
     $ python distance_matrix_constraint_example.py -c vina.config # Distance matrix constraint
