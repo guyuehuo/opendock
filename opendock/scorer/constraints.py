@@ -1,0 +1,263 @@
+import numpy as np
+import torch
+import itertools
+from opendock.scorer.scoring_function import BaseScoringFunction
+
+
+def upper_wall(x, upper_bound=1.0, k=1.0, exponent=1.0):
+    """Upper bound function.
+
+    Arguments:
+    x: array or vector, or float, the input values 
+    upper_bound: float, the upper bound.
+    k: float, the force constant.
+    exponent: float, the exponent parameter
+
+    Returns: array or vector, or float
+    """
+
+    if x.detach().numpy().ravel()[0] >= upper_bound:
+        return torch.pow((x - upper_bound), exponent) * k
+    else:
+        return torch.Tensor([0.0, ])
+
+
+def lower_wall(x, lower_bound=1.0, k=1.0, exponent=1.0):
+    """AI is creating summary for lower_bound
+
+    Args:
+        x (vector, array, float): the input values
+        lower_bound (float, optional): lower limit. Defaults to 1.0.
+        k (float, optional): force constant. Defaults to 1.0.
+        exponent (float, optional): the exponent parameter. Defaults to 1.0.
+
+    Returns:
+        y(float, array, vector): the returned values
+    """
+    if x.detach().numpy().ravel()[0] <= lower_bound:
+        return torch.pow((lower_bound - x), exponent) * k
+    else:
+        return torch.Tensor([0.0, ])
+
+
+def wall(x, upper_bound=1.0, lower_bound=0.5, k=1.0, exponent=1.0):
+    """AI is creating summary for wall_linear
+
+    Args:
+        x (array, vector, float): the input values
+        upper_bound (float, optional): upper bound limit. Defaults to 1.0.
+        lower_bound (float, optional): lower bound limit. Defaults to 0.5.
+        k (float, optional): force constant. Defaults to 1.0.
+        exponent (float, optional): exponent parameter. Defaults to 1.0.
+
+    Returns:
+        y: array, vector or float, the returned values
+    """
+
+    if x.detach().numpy().ravel()[0] >= upper_bound:
+        return torch.pow((x - upper_bound), exponent) * k
+    elif x <= lower_bound:
+        return torch.pow((lower_bound - x), exponent) * k
+    else:
+        return torch.Tensor([0.0, ])
+
+    
+def harmonic(x, reference=5.0, k=1.0, exponent=2.0):
+
+    return torch.pow((reference - x), exponent) * k
+
+
+def rmsd_to_reference(x, reference, k=1.0):
+
+    x = x.reshape((3, -1))
+    ref = reference.reshape((3, -1))
+
+    _rmsd = torch.sum(torch.sqrt(torch.sum(torch.pow((x - ref), 2), 0))) / x.shape[0]
+    _rmsd = _rmsd.reshape((1, 1))
+    print("RMSD shape", _rmsd, _rmsd.shape)
+
+    return _rmsd
+
+
+class ConstraintSF(BaseScoringFunction):
+
+    def __init__(self, 
+                 receptor = None,
+                 ligand = None, **kwargs):
+        super(ConstraintSF, self)\
+        .__init__(receptor=receptor, ligand=ligand, **kwargs)
+
+    def _distance(self, x, y):
+
+        return torch.sqrt(torch.sum(torch.pow((x - y), 2)))
+    
+    def _angle(self, x, y, z):
+        return NotImplemented
+    
+    def _apply_constraint(self, x):
+
+        if self.constraint_type_ in ['harmonic', 'HARMONIC']:
+            score= harmonic(x, self.bounds_[0], 
+                             self.force_constant_, 2)
+        elif self.constraint_type_ in ['UPPER', 'upper_wall', 'upper']:
+            score= upper_wall(x, self.bounds_[0], 
+                              self.force_constant_, 2)
+        elif self.constraint_type_ in ['LOWER', 'lower_wall', 'lower']:
+            score= lower_wall(x, self.bounds_[0], 
+                              self.force_constant_, 2)
+        elif self.constraint_type_ in ['WALL', 'wall']:
+            score= lower_wall(x, self.bounds_[0], self.bounds_[1], 
+                              self.force_constant_, 2)
+        else:
+            score= x
+
+        return score.reshape((1, -1))
+
+
+class DistanceConstraintSF(ConstraintSF):
+
+    def __init__(self, 
+                 receptor = None,
+                 ligand = None, 
+                 **kwargs):
+        super(DistanceConstraintSF, self)\
+        .__init__(receptor=receptor, ligand=ligand)
+
+        self.grpA_mol_ = kwargs.pop('groupA_mol', "receptor") 
+        self.grpB_mol_ = kwargs.pop('groupB_mol', "ligand") 
+
+        self.grpA_idx_ = kwargs['grpA_ha_indices']
+        self.grpB_idx_ = kwargs['grpB_ha_indices']
+
+        self.constraint_type_ = kwargs.pop('constraint', 'harmonic')
+        self.force_constant_ = kwargs.pop('force', 1.0)
+        #self.constraint_reference_ = kwargs.pop('reference', None)
+        # distance boundary, unit is angstrom
+        self.bounds_ = kwargs.pop('bounds', [3.0, 8.0])
+
+        assert (len(self.grpA_idx_) > 0 and len(self.grpB_idx_) > 0)
+
+    def scoring(self):
+
+        if self.grpA_mol_.lower() in ['receptor', 'protein']:
+            _grpA_xyz = self.receptor.rec_heavy_atoms_xyz
+        elif self.grpA_mol_.lower() in ['ligand', 'molecule']:
+            _grpA_xyz = self.ligand.pose_heavy_atoms_coords[0]
+        
+        #print("_grpA_xyz ", _grpA_xyz.shape)
+
+        if self.grpB_mol_.lower() in ['receptor', 'protein']:
+            _grpB_xyz = self.receptor.rec_heavy_atoms_xyz
+        elif self.grpB_mol_.lower() in ['ligand', 'molecule']:
+            _grpB_xyz = self.ligand.pose_heavy_atoms_coords[0]
+        #print("_grpB_xyz ",_grpB_xyz, _grpB_xyz.shape)
+        
+        pairs = list(itertools.product(self.grpA_idx_, self.grpB_idx_))
+        self.distances_paired_ = []
+        for i, (atm1, atm2) in enumerate(pairs):
+            _d = self._distance(_grpA_xyz[atm1], _grpB_xyz[atm2])
+            self.distances_paired_.append(_d)
+
+        self.distances_paired_ = torch.stack(self.distances_paired_)
+        #print("Paired Distances", self.distances_paired_)
+
+        score = self._apply_constraint(torch.mean(self.distances_paired))
+
+        return score.reshape((1, -1))
+    
+
+class OutOfBoxConstraint(ConstraintSF):
+    def __init__(self, 
+                 receptor = None,
+                 ligand = None, 
+                 **kwargs):
+        super(OutOfBoxConstraint, self)\
+        .__init__(receptor=receptor, ligand=ligand)
+
+        self.box_center = kwargs.pop('box_center', None)
+        self.box_size   = kwargs.pop('box_size', None)
+
+        self.constraint_type_ = kwargs.pop('constraint', 'upper_wall')
+        self.force_constant_ = kwargs.pop('force', 1.0)
+        # distance boundary, unit is angstrom
+        self.bounds_ = kwargs.pop('bounds', [self.box_size[0] / 2.0, ])
+
+    def scoring(self):
+        # ligand coordinates center 
+        _ligand_center = torch.mean(self.ligand.cnfr2xyz(self.ligand.cnfrs_)[0], axis=0)
+
+        # center distance 
+        _distance = self._distance(torch.Tensor(self.box_center), _ligand_center)
+
+        # apply constraints
+        score = self._apply_constraint(_distance)
+
+        return score.reshape((1, -1))
+
+
+if __name__ == '__main__':
+
+    import os, sys
+    from opendock.core.receptor import Receptor
+    from opendock.core.conformation import LigandConformation
+    from opendock.sampler.minimizer import lbfgs_minimizer, adam_minimizer, sgd_minimizer
+    from opendock.sampler.monte_carlo import MonteCarloSampler
+    from opendock.sampler.ga import GeneticAlgorithmSampler
+    from opendock.core.asl import AtomSelection
+    from opendock.scorer.vina import VinaSF 
+    from opendock.scorer.hybrid import HybridSF 
+
+    ligand = LigandConformation(sys.argv[1])
+    ligand.parse_ligand()
+
+    receptor = Receptor(sys.argv[2])
+    receptor.parse_receptor()
+
+    asl = AtomSelection(molecule=receptor)
+    indices_r = asl.select_atom(atomnames=['OH',], chains=['A'], residx=['130'])
+    print(indices_r, receptor.dataframe_ha_.head())
+
+    asl = AtomSelection(molecule=ligand)
+    indices_l = asl.select_atom(atomnames=['O1',])
+    print(indices_l, ligand.dataframe_ha_.head())
+
+    xyz_center = ligand._get_geo_center().detach().numpy()[0]
+    print("Ligand XYZ COM", xyz_center)
+
+    # constraints
+    cnstr = DistanceConstraintSF(receptor, ligand, 
+                                 grpA_ha_indices=indices_r, 
+                                 grpB_ha_indices=indices_l, 
+                                 constraint='upper', 
+                                 bounds=[3.0, ]
+                                 )
+    print(cnstr.scoring())
+
+    # vina scoring function
+    sf1 = VinaSF(receptor, ligand)
+    vs = sf1.scoring()
+    print("Vina Score ", vs)
+
+    # combined scoring function
+    sf = HybridSF(receptor, ligand, scorers=[sf1, cnstr], weights=[0.5, 0.5])
+    vs = sf.scoring()
+    print("HybridSF Score ", vs)
+    
+    # monte carlo 
+    print("Cnfrs: ",ligand.cnfrs_, receptor.cnfrs_)
+    mc = MonteCarloSampler(ligand, receptor, sf, 
+                           box_center=xyz_center, 
+                           box_size=[20, 20, 20], 
+                           random_start=True,
+                           minimizer=lbfgs_minimizer,
+                           )
+    init_score = mc._score(ligand.cnfrs_, receptor.cnfrs_)
+    print("Initial Score", init_score)
+    mc._random_move()
+
+    # initialize GA
+    GA = GeneticAlgorithmSampler(ligand, receptor, sf, box_center=xyz_center, 
+                                 box_size=[20, 20, 20], minimizer=sgd_minimizer, n_pop=10)
+    #GA._initialize()
+    GA.sampling(n_gen=10)
+    
