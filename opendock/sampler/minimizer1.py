@@ -1,72 +1,21 @@
 from torch.optim import Adam, LBFGS, SGD
-import torch.optim as optim
 from opendock.sampler.base import BaseSampler
 import torch
 import os, sys
 import math
 import random
-from scipy.optimize import minimize
 
-def cg_minimizer(x, target_function, **kwargs):
-    # Define the optimizer
-    
-    nsteps = kwargs.pop('nsteps', 20)
-    lr = kwargs.pop('lr', 0.1)
-    x_np = x[0].detach().numpy()  
-   
-    def loss_function(x_np):
-        
-        x = [torch.tensor([x_np],dtype=torch.float32, requires_grad=True)]  # Convert the NumPy array back to a PyTorch tensor
-        #x=[torch.Tensor([x_np]).requires_grad()]
-
-       
-        loss = target_function(x)
-       
-        loss.backward(retain_graph=True)
-        return loss.item()
-
-  
-    #result = minimize(loss_function, x_np, method='CG', options={'maxiter': nsteps, 'gtol': lr})
-    result = minimize(loss_function, x_np, method='CG', options={'maxiter':20})
-   
-    x =[torch.tensor([result.x], dtype=torch.float32,requires_grad=True)]  # 
-   
-    return x
-
-def cg_minimizer1(x, target_function, **kwargs):
-    # Define the optimizer
-    nsteps = kwargs.pop('nsteps', 10)
-    lr = kwargs.pop('lr', 0.1)
-
-    # Initialize the optimizer with Conjugate Gradient (CG) algorithm
-    optimizer = optim.ConjugateGradient([x], lr=lr)
-
-
-    for i in range(nsteps):
-        optimizer.zero_grad()
-        loss = target_function(x)
-        loss.backward(retain_graph=True)
-
-        # Optimize using CG optimizer
-        try:
-            optimizer.step()
-        except:
-            print("[WARNING] minimization failed, skip it...")
-
-    return x
 
 def sgd_minimizer(x, target_function, **kwargs):
     # Define the optimizer
     nsteps=kwargs.pop('nsteps', 20)
-    lr= kwargs.pop('lr', 0.2)
+    lr    = kwargs.pop('lr', 0.1)
     
     optimizer = SGD(x, lr=lr, weight_decay=0.1, momentum=0.8)
 
     for i in range(nsteps):
         optimizer.zero_grad()
         loss = target_function(x)
-        #print('loss',loss)
-        #print('x',x)
         loss.backward(retain_graph=True)
         # optimize now
         try:
@@ -92,11 +41,8 @@ def adam_minimizer(x, target_function, **kwargs):
     #print('success1')
     for i in range(nsteps):
         optimizer.zero_grad()
-        #print("adam",x)
         loss = target_function(x)
-        #print('loss', loss)
         loss.backward(retain_graph=True)
-
         # optimize now
         try:
             optimizer.step()
@@ -123,23 +69,22 @@ def lbfgs_minimizer(x, target_function, **kwargs):
             optimizer.zero_grad()
 
         loss = target_function(x)
-        #print('loss:', loss)
-        #print('cnfrs:', x)
+        print('loss:', loss)
+        print('cnfrs:',x)
         if loss.requires_grad:
             loss.backward(retain_graph=True)
         return loss
 
-    optimizer.step(closure)
     # optimize now
-    # try:
-    #     optimizer.step(closure)
-    # except:
-    #     print("[WARNING] minimization failed, skip it...")
+    try:
+        optimizer.step(closure)
+    except:
+        print("[WARNING] minimization failed, skip it...")
 
     return x
 
 def lbfgs_minimizer1(x, target_function, **kwargs):
-   
+    #print('修改前x:',x)
     # Define the optimizer
     nsteps = kwargs.pop('nsteps', 5)
     lr = kwargs.pop('lr', 0.05)
@@ -150,12 +95,12 @@ def lbfgs_minimizer1(x, target_function, **kwargs):
     # Move the variables to GPU if available
     #device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     #if torch.cuda.is_available():
-   
+    #    print('设备为GPU')
     #else:
-   
+    #    print('设备为CPU')
     #x1=x[0]
     #x= x.to(device)
-    
+    #print('修改后的x:',[x])
     # Define the optimizer
     # optimizer = LBFGS(x, lr=lr, history_size=nsteps, max_iter=nsteps)
     # #print('success1')
@@ -194,7 +139,7 @@ def lbfgs_minimizer1(x, target_function, **kwargs):
     # x_gpu.requires_grad_(x.requires_grad)
     # x_gpu = [x_gpu]
     # x= x.to(device)
-  
+    #print('修改后的x:', x)
     # Define the optimizer
     optimizer = LBFGS([x], lr=lr, history_size=nsteps, max_iter=nsteps)
     #print('success1')
@@ -224,7 +169,7 @@ def lbfgs_minimizer1(x, target_function, **kwargs):
 
     # Move the variables back to CPU if necessary
     x = x.to("cpu")
-   
+    #print('返回的x:', x)
     return [x]
 
 

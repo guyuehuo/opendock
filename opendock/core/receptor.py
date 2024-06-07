@@ -18,10 +18,11 @@ class ClipReceptor():
         self.cutoff = cutoff  # cutting scale 
 
     def parse_receptor(self):
+        #print('路径',self.rec_fpath)
         with open(self.rec_fpath) as f:
             self.lines = [x.strip() for x in f.readlines() if \
                 x.startswith("ATOM") or x.startswith("HETATM")]
-        
+        #print('self.lines',self.lines)
         all_resid_xyz_list = []
         all_resid_atom_indices = []
 
@@ -37,7 +38,7 @@ class ClipReceptor():
             atom_xyz = np.c_[x, y, z]
             if line.split()[-1] not in ["H", "HD"]:
                 rec_ha_indices.append(num)
-            
+                #print(num)            
             if num == 0:
                 resid_symbol_pool.append(resid_symbol)
                 temp_xyz_list.append(atom_xyz)
@@ -77,11 +78,18 @@ class ClipReceptor():
             final_all_resid_xyz_list.append(temp_xyz.reshape(1, -1, 3))
 
         all_resid_xyz_tensor = torch.from_numpy(np.concatenate(final_all_resid_xyz_list, axis=0))
+        #print('docking_center:')
+        #print(self.docking_center.shape)
+        #print('self.docking_center.reshape(1, 3)',self.docking_center.reshape(1, 3))
+        #print('all_resid_xyz_tensor',all_resid_xyz_tensor)
         dist_mtx = torch.sqrt(torch.sum(torch.square(all_resid_xyz_tensor - self.docking_center.reshape(1, 3)), axis=-1))
         min_dist, _ = torch.min(dist_mtx, axis=1)
-
+        #print(' min_dist', min_dist)
+        #print('self.cutoff',self.cutoff)
         selec_res_indices = torch.where(min_dist <= self.cutoff)[0]
         selec_atoms_indices = []
+        #print('selec_res_indices',selec_res_indices)
+        #print('all_resid_atom_indices',all_resid_atom_indices)
         for l in selec_res_indices:
             selec_atoms_indices += all_resid_atom_indices[l]
         selec_atoms_indices = sorted(selec_atoms_indices)
@@ -169,18 +177,25 @@ class Receptor(object):
         self.dataframe_['atomname'] = self.rec_all_atoms_pdb_types
         self.dataframe_['element'] = self.rec_all_atoms_element
         self.dataframe_['atomIndex'] = self.rec_all_atoms_indices
-        
+
+
+        #print("self.rec_all_atoms_resid",self.rec_all_atoms_resid)
+        #resSeq = [int(x[5:].strip()) for x in self.rec_all_atoms_resid]
         # resid
         try:
             resnames = [x.split()[0] for x in self.rec_all_atoms_resid]
+            #print("1 success")
             chain = [x[4] for x in self.rec_all_atoms_resid]
-            resSeq = [int(x[5:].strip()) for x in self.rec_all_atoms_resid]
+            #print("2 success")
+            resSeq = [(x[5:].strip()) for x in self.rec_all_atoms_resid]
+            #print("3 success")
+
         except:
             print("[WARNING] parse receptor resname, chain, resSeq error ...")
             resnames = [""] * self.dataframe_.shape[0]
             chain = [""] * self.dataframe_.shape[0]
             resSeq = [0, ] * self.dataframe_.shape[0]
-
+        #print(resSeq)
         self.dataframe_['resname'] = resnames
         self.dataframe_['chain'] = chain
         self.dataframe_['resSeq'] = resSeq
@@ -238,15 +253,20 @@ class Receptor(object):
         with open(self.receptor_fpath) as f:   
             self.rec_lines = [x for x in f.readlines() if x.startswith("ATOM") or
                               x.startswith("HETATM")]
-        
+
+        #print('rec line:',self.rec_lines)
         clp_rec_lines = []
         for num, line in enumerate(self.rec_lines):
+            #print(num,line)
+            #print(self.rec_ha_indices)
+            #print(self.clp_all_indices)
+            #exit()
             if num in self.rec_ha_indices:
                 self.receptor_original_lines.append(line)
             
             if num in self.clp_all_indices:
                 clp_rec_lines.append(line)
-        
+        #print('clp_rec_lines',clp_rec_lines)
         #selec_rec_lines = [self.rec_lines[i] for i in self.selec_cut_indices]
        
         rec_heavy_atoms_xyz = []
@@ -261,6 +281,9 @@ class Receptor(object):
 
         for _num_line, line in enumerate(clp_rec_lines):
             atom_ad4_type = line[77:79].strip()
+            #print(_num_line)
+            #print(line)
+            #print(' atom_ad4_type', atom_ad4_type)
             atom_xs_type = self.atomtype_mapping[atom_ad4_type]
             atom_ele = atom_xs_type.split('_')[0]
             atom_indice = int(line.split()[1])
@@ -352,7 +375,9 @@ class Receptor(object):
 
         self.init_rec_all_atoms_xyz = torch.from_numpy(np.array(rec_all_atoms_xyz)).to(torch.float32)
         self.init_rec_heavy_atoms_xyz = torch.from_numpy(np.array(rec_heavy_atoms_xyz)).to(torch.float32)
+        #print('self.init_rec_heavy_atoms_xyz:', self.init_rec_heavy_atoms_xyz)
         self.rec_heavy_atoms_xyz = self.init_rec_heavy_atoms_xyz * 1.0
+        #print('self.rec_heavy_atoms_xyz ',self.rec_heavy_atoms_xyz )
         self._to_dataframe()
 
         return self

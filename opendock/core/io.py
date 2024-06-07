@@ -108,7 +108,8 @@ def write_ligand_traj(cnfrs: list,
 
 def write_receptor_traj(cnfrs,
                         receptor: None, 
-                        output: str = None):
+                        output: str = None,
+                        information: dict = None):
     """
     Write the receptor trajectory if considering sidechain flexibility.
 
@@ -129,6 +130,12 @@ def write_receptor_traj(cnfrs,
         lines.append("MODEL%9s" % (str(idx+1)))
         new_rec_ha_xyz = receptor.cnfr2xyz(cnfr_list)
         #num = 0
+        if information is not None:
+            for key in list(information.keys()):
+                try:
+                    lines.append(f"REMARK {key} {information[key][_idx]:.3f}")
+                except:
+                    lines.append(f"REMARK {key} {information[key][0]:.3f}")
         for N, line in enumerate(rec_original_lines):
             # zlz fix: remove the change-line symbol
             line = line.strip("\n")

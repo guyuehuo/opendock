@@ -36,6 +36,7 @@ class AtomSelection(object):
         self.residex_ = kwargs.pop('residex', []) 
         self.atomnames_ = kwargs.pop('atomnames', [])
 
+        #print(self.molecule.dataframe_ha_)
         assert self.molecule.dataframe_ha_ is not None
 
     def _get_chain_atoms_indices(self):
@@ -55,7 +56,7 @@ class AtomSelection(object):
                 for _chain in chains.split(','):
                     atom_indices += list(self.molecule.dataframe_ha_\
                     [self.molecule.dataframe_ha_['chain'] == _chain].index)
-            
+            #print("chain",atom_indices)
             return atom_indices
     
     def _get_residx_atoms_indices(self):
@@ -74,13 +75,17 @@ class AtomSelection(object):
             atom_indices = []
             for resindices in self.residx_:
                 for _resindex in resindices.split(','):
-                    _start_index = int(_resindex.split("-")[0])
-                    _end_index   = int(_resindex.split("-")[-1])
+                    _start_index = (_resindex.split("-")[0])
+                    _end_index   = (_resindex.split("-")[-1])
+                    try:
+                      for _idx in range(int(_start_index), int(_end_index) +1):
+                         atom_indices += list(self.molecule.dataframe_ha_\
+                         [self.molecule.dataframe_ha_['resSeq'] == str(_idx)].index)
+                    except:
+                        atom_indices += list(self.molecule.dataframe_ha_ \
+                                                 [self.molecule.dataframe_ha_['resSeq'] == _resindex].index)
 
-                    for _idx in range(_start_index, _end_index + 1):
-                        atom_indices += list(self.molecule.dataframe_ha_\
-                        [self.molecule.dataframe_ha_['resSeq'] == _idx].index)
-
+            #print("atom_indices",atom_indices)
             return atom_indices
     
     def _get_resname_atoms_indices(self):
@@ -100,7 +105,7 @@ class AtomSelection(object):
                 for _resname in resnames.split(','):
                     atom_indices += list(self.molecule.dataframe_ha_\
                     [self.molecule.dataframe_ha_['resname'] == _resname].index)
-            
+            #print("_get_resname_atoms_indices",atom_indices)
             return atom_indices
     
     def _get_atomname_atoms_indices(self):
@@ -120,7 +125,7 @@ class AtomSelection(object):
                 for _atomname in atomnames.split(','):
                     atom_indices += list(self.molecule.dataframe_ha_\
                     [self.molecule.dataframe_ha_['atomname'] == _atomname].index)
-            
+            #print("_get_atomname_atoms_indices",atom_indices)
             return atom_indices
 
     def select_atom(self, chains=[], atomnames=[], residx=[], resnames=[]):
@@ -166,17 +171,20 @@ class AtomSelection(object):
                            self._get_resname_atoms_indices]:
 
             _indices = _selection()
+            #print("_indices",_indices)
             if len(_indices) == 0:
                 return []
 
             if len(atom_indices) == 0:
                 atom_indices = _indices
+
             else:
                 _new_indices = set(atom_indices).intersection(_indices)
                 atom_indices = list(_new_indices)
             
             if len(atom_indices) == 0:
                 return []
+            #print("len(atom_indices)",len(atom_indices))
 
         return list(sorted(atom_indices))
 

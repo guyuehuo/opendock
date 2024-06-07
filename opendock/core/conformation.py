@@ -80,6 +80,7 @@ class LigandConformation(Ligand):
 
         rotorX_index = self.torsion_bond_index[frame_id - 1][0]
         rotorY_index = self.torsion_bond_index[frame_id - 1][1]
+        #print('扭转键',self.torsion_bond_index)
 
         # update the first atom in this frame
         rotorX_to_rotorY_vector = self.init_heavy_atoms_coords[:, rotorY_index] - \
@@ -145,10 +146,14 @@ class LigandConformation(Ligand):
             shape [N, M, 3], where N is the number of cnfr, and M is the number of atoms in this ligand.
         """
         # input cnfr_tensor: list of torch.Tensor
-        self.number_of_cnfr_tensor = len(cnfr_tensor)
+        self.number_of_cnfr_tensor = len(cnfr_tensor[0])
         self.pose_heavy_atoms_coords = [0] * self.number_of_heavy_atoms
 
+
         self.cnfr_tensor = cnfr_tensor[0]
+        # self.cnfr_tensor = cnfr_tensor
+        #print('cnfrs:',self.cnfr_tensor)
+        
         self._update_root_coords()
 
         for i in range(1, 1 + self.number_of_frames):
@@ -325,6 +330,7 @@ class ReceptorConformation(Receptor):
             self.cnfrs_.append(init_cnfr)
             self.sidechain_num_torsions_.append(bond_number)
 
+
         return self.cnfrs_
 
     def _split_cnfr_tensor_to_list(self, cnfr_tensor):
@@ -352,6 +358,8 @@ class ReceptorConformation(Receptor):
             The coordinates of heavy atoms for the receptor.
         """
         # if cnfrs is not a list of list
+        #print("cnfrs",cnfrs)
+        #print(type(cnfrs) )
         if (type(cnfrs) != list):
             cnfrs = self._split_cnfr_tensor_to_list(cnfrs)
 
@@ -387,11 +395,15 @@ class ReceptorConformation(Receptor):
             for t_list in sidechain_torsion:
                 try:
                     indices = [pdb_type_2_heavy_atom_indices[x] for x in t_list]
+                    sidechain_ha_indices_in_each_torsion.append(indices)
                 except:
-                    indices = [pdb_type_2_heavy_atom_indices[x] for x in t_list if x in pdb_type_2_heavy_atom_indices.keys()]
-                sidechain_ha_indices_in_each_torsion.append(indices)
+                    pass
+                    #indices = [pdb_type_2_heavy_atom_indices[x] for x in t_list if x in pdb_type_2_heavy_atom_indices.keys()]
+                #sidechain_ha_indices_in_each_torsion.append(indices)
                 
             # update coords
+            if len(sidechain_ha_indices_in_each_torsion)<len(sidechain_ha_indices_in_each_frame):
+                sidechain_ha_indices_in_each_frame=sidechain_ha_indices_in_each_frame[1:]
             all_torsion_matrix = [0] * len(sidechain_ha_indices_in_each_torsion)
             for torsion_id, frame_atoms_indices in enumerate(sidechain_ha_indices_in_each_frame):
                 rotorX_index, rotorY_index = sidechain_ha_indices_in_each_torsion[torsion_id]

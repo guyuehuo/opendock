@@ -61,15 +61,9 @@ class GeneticAlgorithmSampler(BaseSampler):
         self.n_pop = kwargs.pop("n_pop", 4)
         self.minimization_ratio = kwargs.pop("minimization_ratio", 1. / 5.)
         self.early_stop_tolerance = kwargs.pop("early_stop_tolerance", 10)
-        self.bound_value = kwargs.pop('bound_value', 3.0)
         self.kt_ = kwargs.pop('kt', 1.0)
 
-        print("self.bound_value",self.bound_value)
-
-        self.cnfrs_history=[[] for i in range(self.n_pop)]
-        self.score_history = [[] for i in range(self.n_pop)]
-
-
+        # 注释掉
 
         # --------------------------------------------------
         # probability of crossover and mutation.
@@ -102,28 +96,16 @@ class GeneticAlgorithmSampler(BaseSampler):
         if self.ligand.cnfrs_ is not None:
             xyz_ranges = []
             for i in range(3):
-                _range = [self.box_center[i] - 10.0,
-                          self.box_center[i] + 10.0]  # according to mc,set box range
+                _range = [self.box_center[i] - self.box_size[i] / 2,
+                          self.box_center[i] + self.box_size[i] / 2]  # according to mc,set box range
                 xyz_ranges.append(_range)
 
             # setup box bound
             self.box_ranges_ = xyz_ranges
             self.bound = xyz_ranges
-            #self.bound_init = xyz_ranges
-            # self.bound += [[-1.0, 1.0] for x in range(self.n_var - 3)]
-            #for crossdocking
-            #self.bound += [[-1*self.bound_value, self.bound_value] for x in range(self.n_var - 3)]
-            #for redocking
-            self.bound += [[-1, 1] for x in range(self.n_var - 3)]
-            #self.bound_init =[[-1.0, 1.0] for x in range(self.n_var - 3)]
+            self.bound += [[-1.0, 1.0] for x in range(self.n_var - 3)]
         else:
             self.bound = kwargs.pop("bound", [[-1. * np.pi, np.pi] for x in self.n_var])
-
-
-
-        # self.lb = [x[0] for x in self.bound_init]
-        # self.ub = [x[1] for x in self.bound_init]
-
         # print(self.bound)
 
         # --------------------------------------------------
@@ -135,13 +117,9 @@ class GeneticAlgorithmSampler(BaseSampler):
         _init_chrom = list(self.encode2chrom(self._init_variables))
         _decode_variables = self.decode_entire_chrom(np.array(_init_chrom))
         _fitness = self.objective_func(_decode_variables)
-        #print("self._init_variables",self._init_variables)
-        #print("score 0",_fitness)
         self.ligand_cnfrs_history_.append(torch.Tensor(self.ligand.cnfrs_[0].detach().numpy()))
         self.ligand_scores_history_.append(_fitness * -1.0)
         _pop = [_init_chrom, ]
-        self.cnfrs_history[0].append(torch.Tensor(self.ligand.cnfrs_[0].detach().numpy()))
-        self.score_history[0].append(_fitness* -1.0)
 
         for i in range(self.n_pop - 1):
 
@@ -149,22 +127,19 @@ class GeneticAlgorithmSampler(BaseSampler):
                 # print("GA-ENCODE SMILES ", smiles)
                 # print("Encoding", self.init_encode, self.init_encode.shape)
                 _chrom = [x for x in _init_chrom]
-                #print("1 chrom",_chrom)
                 # print(_chrom, len(_chrom))
                 for i in range(self.chrom_size):
                     _p = random.random()
-                    if _p > 0.6 and i % 1 == 0:
+                    if _p > 0.8 and i % 5 == 0:
                         # revert 20% of the genes
                         _chrom[i] = int((_chrom[i] + 1 <= 1) * 1)
                 # encoding_codes are the variable lists
-                #print("2 chrom", _chrom)
                 _decode_variables = self.decode_entire_chrom(np.array(_chrom))
                 return _decode_variables, _chrom
 
             _decode_variables, _chrom = make_chrom()
             # _encoding_codes = self.decode_entire_chrom(np.array(_chrom))
             _lcnfrs_, _rcnfrs_ = self._variables2cnfrs(_decode_variables)
-            #_lcnfrs_=np.array([random.uniform(lb[i], ub[i]) for i in range(len(self.bound_init))])
 
             # check out of box
             _ntry = 1
@@ -172,15 +147,11 @@ class GeneticAlgorithmSampler(BaseSampler):
                 _decode_variables, _chrom = make_chrom()
                 _lcnfrs_, _rcnfrs_ = self._variables2cnfrs(_decode_variables)
                 _ntry += 1
-            print("1 lcnfrs",_lcnfrs_)
 
             # predict the fitness score
             _fitness = self.objective_func(_decode_variables)
-            print("score 1", _fitness)
             _pop.append(_chrom)
             # print("Vector and fitness score", _fitness)
-            self.cnfrs_history[i+1].append(torch.Tensor(_lcnfrs_[0].detach().numpy()[0]).reshape((1, -1)))
-            self.score_history[i+1].append(_fitness * -1.0)
 
         # make a inital population
         self.chrom_pop = np.array(_pop)
@@ -299,7 +270,6 @@ class GeneticAlgorithmSampler(BaseSampler):
             # --------------------------------------------
             ind_parents = [self.select_one_parent(tournament_k=self.tournament_k)  # 1
                            for _ in range(self.n_pop)]
-            #print(" ind_parents", ind_parents)
 
             # --------------------------------------------
             # copying the population to undergo operations
@@ -324,8 +294,6 @@ class GeneticAlgorithmSampler(BaseSampler):
                 p1 = self.chrom_pop[ind_parents[sn_pair]]
                 p2 = self.chrom_pop[ind_parents[sn_pair + 1]]
 
-
-
                 # cnfr to chrom
                 # minimize p1
                 _p1_new, _p2_new = self.crossover(p1, p2, p_c=self.p_c)
@@ -336,21 +304,12 @@ class GeneticAlgorithmSampler(BaseSampler):
                 # ......................................
                 _chrom_decoded1 = self.decode_entire_chrom(p1)
                 _fitness1 = self.objective_func(_chrom_decoded1)
-                #print(sn_pair)
-                #print("_fitness1",_fitness1)
 
                 _chrom_decoded1_new = self.decode_entire_chrom(_p1_new)
                 _fitness1_new = self.objective_func(_chrom_decoded1_new)
 
                 delta_score = _fitness1_new - _fitness1
-                # new add history
-                cnfrs,_=self._variables2cnfrs(_chrom_decoded1)
-                #print("cnfrs",cnfrs)
-                #print(cnfrs)x`
-
-                self.cnfrs_history[sn_pair].append(torch.Tensor(cnfrs[0].detach().numpy()[0]).reshape((1, -1)))
-                self.score_history[sn_pair].append(_fitness1 * -1.0)
-                if delta_score > 0 :
+                if delta_score > 0 or random.random() < np.power(np.e, 2.0 * delta_score / self.kt_):
                     self.chrom_pop2[sn_pair] = _p1_new
                     if _fitness1_new > 0:
                         _lig_cnfrs, _rec_cnfrs_ = self._variables2cnfrs(_chrom_decoded1_new)
@@ -366,13 +325,7 @@ class GeneticAlgorithmSampler(BaseSampler):
                 _fitness2_new = self.objective_func(_chrom_decoded2_new)
 
                 delta_score = _fitness2_new - _fitness2
-
-                # new add history
-                cnfrs,_ = self._variables2cnfrs(_chrom_decoded2)
-                self.cnfrs_history[sn_pair+1].append(torch.Tensor(cnfrs[0].detach() \
-                                                                .numpy()[0]).reshape((1, -1)))
-                self.score_history[sn_pair+1].append(_fitness2 * -1.0)
-                if delta_score > 0:
+                if delta_score > 0 or random.random() < np.power(np.e, 2.0 * delta_score / self.kt_):
                     self.chrom_pop2[sn_pair + 1] = _p2_new
                     if _fitness2_new > 0:
                         _lig_cnfrs, _rec_cnfrs_ = self._variables2cnfrs(_chrom_decoded2_new)
@@ -472,8 +425,7 @@ class GeneticAlgorithmSampler(BaseSampler):
                 _fitness_new = self.objective_func(_chrom_decoded_new)
 
                 delta_score = _fitness_new - _fitness_origin
-
-                if delta_score > 0:
+                if delta_score > 0 or random.random() < np.power(np.e, 2.0 * delta_score / self.kt_):
                     self.chrom_pop2[sn_chrom] = _p_new
 
                     # _chrom_decoded = self.decode_entire_chrom(_p)
@@ -555,7 +507,7 @@ class GeneticAlgorithmSampler(BaseSampler):
                 flag = False
                 break
             # print("11")
-        return self.cnfrs_history,self.score_history
+        return flag
 
     def objective_func(self, x, **kwargs):
         """

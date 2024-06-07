@@ -40,7 +40,7 @@ def lower_wall(x, lower_bound=1.0, k=1.0, exponent=1.0):
         return torch.Tensor([0.0, ])
 
 
-def wall(x, upper_bound=1.0, lower_bound=0.5, k=1.0, exponent=1.0):
+def wall(x, lower_bound=0.5,upper_bound=1.0,  k=1.0, exponent=1.0):
     """AI is creating summary for wall_linear
 
     Args:
@@ -55,8 +55,10 @@ def wall(x, upper_bound=1.0, lower_bound=0.5, k=1.0, exponent=1.0):
     """
 
     if x.detach().numpy().ravel()[0] >= upper_bound:
+
         return torch.pow((x - upper_bound), exponent) * k
     elif x <= lower_bound:
+
         return torch.pow((lower_bound - x), exponent) * k
     else:
         return torch.Tensor([0.0, ])
@@ -106,7 +108,7 @@ class ConstraintSF(BaseScoringFunction):
             score= lower_wall(x, self.bounds_[0], 
                               self.force_constant_, 2)
         elif self.constraint_type_ in ['WALL', 'wall']:
-            score= lower_wall(x, self.bounds_[0], self.bounds_[1], 
+            score= wall(x, self.bounds_[0], self.bounds_[1],
                               self.force_constant_, 2)
         else:
             score= x
@@ -134,6 +136,8 @@ class DistanceConstraintSF(ConstraintSF):
         #self.constraint_reference_ = kwargs.pop('reference', None)
         # distance boundary, unit is angstrom
         self.bounds_ = kwargs.pop('bounds', [3.0, 8.0])
+        #print(len(self.grpA_idx_))
+        #print(len(self.grpB_idx_))
 
         assert (len(self.grpA_idx_) > 0 and len(self.grpB_idx_) > 0)
 
@@ -153,12 +157,13 @@ class DistanceConstraintSF(ConstraintSF):
         #print("_grpB_xyz ",_grpB_xyz, _grpB_xyz.shape)
         
         pairs = list(itertools.product(self.grpA_idx_, self.grpB_idx_))
+        #print("pairs",pairs)
         self.distances_paired_ = []
         for i, (atm1, atm2) in enumerate(pairs):
             _d = self._distance(_grpA_xyz[atm1], _grpB_xyz[atm2])
             self.distances_paired_.append(_d)
 
-        self.distances_paired_ = torch.stack(self.distances_paired_)
+        self.distances_paired = torch.stack(self.distances_paired_)
         #print("Paired Distances", self.distances_paired_)
 
         score = self._apply_constraint(torch.mean(self.distances_paired))
@@ -191,6 +196,113 @@ class OutOfBoxConstraint(ConstraintSF):
 
         # apply constraints
         score = self._apply_constraint(_distance)
+
+        return score.reshape((1, -1))
+
+class DistanceMatrixConstraintSF(ConstraintSF):
+    def __init__(self,
+                 receptor=None,
+                 ligand=None,
+                 **kwargs):
+        super(DistanceMatrixConstraintSF, self) \
+            .__init__(receptor=receptor, ligand=ligand)
+
+        self.grpA_mol_ = kwargs.pop('groupA_mol', "receptor")
+        self.grpB_mol_ = kwargs.pop('groupB_mol', "ligand")
+
+        self.grpA_idx_ = kwargs.pop('grpA_ha_indices',[0])
+        self.grpB_idx_ = kwargs.pop('grpB_ha_indices',[0])
+        self.all_grpA_idx = kwargs.pop('all_grpA_ha_indices',[0])
+        self.all_grpB_idx = kwargs.pop('all_grpB_ha_indices',[0])
+
+        self.constraint_type_ = kwargs.pop('constraint', 'harmonic')
+        self.force_constant_ = kwargs.pop('force', 1.0)
+        # self.constraint_reference_ = kwargs.pop('reference', None)
+        # distance boundary, unit is angstrom
+        self.bounds_ = kwargs.pop('bounds', [3.0, 8.0])
+        self.distances_matrix=kwargs.pop('distances_matrix',[0])
+        self.all_distance_sum=kwargs.pop('all_distance_sum',0)
+        self.all_distance_mean = kwargs.pop('all_distance_mean', 0)
+
+        # print(len(self.grpA_idx_))
+        # print(len(self.grpB_idx_))
+
+        assert (len(self.grpA_idx_) > 0 and len(self.grpB_idx_) > 0)
+
+    def get_distance_matrix(self):
+
+        if self.grpA_mol_.lower() in ['receptor', 'protein']:
+            _grpA_xyz = self.receptor.rec_heavy_atoms_xyz
+        elif self.grpA_mol_.lower() in ['ligand', 'molecule']:
+            _grpA_xyz = self.ligand.pose_heavy_atoms_coords[0]
+
+        #print("_grpA_xyz ", _grpA_xyz.shape)
+
+        if self.grpB_mol_.lower() in ['receptor', 'protein']:
+            _grpB_xyz = self.receptor.rec_heavy_atoms_xyz
+        elif self.grpB_mol_.lower() in ['ligand', 'molecule']:
+            _grpB_xyz = self.ligand.pose_heavy_atoms_coords[0]
+        #print("_grpB_xyz ",_grpB_xyz, _grpB_xyz.shape)
+        self.all_grpA_idx = list(range(len(_grpA_xyz)))
+        self.all_grpB_idx = list(range(len(_grpB_xyz)))
+        #print("self.all_grpA_idx",self.all_grpA_idx)
+        #print("self.all_grpB_idx",self.all_grpB_idx)
+
+        self.distances_matrix = np.zeros((len(_grpA_xyz), len(_grpB_xyz)))
+        # print("pairs",pairs)
+        for i in range(len(_grpA_xyz)):
+            for j in range(len(_grpB_xyz)):
+                self.distances_matrix[i, j] = self._distance(_grpA_xyz[i], _grpB_xyz[j])
+
+        # Convert distances_matrix to a torch tensor
+        self.distances_matrix = torch.tensor(self.distances_matrix)
+        #self.distances_matrix = torch.stack(self.distances_matrix)
+        # Print distances matrix shape and its values
+        #print("Distance Matrix shape:", self.distances_matrix.shape)
+        #print("Distance Matrix:", self.distances_matrix)
+
+
+        # Calculate the sum of all distances in the matrix
+        self.all_distance_mean = torch.mean(self.distances_matrix)
+        #print("Total Sum of Distances:", self.all_distance_sum)
+
+
+        return self.all_distance_mean,self.distances_matrix
+
+    def scoring(self):
+
+        if self.grpA_mol_.lower() in ['receptor', 'protein']:
+            _grpA_xyz = self.receptor.rec_heavy_atoms_xyz
+        elif self.grpA_mol_.lower() in ['ligand', 'molecule']:
+            _grpA_xyz = self.ligand.pose_heavy_atoms_coords[0]
+
+        # print("_grpA_xyz ", _grpA_xyz.shape)
+
+        if self.grpB_mol_.lower() in ['receptor', 'protein']:
+            _grpB_xyz = self.receptor.rec_heavy_atoms_xyz
+        elif self.grpB_mol_.lower() in ['ligand', 'molecule']:
+            _grpB_xyz = self.ligand.pose_heavy_atoms_coords[0]
+        # print("_grpB_xyz ",_grpB_xyz, _grpB_xyz.shape)
+
+        # self.all_grpA_idx = list(range(len(_grpA_xyz)))
+        # self.all_grpB_idx = list(range(len(_grpB_xyz)))
+
+        distances_matrix = np.zeros((len(_grpA_xyz), len(_grpB_xyz)))
+
+        for i in range(len(_grpA_xyz)):
+            for j in range(len(_grpB_xyz)):
+                distances_matrix[i, j] = self._distance(_grpA_xyz[i], _grpB_xyz[j])
+
+        # Convert distances_matrix to a torch tensor
+        distances_matrix = torch.tensor(distances_matrix)
+
+        # Calculate the sum of all distances in the matrix
+        all_distance_mean = torch.mean(torch.abs(self.distances_matrix-distances_matrix))
+
+
+        #print("all_distance_mean", all_distance_mean)
+
+        score = self._apply_constraint(all_distance_mean)
 
         return score.reshape((1, -1))
 

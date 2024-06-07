@@ -47,6 +47,7 @@ class BaseScoringFunction(object):
 
         # distance matrix
         self.dist = None
+        self.intra_dist=None
 
     def generate_pldist_mtrx(self):
         """Generate protein-ligand distance matrix.
@@ -54,14 +55,24 @@ class BaseScoringFunction(object):
         Returns:
             matrix: torch.Tensor, the returned matrix
         """
+        #print(self.receptor.rec_heavy_atoms_xyz)
+        #print('len(self.ligand.pose_heavy_atoms_coords)',len(self.ligand.pose_heavy_atoms_coords))
         rec_heavy_atoms_xyz = self.receptor.rec_heavy_atoms_xyz.expand(len(self.ligand.pose_heavy_atoms_coords), -1, 3)
-
+        #print('res:',rec_heavy_atoms_xyz)
         # Generate the distance matrix of heavy atoms between the protein and the ligand.
         n, N, C = rec_heavy_atoms_xyz.size()
-        #print("Current self.pose_heavy_atoms_coords", self.pose_heavy_atoms_coords)
+
+        #print("Current self.pose_heavy_atoms_coords", self.ligand.pose_heavy_atoms_coords)
         n, M, _ = self.ligand.pose_heavy_atoms_coords.size()
-        dist = -2 * torch.matmul(rec_heavy_atoms_xyz, self.ligand.pose_heavy_atoms_coords.permute(0, 2, 1))
+        #print("self.ligand.pose_heavy_atoms_coords",self.ligand.pose_heavy_atoms_coords)
+        #print("self.ligand.pose_heavy_atoms_coords.permute(0, 2, 1)",self.ligand.pose_heavy_atoms_coords.permute(0, 2, 1))
+        dist = -2 * torch.matmul(rec_heavy_atoms_xyz, self.ligand.pose_heavy_atoms_coords.permute(0, 2, 1))  #make ligand three dimension
+
+        #print("torch.sum(rec_heavy_atoms_xyz ** 2, -1).view(-1, N, 1)",torch.sum(rec_heavy_atoms_xyz ** 2, -1).view(-1, N, 1))
+
         dist += torch.sum(rec_heavy_atoms_xyz ** 2, -1).view(-1, N, 1)
+
+        #print("torch.sum(self.ligand.pose_heavy_atoms_coords ** 2, -1).view(-1, 1, M)",torch.sum(self.ligand.pose_heavy_atoms_coords ** 2, -1).view(-1, 1, M))
         dist += torch.sum(self.ligand.pose_heavy_atoms_coords ** 2, -1).view(-1, 1, M)
 
         dist = (dist >= 0) * dist
@@ -69,6 +80,95 @@ class BaseScoringFunction(object):
 
         #print("Distance matrix shape ", self.dist, self.dist.shape)
         return self.dist
+    def generate_intra_mtrx(self):
+        # # print(self.receptor.rec_heavy_atoms_xyz)
+        # # print('len(self.ligand.pose_heavy_atoms_coords)',len(self.ligand.pose_heavy_atoms_coords))
+        # lig_heavy_atoms_xyz = self.ligand.pose_heavy_atoms_coords.expand(len(self.ligand.pose_heavy_atoms_coords), -1, 3)
+        # #lig_heavy_atoms_xyz = self.receptor.rec_heavy_atoms_xyz[:len(self.ligand.pose_heavy_atoms_coords[0])].expand(len(self.ligand.pose_heavy_atoms_coords), -1, 3)
+        # #print("lig_heavy_atoms_xyz",lig_heavy_atoms_xyz)
+        # # print('res:',rec_heavy_atoms_xyz)
+        # # Generate the distance matrix of heavy atoms between the protein and the ligand.
+        # n, N, C = lig_heavy_atoms_xyz.size()
+        #
+        # # print("Current self.pose_heavy_atoms_coords", self.ligand.pose_heavy_atoms_coords)
+        # n, M, _ = self.ligand.pose_heavy_atoms_coords.size()
+        # intra_dist = -2 * torch.matmul(lig_heavy_atoms_xyz, self.ligand.pose_heavy_atoms_coords.permute(0, 2, 1))
+        #
+        # intra_dist += torch.sum(lig_heavy_atoms_xyz ** 2, -1).view(-1, N, 1)
+        # intra_dist += torch.sum(self.ligand.pose_heavy_atoms_coords ** 2, -1).view(-1, 1, M)
+        #
+        # intra_dist = (intra_dist >= 0) * intra_dist
+        # self.intra_dist = torch.sqrt(intra_dist)
+        #
+        # #print(" self.intra_dist ", self.intra_dist )
+        # #print(" self.intra_dist shape", self.intra_dist.shape)
+        #
+        # #self.intra_dist = self.intra_dist+self.ligand.intra_interacting_matrix
+        #
+        # #print(" self.intra_dist ", self.intra_dist )
+        # print(" self.intra_dist shape", self.intra_dist.shape)
+
+
+        # print("Distance matrix shape ", self.dist, self.dist.shape)
+        dist_list=[]
+        #print("len pair",len(self.ligand.intra_interacting_pairs))
+        # for pair in self.ligand.intra_interacting_pairs:
+        #     [i, j] = pair
+        #     d = torch.sqrt(
+        #         torch.sum(
+        #             torch.square(self.ligand.pose_heavy_atoms_coords[:, i] - \
+        #                          self.ligand.pose_heavy_atoms_coords[:, j]),
+        #             axis=1))
+        #     dist_list.append(d.reshape(-1, 1))
+        #
+        #     # i_xs = self.updated_lig_heavy_atoms_xs_types[i]
+        #     # j_xs = self.updated_lig_heavy_atoms_xs_types[j]
+        #
+        #     # angstrom
+        #     #vdw_distance = self.vdw_radii_dict[i_xs] + self.vdw_radii_dict[j_xs]
+        #     #vdw_list.append(torch.tensor([vdw_distance]))
+        # dist_tensor = torch.cat(dist_list, axis=1)
+        # self.intra_dist=dist_tensor
+        # print("self.intra_dist",self.intra_dist)
+        # print("self.intra_dist", self.intra_dist.shape)
+
+        #way2
+        # Extract coordinates for all ligand atoms at once
+        ligand_coords = self.ligand.pose_heavy_atoms_coords
+
+        # Extract pairs of indices from self.ligand.intra_interacting_pairs
+        pairs_indices = torch.tensor(self.ligand.intra_interacting_pairs)
+
+        # Extract atom coordinates for pairs of atoms using broadcasting
+        atom_coords_i = ligand_coords[:, pairs_indices[:, 0]][0]
+        atom_coords_j = ligand_coords[:, pairs_indices[:, 1]][0]
+
+        # print("atom_coords_i",atom_coords_i)
+        # print("atom_coords_j", atom_coords_j.shape)
+
+
+        # Calculate distances between pairs of atoms
+        distances = torch.sqrt(torch.sum(torch.square(atom_coords_i - atom_coords_j), axis=1))
+        #print("distance",distances.shape)
+
+        # Reshape distances to a tensor with shape (num_pairs, 1)
+        #dist_tensor = distances.unsqueeze(0)
+
+        # Assign dist_tensor to self.intra_dist
+        self.intra_dist= distances.unsqueeze(0)
+        # print("intra_dist1 ", intra_dist1)
+        #
+        # print("intra_dist1 ",intra_dist1.shape)
+
+        #print("sum",torch.sum(intra_dist1 -self.intra_dist))
+
+
+        #print(" self.intra_dist shape", self.intra_dist.shape)
+        #print("self.intra_dist",self.intra_dist)
+        #exit()
+
+        return self.intra_dist
+
 
 
 class ExternalScoringFunction(BaseScoringFunction):

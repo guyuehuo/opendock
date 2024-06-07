@@ -41,18 +41,10 @@ class Particle(object):
         # if ub[i]-lb[i]==np.pi*2:
         #     ub[i]=ub[i]*0.5
         #     lb[i]=lb[i]*0.5
-        rand = random.uniform(-1.0, 1.0)
         self.position = np.array([random.uniform(lb[i], ub[i]) for i in range(dim)])
-        # print("self.position",self.position)
-        if rand<0:
-            #print("rand",rand)
-            self.position[3:]=self.position[3:]*np.pi
-            #print("self.position", self.position)
         self.velocity = np.zeros(dim)
         self.best_position = np.array([random.uniform(lb[i], ub[i]) for i in range(dim)])
         self.fitness = float('inf')
-        self.cnfrs_history=[]
-        self.scores_history=[]
 
 
 class ParticleSwarmOptimizer(BaseSampler):
@@ -105,13 +97,9 @@ class ParticleSwarmOptimizer(BaseSampler):
         if self.ligand.cnfrs_ is not None:
             # print("self.ligand.cnfrs_[0]",self.ligand.cnfrs_[0])
             # print("self.ligand.cnfrs_[0].shape[0][0]",self.ligand.cnfrs_[0][0].shape[0])
-            # self.bounds += [[self.box_center[x] - self.box_size[x] / 2.0,
-            #                  self.box_center[x] + self.box_size[x] / 2.0] for x in range(3)] + [
-            #                    [-1.0, 1.0]] * (3 + self.ligand.cnfrs_[0][0].shape[0] - 6)
-            self.bounds += [[self.box_center[x] - 5.0,
-                             self.box_center[x] + 5.0] for x in range(3)] + [
+            self.bounds += [[self.box_center[x] - self.box_size[x] / 2.0,
+                             self.box_center[x] + self.box_size[x] / 2.0] for x in range(3)] + [
                                [-1.0, 1.0]] * (3 + self.ligand.cnfrs_[0][0].shape[0] - 6)
-
 
         if self.receptor.cnfrs_ is not None:
             # receptor number of freedoms
@@ -220,7 +208,7 @@ class ParticleSwarmOptimizer(BaseSampler):
             # print("self.swarm[0].fitness",self.swarm[0].fitness)
             for i in range(self.size):
 
-
+                # 这里要不要修改注释掉
                 particle = self.swarm[i]
                 particle.fitness = self.objective_func(particle.position)
 
@@ -234,9 +222,6 @@ class ParticleSwarmOptimizer(BaseSampler):
                 _random_num = random.random()
                 if self.minimizer is not None and _random_num < self.minimization_ratio:
                     lcnfrs_, rcnfrs_ = self._variables2cnfrs(particle.position)
-                    particle.cnfrs_history.append(torch.Tensor(lcnfrs_[0].detach() \
-                                                                           .numpy()[0]).reshape((1, -1)))
-                    particle.scores_history.append(particle.fitness)
                     try:
                         # print("before lcnfrs_:", lcnfrs_)
                         # print("rcnfrs_",rcnfrs_)
@@ -258,7 +243,7 @@ class ParticleSwarmOptimizer(BaseSampler):
 
                         delta_score = _fitness - particle.fitness
 
-                        if delta_score < 0:
+                        if delta_score < 0 or random.random() < np.power(np.e, -2.0 * delta_score / self.kt_):
                             particle.position = np.array(x)
                             particle.best_position = np.array(x)
                             particle.fitness = _fitness
@@ -323,14 +308,8 @@ class ParticleSwarmOptimizer(BaseSampler):
                 print("[WARNING] find no changing scores in sampling, early stopping now!!!")
                 flag = False
                 break
-        all_cnfrs_history=[]
-        all_score_history=[]
-        for i in range(self.size):
-            particle = self.swarm[i]
-            all_cnfrs_history.append(particle.cnfrs_history)
-            all_score_history.append(particle.scores_history)
 
-        return all_cnfrs_history,all_score_history
+        return self.global_best_position, self.global_best_fitness, flag
 
 
 if __name__ == "__main__":

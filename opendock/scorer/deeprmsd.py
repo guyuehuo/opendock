@@ -104,6 +104,8 @@ class DeepRmsdSF(BaseScoringFunction):
         self.generate_pldist_mtrx()
 
         # distance angstrom to nanometer
+        #dist_len=len(self.dist)
+        #print(dist_len)
         dist_nm = self.dist / 10
        
         # Generate the feature matrix for predict RMSD by DeepRMSD.
@@ -172,6 +174,8 @@ class DeepRmsdSF(BaseScoringFunction):
 
         # generate the final energy matrix
         #t = time.time()
+        #print('featues:',features.shape)
+        #print('init_matrix',init_matrix.shape)
         matrix = torch.matmul(features, init_matrix)
         self.origin_energy = matrix.reshape(-1, 1470)
         #print("cost time in get features:", time.time() - t)
@@ -212,7 +216,7 @@ class DRmsdVinaSF(DeepRmsdSF):
         _vina_sf = VinaSF(ligand=self.ligand, 
                           receptor=self.receptor)
         return _vina_sf.scoring() * self.weight_alpha + \
-               self.scoring() * (1 - self.weight_alpha)
+               super().scoring() * (1 - self.weight_alpha)
 
 
 if __name__ == "__main__":

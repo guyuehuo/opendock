@@ -78,6 +78,7 @@ def rtmsf(prot, lig, modpath=RTMScore_Model,
     """
     tmp_directory = f"/tmp/rtmscore_{str(uuid.uuid4().hex)}"
 
+    print('prot:',prot)
     if not prot.endswith(".pdb"):
         if not os.path.exists(tmp_directory):
             os.makedirs(tmp_directory, exist_ok=True)
@@ -85,7 +86,7 @@ def rtmsf(prot, lig, modpath=RTMScore_Model,
         out = os.path.join(tmp_directory, "receptor.pdb")
         obabel(prot, out)
         prot = out
-
+    print('lig:',lig)
     if not lig.endswith(".mol2"):
         if not os.path.exists(tmp_directory):
             os.makedirs(tmp_directory, exist_ok=True)
@@ -101,7 +102,7 @@ def rtmsf(prot, lig, modpath=RTMScore_Model,
         out = out = os.path.join(tmp_directory, "refer_ligand.mol2")
         obabel(reflig, out)
         reflig = out
-
+    print('lig:',lig)
     data = VSDataset(ligs=lig,
                      prot=prot,
                      cutoff=cut,

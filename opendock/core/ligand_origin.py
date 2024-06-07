@@ -62,10 +62,7 @@ class Ligand(object):
         #Find intra-ligand interacting pairs that are not 1-4
         self.all_root_frame_heavy_atoms_index_list = []
         self.number_of_all_frames = 0
-        self.atom_bonds=[]
         self.intra_interacting_pairs=[]
-        self.intra_interacting_matrix=[]
-       
 
     def parse_ligand(self):
         """Parse Ligand PDBQT File.
@@ -93,125 +90,50 @@ class Ligand(object):
 
         self.init_conformation_tentor()
         self.ligand_parsed_ = True
-        #print("self.torsion_bond_index",self.torsion_bond_index)
-        #print("self.torsion_bond_index_matrix",self.torsion_bond_index_matrix[1,9])
-        self.get_intra_atom_bonds()
-        #exit()
         self.get_intra_interacting_pairs()
-        #self.prepare_intra_information()
 
         return self
-
-
-    def get_intra_atom_bonds(self):
-        self.number_of_heavy_atoms = len(self.init_lig_heavy_atoms_xyz[0])
-        #print("self.init_lig_heavy_atoms_xyz[0]",self.init_lig_heavy_atoms_xyz[0])
-        coordinates =self.init_lig_heavy_atoms_xyz[0].numpy()
-        #print("coordinates",coordinates)
-
-        # caculate distance between atom
-        dist_matrix = np.linalg.norm(coordinates[:, np.newaxis] - coordinates, axis=2)
-        #print("dist_matrix",dist_matrix)
-        #print("self.updated_lig_heavy_atoms_xs_types",self.updated_lig_heavy_atoms_xs_types)
-        #print(" self.lig_heavy_atoms_ad4_types", self.lig_heavy_atoms_ad4_types)
-
-        # Calculate the van der Waals distance matrix
-        # vdw_distances = np.array([[self.covalent_radii_dict[self.updated_lig_heavy_atoms_xs_types[i]] + self.covalent_radii_dict[self.updated_lig_heavy_atoms_xs_types[j]]
-        #                            for j in range(len(coordinates))]
-        #                           for i in range(len(coordinates))])
-        vdw_distances = np.array([[self.covalent_radii_dict[self.lig_heavy_atoms_ad4_types[i]] +
-                                   self.covalent_radii_dict[self.lig_heavy_atoms_ad4_types[j]]
-                                   for j in range(len(coordinates))]
-                                  for i in range(len(coordinates))])
-        #print("self.updated_lig_heavy_atoms_xs_types",self.updated_lig_heavy_atoms_xs_types)
-
-        # Compare the distance matrix and the van der Waals distance matrix, and find all index pairs whose distances are less than the van der Waals distance
-        mask = (dist_matrix < vdw_distances) & (np.arange(len(coordinates))[:, None] != np.arange(len(coordinates)))
-
-
-        self.atom_bonds = {i: np.where(mask[i])[0].tolist() for i in range(len(coordinates))}
-
-        # for atom_index, interactions in self.atom_bonds.items():
-        #     print(f"atom {atom_index} index: {interactions}")
-
-        # d = torch.sqrt(
-        #     torch.sum(
-        #         torch.square(self.init_lig_heavy_atoms_xyz[0][:, i] - \
-        #                      self.init_lig_heavy_atoms_xyz[0][:, j]),
-        #         axis=1))
-        # dist_list.append(d.reshape(-1, 1))
-        #
-        # i_xs = self.updated_lig_heavy_atoms_xs_types[i]
-        # j_xs = self.updated_lig_heavy_atoms_xs_types[j]
-        #
-        # # angstrom
-        # vdw_distance = self.vdw_radii_dict[i_xs] + self.vdw_radii_dict[j_xs]
-        # vdw_list.append(torch.tensor([vdw_distance]))
-
-
-
-
     def get_intra_interacting_pairs(self):
-        #print("get_intra_interacting_pairs")
+        print("get_intra_interacting_pairs")
         self.all_root_frame_heavy_atoms_index_list = [self.root_heavy_atom_index] \
                                                      + self.frame_heavy_atoms_index_list
         self.number_of_all_frames = len(self.all_root_frame_heavy_atoms_index_list)
-        #print("self.all_root_frame_heavy_atoms_index_list", self.all_root_frame_heavy_atoms_index_list)
-        #print("self.lig_torsion_bond_index", self.torsion_bond_index)
-        for k1 in range(self.number_of_all_frames):
+        print("self.all_root_frame_heavy_atoms_index_list", self.all_root_frame_heavy_atoms_index_list)
+        print("self.lig_torsion_bond_index", self.lig_torsion_bond_index)
+        for k1 in range(self.num_frames):
             #f1 = self.frames[k1]
             f1=self.all_root_frame_heavy_atoms_index_list[k1]
-            for i in range(f1[0], f1[-1]+1):
-                neighbors = set()
+            for i in range(f1['habegin'], f1['haend']):
+                neighbors = set()  # 使用集合来自动处理重复项
 
-
-                i0_bonds = self.atom_bonds[i]
-                #print("i0_bonds",i0_bonds)
+                # 寻找邻居原子
+                i0_bonds = self.bonds[i]
                 for b1 in i0_bonds:
                     if b1 not in neighbors:
                         neighbors.add(b1)
-                    i1_bonds = self.atom_bonds[b1]
+                    i1_bonds = self.bonds[b1]
                     for b2 in i1_bonds:
                         if b2 not in neighbors:
                             neighbors.add(b2)
-                        i2_bonds = self.atom_bonds[b2]
+                        i2_bonds = self.bonds[b2]
                         for b3 in i2_bonds:
                             if b3 not in neighbors:
                                 neighbors.add(b3)
-                #print("neighbors",neighbors)
 
-
-                for k2 in range(k1 + 1, self.number_of_all_frames):
-                    f2 = self.all_root_frame_heavy_atoms_index_list[k2]
-                    for j in range(f2[0], f2[-1]+1):
-                        # if ((k1 == f2['parent']) and ((j == f2['rotorYidx']) or (i == f2['rotorXidx']))):
-                        #     continue
-                        # if ((k1 == k2-1) and ((j == f2['rotorYidx']) or (i == f2['rotorXidx']))):
-                        #     continue
-
-                        if [i, j] in self.torsion_bond_index or [j, i] in self.torsion_bond_index:
-                            #print("i j", i, j)
+                # 确定相互作用对
+                for k2 in range(k1 + 1, self.num_frames):
+                    f2 = self.frames[k2]
+                    for j in range(f2['habegin'], f2['haend']):
+                        if ((k1 == f2['parent']) and ((j == f2['rotorYidx']) or (i == f2['rotorXidx']))):
                             continue
-                        # if (k1 == k2-1) and  (any(pair[0] == i for pair in self.torsion_bond_index) or any(pair[1] == j for pair in self.torsion_bond_index)):
-                        #     #print("i j", i, j)
-                        #     continue
                         if j in neighbors:
                             continue
 
+                        type_pair_index = self._pair_index(self.heavy_atoms[i]['xs'], self.heavy_atoms[j]['xs'])
+                        self.interacting_pairs.append((i, j, type_pair_index))
 
-                        #type_pair_index = self._pair_index(self.heavy_atoms[i]['xs'], self.heavy_atoms[j]['xs'])
-                        # self.intra_interacting_pairs.append((i, j, type_pair_index))
-                        self.intra_interacting_pairs.append([i, j])
-
+                # 清空邻居集合
                 neighbors.clear()
-        #print("self.intra_interacting_pairs)",len(self.intra_interacting_pairs))
-        #print("self.intra_interacting_pairs)", self.intra_interacting_pairs)
-        # self.intra_interacting_matrix=torch.ones([self.number_of_heavy_atoms,self.number_of_heavy_atoms])*9
-        # for idx in self.intra_interacting_pairs:
-        #     self.intra_interacting_matrix[idx[0]][idx[1]]=0
-        #print("self.intra_interacting_matrix",self.intra_interacting_matrix)
-        #print("self.intra_interacting_matrix", self.intra_interacting_matrix.shape)
-
 
     def _get_poses_fpath(self):
 

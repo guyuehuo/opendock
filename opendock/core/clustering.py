@@ -3,7 +3,7 @@
 import numpy as np 
 import pandas as pd
 import torch
-
+import time
 
 def xyz_rmsd_to_reference(x, reference):
 
@@ -79,13 +79,15 @@ class BaseCluster(object):
     def __init__(self, cnfrs_list, 
                  receptor_cnfrs_list=None, 
                  scores=None, 
-                 ligand=None, 
-                 cutoff=1.0):
+                 ligand=None,
+                 cutoff=2.0,
+                 receptor=None):
 
         self.cnfrs_list = cnfrs_list
         self.receptor_cnfrs_list = receptor_cnfrs_list
         self.scores = scores 
         self.ligand = ligand
+        self.receptor = receptor
 
         self.cluster_centers = []
         self.cluster_scores  = []
@@ -106,11 +108,14 @@ class BaseCluster(object):
         return _selected_cnfr, _lowest_energy, _index
 
     def _filter_similar_cnfrs(self, cnfrs_list, scores, 
-                              cutoff=1.0, reference=None, 
+                              cutoff=2.0, reference=None,
                               receptor_cnfrs_list=None):
         _new_cnfr_list, _new_scores, _new_rec_cnfrs_list = [], [], []
         for i, (cnfr, score) in enumerate(zip(cnfrs_list, scores)):
-            _rmsd = cnfr_rmsd_to_reference([cnfr, ], [reference, ], self.ligand)
+            if self.ligand.cnfrs_ is not None:
+              _rmsd = cnfr_rmsd_to_reference([cnfr, ], [reference, ], self.ligand)
+            else:
+              _rmsd = cnfr_rmsd_to_reference(cnfr, reference, self.receptor)
             if _rmsd > cutoff:
                 _new_cnfr_list.append(cnfr)
                 _new_scores.append(score)
@@ -141,7 +146,7 @@ class BaseCluster(object):
         cluster_receptor_cnfrs: list of torch.Tensor
             The cnfrs (torch.Tensor) of the receptor side chains. 
         """
-
+        t1=time.time()
         cnfrs_list = self.cnfrs_list
         scores = self.scores
 
@@ -159,7 +164,7 @@ class BaseCluster(object):
                                        self.cutoff, 
                                        _selected_cnfr, 
                                        self.receptor_cnfrs_list)
-
+        t2=time.time()
         while len(cnfrs_list):
             if len(self.cluster_scores) >= num_modes\
                   or _lowest_energy > energy_cutoff:
@@ -180,7 +185,8 @@ class BaseCluster(object):
                                            _selected_cnfr, 
                                            rec_cnfrs_list
                                            )
-    
+        t3=time.time()
+        #print('one cluster time',t2-t1)
         return self.cluster_scores, \
             self.cluster_centers, \
             self.cluster_receptor_cnfrs

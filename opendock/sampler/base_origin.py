@@ -91,11 +91,11 @@ class BaseSampler(object):
                 self.ligand.cnfr2xyz(x)
                 # print('d1')
                 score = torch.sum(self.scoring_function.scoring())
+                # print('优化采用的loss',score)
                 # print('d2')
                 return score
 
             # print("Current Minimimzer ", self.minimizer)
-            #print("x_ligand",x_ligand)
             return self.minimizer(x_ligand, _sf, lr=lr, nsteps=nsteps), None
 
         elif not is_ligand and is_receptor:
@@ -150,19 +150,14 @@ class BaseSampler(object):
     def _random_move(self, ligand_cnfrs, receptor_cnfrs):
         # make a random move
         # ligand_cnfrs=ligand_cnfrs[0].numpy()
-        if ligand_cnfrs is not None:
-          ligand_cnfrs[0][0][0] = self.box_center[0]
-          ligand_cnfrs[0][0][1] = self.box_center[1]
-          ligand_cnfrs[0][0][2] = self.box_center[2]
-          print("[INFO] Initial Vector: ", ligand_cnfrs, receptor_cnfrs)
-          # self.ligand.cnfrs_, self.receptor.cnfrs_ = \
-          #     self.initial_mutate(ligand_cnfrs,
-          #                         receptor_cnfrs,
-          #                         self.box_size[0] / 2, minimize=False)
+        ligand_cnfrs[0][0][0] = self.box_center[0]
+        ligand_cnfrs[0][0][1] = self.box_center[1]
+        ligand_cnfrs[0][0][2] = self.box_center[2]
+        print("[INFO] Initial Vector: ", ligand_cnfrs, receptor_cnfrs)
         self.ligand.cnfrs_, self.receptor.cnfrs_ = \
             self.initial_mutate(ligand_cnfrs,
                                 receptor_cnfrs,
-                                5.0, minimize=False)
+                                self.box_size[0] / 2, minimize=False)
         # self.ligand.cnfrs_, self.receptor.cnfrs_ = \
         #     self._mutate(ligand_cnfrs,
         #                         receptor_cnfrs,
@@ -170,7 +165,8 @@ class BaseSampler(object):
         print("[INFO] Random Start: ", self.ligand.cnfrs_, self.receptor.cnfrs_)
 
         return self.ligand.cnfrs_, self.receptor.cnfrs_
-    def initial_mutate_test(self, ligand_cnfrs=None,
+
+    def initial_mutate(self, ligand_cnfrs=None,
                        receptor_cnfrs=None,
                        coords_max=10.0,
                        torsion_max=0.5,
@@ -190,18 +186,16 @@ class BaseSampler(object):
 
         # ligand step size
         # print("cnfr_tensor shape ", ligand_cnfrs[0].shape)
-        center = [0*coords_max * _get_rn()+0.1, 0*coords_max * _get_rn()+0.1, 0*coords_max * _get_rn()+0.1]
-        rnorientation = np.array([0.5*np.pi for x in range(3)])
-        #rnorientation = np.array([0.5 * np.pi,0.5 * np.pi,0])
-        #c0orientation = rnorientation / norm(rnorientation)
-        c0orientation = rnorientation
+        center = [coords_max * _get_rn(), coords_max * _get_rn(), coords_max * _get_rn()]
+        rnorientation = np.array([_get_rn() for x in range(3)])
+        c0orientation = rnorientation / norm(rnorientation)
         print("norm:", c0orientation[0] ** 2 + c0orientation[1] ** 2 + c0orientation[2] ** 2)
         # assert norm(c0orientation) == 1.0
         _ligand_mutate_size = []
         _ligand_mutate_size += center
         _ligand_mutate_size += c0orientation.tolist()
-        _ligand_mutate_size += [0.5*np.pi for x in range(ligand_cnfrs[0].shape[1] - 6)]            #idock is -1 to 1，vina is -pi to pi
-        #_ligand_mutate_size += [_get_rn() for x in range(ligand_cnfrs[0].shape[1] - 6)]
+        # _ligand_mutate_size += [np.pi*_get_rn() for x in range(ligand_cnfrs[0].shape[1] - 6)]            #idock is -1 to 1，vina is -pi to pi
+        _ligand_mutate_size += [_get_rn() for x in range(ligand_cnfrs[0].shape[1] - 6)]
         # _ligand_mutate_size += [_get_rn() for x in
         #                         range(ligand_cnfrs[0].shape[1] - 6)]
         _ligand_mutate_size = torch.Tensor(_ligand_mutate_size)
@@ -223,142 +217,14 @@ class BaseSampler(object):
             while self._out_of_box_check(_new_ligand_cnfrs) and _idx <= max_box_trials:
                 # print("_new_ligand_cnfrs:",_new_ligand_cnfrs)
                 center = [coords_max * _get_rn(), coords_max * _get_rn(), coords_max * _get_rn()]
-                rnorientation = np.array([1.0 for x in range(3)])
-                #c0orientation = rnorientation / norm(rnorientation)
-                c0orientation = rnorientation
-                print("norm:", c0orientation[0] ** 2 + c0orientation[1] ** 2 + c0orientation[2] ** 2)
-                # assert norm(c0orientation) == 1.0
-                _ligand_mutate_size = []
-                _ligand_mutate_size += center
-                _ligand_mutate_size += c0orientation.tolist()
-                #_ligand_mutate_size += [_get_rn() for x in range(ligand_cnfrs[0].shape[1] - 6)]
-                _ligand_mutate_size += [1.0 for x in range(ligand_cnfrs[0].shape[1] - 6)]
-                # _ligand_mutate_size += [_get_rn() for x in
-                #                         range(ligand_cnfrs[0].shape[1] - 6)]
-                _ligand_mutate_size = torch.Tensor(_ligand_mutate_size)
-                # print('new vector', _new_ligand_cnfrs)
-                _new_ligand_cnfrs = [ligand_cnfrs[0] \
-                                     + _ligand_mutate_size]
-                _idx += 1
-
-            # minimize the cnfrs
-            # try:
-            if True:
-                _cnfr = torch.Tensor(_new_ligand_cnfrs[0].detach().numpy() * 1.0).requires_grad_()
-                _new_ligand_cnfrs = [_cnfr, ]
-                if minimize:
-                    _new_ligand_cnfrs, _ = self._minimize(_new_ligand_cnfrs,
-                                                          None, is_ligand=True,
-                                                          is_receptor=False)
-            # except:
-            # print("[WARNING] minimize failed, skipping")
-
-        if self.receptor_is_flexible_:
-            _new_receptor_cnfrs = []
-            for i in range(len(receptor_cnfrs)):
-                # fix potential bug here
-                _sc_mutate_size = torch.Tensor([torsion_max * np.pi * _get_rn(), ] \
-                                               * receptor_cnfrs[i].size()[0])
-                # print(_sc_mutate_size)
-                _new_receptor_cnfrs.append(receptor_cnfrs[i].clone() + _sc_mutate_size * self.kt_)
-                # print(receptor_cnfrs)
-            # minimze the receptor sidechains if necessary
-            _new_receptor_cnfrs = [torch.Tensor(x.detach().numpy() * 1.0).requires_grad_() for x in _new_receptor_cnfrs]
-
-            try:
-                if minimize:
-                    _, _new_receptor_cnfrs = self._minimize(None, _new_receptor_cnfrs,
-                                                            is_receptor=True, is_ligand=False)
-            except:
-                print("[WARNING] minimize failed, skipping")
-
-        return _new_ligand_cnfrs, _new_receptor_cnfrs
-
-    def initial_mutate(self, ligand_cnfrs=None,
-                       receptor_cnfrs=None,
-                       coords_max=10.0,
-                       torsion_max=0.5,
-                       max_box_trials=50,
-                       minimize=True):
-        _new_ligand_cnfrs = None
-        _new_receptor_cnfrs = None
-
-        def _get_rn():
-            return random.uniform(-1.0, 1.0)
-
-        if ligand_cnfrs is not None:
-            self.ligand_is_flexible_ = True
-            # ligand step size
-            # print("cnfr_tensor shape ", ligand_cnfrs[0].shape)
-            center = [coords_max * _get_rn(), coords_max * _get_rn(), coords_max * _get_rn()]
-            rnorientation = np.array([_get_rn() for x in range(3)])
-            # c0orientation = rnorientation / norm(rnorientation)
-            c0orientation = rnorientation
-            rand = _get_rn()
-            # if rand>0.5:#set up to 180°
-            #    c0orientation*=0.5*np.pi
-            #    print("c0",c0orientation)
-            # elif rand<0.5 and rand>0:#set up to 270°
-            #    c0orientation*=0.75*np.pi
-            #    print("c0",c0orientation)
-            if rand < 0:  # set up to 360°
-                c0orientation *= np.pi
-                print("c0", c0orientation)
-            # elif rand >0:  # set up to 360°
-            #     #print([_get_rn_int()*0.5*np.pi,_get_rn_int()*0.5*np.pi,_get_rn_int()*0.5*np.pi])
-            #     #c0orientation += [_get_rn_int()*0.5*np.pi,_get_rn_int()*0.5*np.pi,_get_rn_int()*0.5*np.pi]
-            #     c0orientation =rnorientation / norm(rnorientation)+ 0.5 * np.pi
-            #     print("c0", c0orientation)
-            else:
+                rnorientation = np.array([_get_rn() for x in range(3)])
                 c0orientation = rnorientation / norm(rnorientation)
-            # c0orientation = rnorientation
-            print("norm:", c0orientation[0] ** 2 + c0orientation[1] ** 2 + c0orientation[2] ** 2)
-            # assert norm(c0orientation) == 1.0
-            _ligand_mutate_size = []
-            _ligand_mutate_size += center
-            _ligand_mutate_size += c0orientation.tolist()
-            if rand < 0:
-                _ligand_mutate_size += [np.pi * _get_rn() for x in
-                                        range(ligand_cnfrs[0].shape[1] - 6)]  # idock is -1 to 1，vina is -pi to pi
-            else:
-                _ligand_mutate_size += [_get_rn() for x in
-                                        range(ligand_cnfrs[0].shape[1] - 6)]  # idock is -1 to 1，vina is -pi to pi
-            # _ligand_mutate_size += [_get_rn() for x in range(ligand_cnfrs[0].shape[1] - 6)]
-            # _ligand_mutate_size += [_get_rn() for x in
-            #                         range(ligand_cnfrs[0].shape[1] - 6)]
-            _ligand_mutate_size = torch.Tensor(_ligand_mutate_size)
-
-            # _ligand_mutate_size = torch.Tensor([coords_max * _get_rn(), coords_max * _get_rn(),coords_max * _get_rn()] + \
-            #                                    [_get_rn() for x in
-            #                                     range(ligand_cnfrs[0].shape[1] - 3)])
-
-            # _ligand_mutate_size = torch.Tensor([coords_max * _get_rn(), ] * 3 + \
-            #                                    [torsion_max * np.pi * _get_rn() for x in
-            #                                     range(ligand_cnfrs[0].shape[1] - 3)])
-            # print("_ligand_mutate_size ", _ligand_mutate_size)
-
-        if receptor_cnfrs is not None:
-            self.receptor_is_flexible_ = True
-
-
-        if self.ligand_is_flexible_:
-            _new_ligand_cnfrs = [ligand_cnfrs[0] \
-                                 + _ligand_mutate_size]
-            _idx = 0
-            # print('new vector', _new_ligand_cnfrs)
-            while self._out_of_box_check(_new_ligand_cnfrs) and _idx <= max_box_trials:
-                # print("_new_ligand_cnfrs:",_new_ligand_cnfrs)
-                center = [coords_max * _get_rn(), coords_max * _get_rn(), coords_max * _get_rn()]
-                rnorientation = np.array([np.pi*_get_rn() for x in range(3)])
-                #c0orientation = rnorientation / norm(rnorientation)
-                c0orientation = rnorientation
                 print("norm:", c0orientation[0] ** 2 + c0orientation[1] ** 2 + c0orientation[2] ** 2)
                 # assert norm(c0orientation) == 1.0
                 _ligand_mutate_size = []
                 _ligand_mutate_size += center
                 _ligand_mutate_size += c0orientation.tolist()
-                #_ligand_mutate_size += [_get_rn() for x in range(ligand_cnfrs[0].shape[1] - 6)]
-                _ligand_mutate_size += [np.pi * _get_rn() for x in range(ligand_cnfrs[0].shape[1] - 6)]
+                _ligand_mutate_size += [_get_rn() for x in range(ligand_cnfrs[0].shape[1] - 6)]
                 # _ligand_mutate_size += [_get_rn() for x in
                 #                         range(ligand_cnfrs[0].shape[1] - 6)]
                 _ligand_mutate_size = torch.Tensor(_ligand_mutate_size)
@@ -410,40 +276,32 @@ class BaseSampler(object):
         _new_ligand_cnfrs = None
         _new_receptor_cnfrs = None
 
-        def _get_rn():
-            return random.uniform(-1.0, 1.0)
-
         if ligand_cnfrs is not None:
             self.ligand_is_flexible_ = True
-            # ligand step size
-            # print("cnfr_tensor shape ", ligand_cnfrs[0].shape)
-
-            _ligand_mutate_size = torch.Tensor([_get_rn(), _get_rn(), _get_rn()] + \
-                                               [0 for x in
-                                                range(ligand_cnfrs[0].shape[1] - 3)])
-            # _ligand_mutate_size = torch.Tensor(
-            #     [_get_rn(), _get_rn(), _get_rn()] + [self.kt_*0.5 * np.pi * _get_rn() for x in range(3)] + \
-            #     [0 for x in
-            #      range(ligand_cnfrs[0].shape[1] - 6)])
-            # minimize=False
-            # _ligand_mutate_size = torch.Tensor([_get_rn(), _get_rn(), _get_rn()] + \
-            #                                    [torsion_max * np.pi * _get_rn() for x in
-            #                                     range(ligand_cnfrs[0].shape[1] - 3)])
-            # _ligand_mutate_size = torch.Tensor([coords_max * _get_rn(), ] * 3 + \
-            #                                    [torsion_max * np.pi * _get_rn() for x in
-            #                                     range(ligand_cnfrs[0].shape[1] - 3)])
-            # print("_ligand_mutate_size ", _ligand_mutate_size)
-
-            # if self.ligand_is_flexible_:
-            #     _new_ligand_cnfrs = [ligand_cnfrs[0] \
-            #                          + _ligand_mutate_size*self.kt_, ]
 
         if receptor_cnfrs is not None:
             self.receptor_is_flexible_ = True
 
+        def _get_rn():
+            return random.uniform(-1.0, 1.0)
 
+        # ligand step size
+        # print("cnfr_tensor shape ", ligand_cnfrs[0].shape)
 
+        _ligand_mutate_size = torch.Tensor([_get_rn(), _get_rn(), _get_rn()] + \
+                                           [0 for x in
+                                            range(ligand_cnfrs[0].shape[1] - 3)])
+        # _ligand_mutate_size = torch.Tensor([_get_rn(), _get_rn(), _get_rn()] + \
+        #                                    [torsion_max * np.pi * _get_rn() for x in
+        #                                     range(ligand_cnfrs[0].shape[1] - 3)])
+        # _ligand_mutate_size = torch.Tensor([coords_max * _get_rn(), ] * 3 + \
+        #                                    [torsion_max * np.pi * _get_rn() for x in
+        #                                     range(ligand_cnfrs[0].shape[1] - 3)])
+        # print("_ligand_mutate_size ", _ligand_mutate_size)
 
+        # if self.ligand_is_flexible_:
+        #     _new_ligand_cnfrs = [ligand_cnfrs[0] \
+        #                          + _ligand_mutate_size*self.kt_, ]
         if self.ligand_is_flexible_:
             _new_ligand_cnfrs = [ligand_cnfrs[0] \
                                  + _ligand_mutate_size, ]
@@ -493,7 +351,7 @@ class BaseSampler(object):
 
         return _new_ligand_cnfrs, _new_receptor_cnfrs
 
-    def _mutate_old(self, ligand_cnfrs=None,
+    def _mutate_origin(self, ligand_cnfrs=None,
                        receptor_cnfrs=None,
                        coords_max=5.0,
                        torsion_max=0.5,
@@ -515,11 +373,8 @@ class BaseSampler(object):
         # print("cnfr_tensor shape ", ligand_cnfrs[0].shape)
         coords_max = 2.0
 
-        # _ligand_mutate_size = torch.Tensor([coords_max * _get_rn(), coords_max * _get_rn(), coords_max * _get_rn()] + \
-        #                                    [torsion_max * np.pi * _get_rn() for x in
-        #                                     range(ligand_cnfrs[0].shape[1] - 3)])
         _ligand_mutate_size = torch.Tensor([coords_max * _get_rn(), coords_max * _get_rn(), coords_max * _get_rn()] + \
-                                           [0.5*np.pi * _get_rn() for x in
+                                           [torsion_max * np.pi * _get_rn() for x in
                                             range(ligand_cnfrs[0].shape[1] - 3)])
         # _ligand_mutate_size = torch.Tensor([coords_max * _get_rn(), ] * 3 + \
         #                                    [torsion_max * np.pi * _get_rn() for x in
@@ -576,7 +431,7 @@ class BaseSampler(object):
 
         return _new_ligand_cnfrs, _new_receptor_cnfrs
 
-    # 原版mutate
+    # 原版的mutate
     # def _mutate(self, ligand_cnfrs = None,
     #             receptor_cnfrs = None,
     #             coords_max=5.0,
