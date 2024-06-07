@@ -1,9 +1,9 @@
 .. _framework:
 
-Framework architecture
+Framework architecture of OpenDock
 =============
 Before starting molecular docking, we need to have a basic understanding of the overall framework architecture. 
-Opendock can support various sampling strategies and scoring functions.
+Opendock can support various sampling strategies and scoring functions (with user-defined constraints as defined in ```Constraint``` class).
 The following is the overall framework diagram of OpenDock.
 
 .. image:: ../picture/workflow.png
