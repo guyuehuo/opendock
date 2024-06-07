@@ -3,15 +3,15 @@
 Basic docking
 =============
 
-Let's start with our first example of docking, where the typical usage pattern would be to dock a single molecule into a rigid receptor.
-In this example, Monte Carlo sampling(``MonteCarloSampler``) will be used, and the scoring function will employ Vinascore (``VinaSF``).
-In this example we will dock the PDB entry 1gpn using OpenDock.
+Let's start with our first example of docking, where the typical usage pattern would be to dock a single molecule into a rigid receptor (where the side-chains are kept unchanged).
+In this example, Monte Carlo sampling(``MonteCarloSampler``) strategy will be used, and the scoring function Vinascore (``VinaSF``) will be employed.
+In this example, the protein and the ligand are extracted from PDB code 1gpn and the ligand is re-docked into its original pocket using OpenDock.
 
 1. Preparing the receptor
 -------------------------
 
-During this step, we will create a PDBQT file of our receptor containing only the polar hydrogen atoms as well as partial charges.
-Conversion can be done using OpenBabel.
+During this step, we will create a PDBQT file of our receptor containing heavy atoms and the polar hydrogen atoms as well as their partial charges.
+Conversion can be done using OpenBabel. Or alternatively, you may use the script prepare_receptor4.py in MGLTools (https://ccsb.scripps.edu/mgltools/downloads/) for ligand preparation.
 
 .. code-block:: bash
 
@@ -32,8 +32,8 @@ This step is very similar to the previous step. We will also create a PDBQT file
 
 .. warning::
   
-  We strongly advice you against using PDB format for preparing small molecules, since it does not contain information about bond connections. 
-  Please don't forget to always check the protonation state of your molecules before docking. Your success can sometimes hang by just an hydrogen atom.
+  We strongly advice you using PDB format for preparing small molecules. Please don't forget to always check the protonation state of your molecules before docking.
+  You may also use the script prepare_receptor4.py in MGLTools (https://ccsb.scripps.edu/mgltools/downloads/) for ligand preparation.
 
 .. code-block:: bash
 
@@ -42,7 +42,7 @@ This step is very similar to the previous step. We will also create a PDBQT file
 3. Prepare configuration files
 ------------------------------
 
-A ``vina.config`` file is required during the docking process,
+A ``vina.config`` file is required during the docking process (if you are using the standard script in this repo),
 you can generate a configuration file by running the prepare_configs.py file,which is located in ``opendock/opendock/test/prepare_configs.py``
 
 .. code-block:: bash
@@ -63,7 +63,7 @@ needs the ligand object and the receptor object. Then the sampler (``MonteCarloS
 defined by providing the ligand the receptor object as well as the scoring function object. 
 After 100 steps of the sampling, the ligand poses are output.
 In this example, the ``adam_minimizer`` is a minimizer function that could be used to
-finely control the ligand or receptor conformations guided by the scoring function object.
+finely control the ligand or receptor conformations guided by the scoring function object for local sampling.
 
 .. code-block:: bash
 
@@ -129,3 +129,56 @@ go to your terminal/console/command prompt window. Navigate to the ``examples`` 
 
     $ cd opendock/example/1gpn
     $ python basic_docking_example.py -c vina.config
+
+If only the representative docking poses are required for output, a clustering is needed. 
+
+.. code-block:: bash
+
+    from opendock.core.clustering import BaseCluster
+    from opendock.core import io
+
+    # make clustering
+    cluster = BaseCluster(mc.ligand_cnfrs_history_, 
+                          None,
+                          mc.ligand_scores_history_, 
+                          ligand, 1)
+
+    # get representative poses and their scores
+    _scores, _cnfrs_list, _ = cluster.clustering()
+    print(_scores)
+
+    # save the docking poses (after clustering) into the output file
+    io.write_ligand_traj(_cnfrs_list, ligand, 
+                         os.path.join(configs['out'], 'output_clusters.pdb'), 
+                         information={"VinaScore": _scores},
+                         )
+
+5. Rescore the docking poses
+--------------------
+If you need to rescore the docking poses, a scorer should be defined, and the docking poses (encoded by ``LigandConformation`` object) shoud be provided. 
+
+.. code-block:: bash
+
+    from opendock.scorer.onionnet_sfct import OnionNetSFCTSF
+
+    # define a scoring function
+    sf = OnionNetSFCTSF(receptor, ligand)
+
+    # calculate the scores of a list of docking poses
+    sfct_scores = sf.score_cnfrs(_cnfrs_list, None)
+
+    # alpha is a weight parameter to control the importance of the correction term 
+    alpha = 0.8
+    # _scores are the docking scores calculated by VinaSF
+    _total_scores = np.array(_scores) * alpha + sfct_scores.detach().numpy().ravel() * (1 - alpha)
+
+    # scoring the docking poses by the combined scores
+    scores_cnfrs = list(sorted(list(zip(_total_scores, _cnfrs_list)), key=lambda x: x[0], reverse=False))
+    _scores = [x[0] for x in scores_cnfrs]
+    _cnfrs_list = [x[1] for x in scores_cnfrs]
+
+    # save docking poeses 
+    io.write_ligand_traj(_cnfrs_list, ligand, 
+                         os.path.join(configs['out'], 'output_clusters.pdb'), 
+                         information={"SFCT-Vina": _scores},
+                         )
