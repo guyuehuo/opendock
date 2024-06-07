@@ -10,7 +10,39 @@ In OpenDock, inter-molecular constraints can be implemented using the Constraint
 This Constraint can be considered an extension of a force field function, allowing for the control of molecular motion through the adjustment
 of constraint positions and strengths using harmonic functions and corresponding force constants.
 
-1. Distance constraint between atomic pairs
+1. Atom selection for distance constraint 
+-------------------------------------------
+Before we really start to define a distance constraint, the key atoms for restriction should be selected.
+By using ``AtomSelection``, the atoms from the protein and the ligand could be selected. 
+In some cases, multiple atoms could be defined. The following code block provides some examples.
+
+.. code-block:: bash
+
+    from opendock.core.asl import AtomSelection 
+
+    # select the sidechain oxygen atoms in residue Glu5 of a protein in chain A
+    asl = AtomSelection(molecule=receptor)
+    indices = asl.select_atom(atomnames=['OE1,OE2',], chains=['A'], residx=['5'], resnames=['GLU'])
+    print(indices)
+
+    # select all the backbone atoms in residues 120 to 122 in protein chain A
+    asl = AtomSelection(molecule=receptor)
+    indices_r = asl.select_atom(atomnames=['C,O,N,CA',], chains=['A'], residx=['120-122'])
+    print(indices_r, receptor.dataframe_ha_.head())
+
+    # select two atoms, with atom name as N2 or C13 in a ligand
+    asl = AtomSelection(molecule=ligand)
+    indices_l = asl.select_atom(atomnames=['N2,C13',])
+    print(indices_l, ligand.dataframe_ha_.head())
+    
+    # constraints defined by a distance constrain object
+    cnstr = DistanceConstraintSF(receptor, ligand, 
+                                 grpA_ha_indices=indices_r, 
+                                 grpB_ha_indices=indices_l, 
+                                 )
+    print(cnstr.scoring())
+
+2. Distance constraint between atomic pairs
 -------------------------------------------
 
 Atom selection example. In the following example (pdb: 3gzj), the OG
