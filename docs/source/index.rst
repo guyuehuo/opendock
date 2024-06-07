@@ -39,3 +39,4 @@ from `github.com/guyuehuo/opendock-open <https://github.com/guyuehuo/opendock-op
    docking_constrained
    side-chain_optimization
    multi-CPU
+   sampler
