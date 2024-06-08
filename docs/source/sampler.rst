@@ -17,6 +17,9 @@ The sampler keeps modifying the cnfrs, and then evaluates the scores or energies
 The following code block illustrates how to implement a Genetic Algorithm based sampling (``GeneticAlgorithmSampler``) with a scoring method ``VinaSF``. 
 In this sampler, several parameters (such as number of populations and number of sampling generations) should be defined. 
 
+.. note:: 
+    The basic principles of the genetic algorithms could be found in these two oneline resources: https://machinelearningmastery.com/simple-genetic-algorithm-from-scratch-in-python/ and https://soardeepsci.com/genetic-algorithm-with-python/
+
 .. code-block:: bash
 
     from opendock.core.conformation import ReceptorConformation
@@ -102,3 +105,10 @@ An example of this ``MonteCarloSampler`` sampler is demonstrated in the followin
     # run mc sampling
     mc._random_move(ligand.cnfrs_, receptor.cnfrs_)
     mc.sampling(100)
+
+4. Bayersian Optimization Sampler
+---------------------------------------
+Although we have implemented a Bayersian Optimization Sampler in OpenDock, the performance of it is not verified. 
+
+.. warning::
+    It is not recommended to use this sampler util we run the tests.
