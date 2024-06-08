@@ -56,66 +56,66 @@ In the following code block, the method ``_score`` executes the command line and
 
 .. code-block:: bash
 
-class OnionNetSFCTSF(ExternalScoringFunction):
-    def __init__(self, receptor=None, ligand=None, **kwargs):
-        super(OnionNetSFCTSF, self).__init__(receptor=receptor, ligand=ligand)
-
-        self.python_exe = kwargs.pop("python_exe", SFCT_PY_BIN)
-        self.scorer_bin = kwargs.pop("scorer_bin", SFCT_PY_SCRIPT)
-        self.sfct_dpath = os.path.dirname(self.scorer_bin)
-        self.verbose = kwargs.pop("verbose", False)
+    class OnionNetSFCTSF(ExternalScoringFunction):
+        def __init__(self, receptor=None, ligand=None, **kwargs):
+            super(OnionNetSFCTSF, self).__init__(receptor=receptor, ligand=ligand)
     
-    def _score(self, receptor_fpath = None, ligand_fpath = None, **kwargs):
-        outfile = os.path.join(self.tmp_dpath, "sfct.txt")
-
-        cmd = f"{self.python_exe} {self.scorer_bin} -r {receptor_fpath} \
-                -l {ligand_fpath} -o {outfile} \
-                --model {self.sfct_dpath}/model/rf.model --ncpus 1 --stype general"
-        if self.verbose: 
-            print(f"[INFO] running sfct scoring cmd {cmd}")
-        job = sp.Popen(cmd, shell=True)
-        job.communicate()
-
-        if os.path.exists(outfile):
-            with open(outfile) as lines:
-                try:
-                    score = [float(x.split()[-1]) for x in lines if "#" not in x]
-                except IndexError:
-                    score = [9.99]
-        else:
-            print("[WARNING] failed to obtain sfct scores ...")
-            score = [9.99]
-        
-        return score
+            self.python_exe = kwargs.pop("python_exe", SFCT_PY_BIN)
+            self.scorer_bin = kwargs.pop("scorer_bin", SFCT_PY_SCRIPT)
+            self.sfct_dpath = os.path.dirname(self.scorer_bin)
+            self.verbose = kwargs.pop("verbose", False)
     
-    def score_cnfrs(self, ligand_cnfrs=None, receptor_cnfrs_list = None):
-        # make temp directory
-        if self.tmp_dpath is None:
-            self.tmp_dpath = f"/tmp/{self.__class__.__name__}_{str(uuid.uuid4().hex)[:8]}"
-            os.makedirs(self.tmp_dpath, exist_ok=True)
-
-        scores = []
-
-        if ligand_cnfrs is not None and receptor_cnfrs_list is not None:
-            assert len(ligand_cnfrs) == len(receptor_cnfrs_list)
-
-            for _lcnfr, _rcnfr in zip(ligand_cnfrs, receptor_cnfrs_list):
-                self.ligand.cnfrs_ = [_lcnfr]
-                self.receptor.cnfrs_ = _rcnfr
-                _score = self.scoring().detach().numpy().ravel()[0]
-                scores.append(_score)
-        elif ligand_cnfrs is not None and receptor_cnfrs_list is None:
-            for _lcnfr in ligand_cnfrs:
-                self.ligand.cnfrs_ = [_lcnfr]
-                _score = self.scoring().detach().numpy().ravel()[0]
-                scores.append(_score)
-        else:
-            for _rcnfr in receptor_cnfrs_list:
-                self.receptor.cnfrs_ = _rcnfr
-                _score = self.scoring().detach().numpy().ravel()[0]
-                scores.append(_score)
-        
-        return torch.Tensor(scores).reshape((-1, 1))
+        def _score(self, receptor_fpath = None, ligand_fpath = None, **kwargs):
+            outfile = os.path.join(self.tmp_dpath, "sfct.txt")
+    
+            cmd = f"{self.python_exe} {self.scorer_bin} -r {receptor_fpath} \
+                    -l {ligand_fpath} -o {outfile} \
+                    --model {self.sfct_dpath}/model/rf.model --ncpus 1 --stype general"
+            if self.verbose: 
+                print(f"[INFO] running sfct scoring cmd {cmd}")
+            job = sp.Popen(cmd, shell=True)
+            job.communicate()
+    
+            if os.path.exists(outfile):
+                with open(outfile) as lines:
+                    try:
+                        score = [float(x.split()[-1]) for x in lines if "#" not in x]
+                    except IndexError:
+                        score = [9.99]
+            else:
+                print("[WARNING] failed to obtain sfct scores ...")
+                score = [9.99]
+            
+            return score
+    
+        def score_cnfrs(self, ligand_cnfrs=None, receptor_cnfrs_list = None):
+            # make temp directory
+            if self.tmp_dpath is None:
+                self.tmp_dpath = f"/tmp/{self.__class__.__name__}_{str(uuid.uuid4().hex)[:8]}"
+                os.makedirs(self.tmp_dpath, exist_ok=True)
+    
+            scores = []
+    
+            if ligand_cnfrs is not None and receptor_cnfrs_list is not None:
+                assert len(ligand_cnfrs) == len(receptor_cnfrs_list)
+    
+                for _lcnfr, _rcnfr in zip(ligand_cnfrs, receptor_cnfrs_list):
+                    self.ligand.cnfrs_ = [_lcnfr]
+                    self.receptor.cnfrs_ = _rcnfr
+                    _score = self.scoring().detach().numpy().ravel()[0]
+                    scores.append(_score)
+            elif ligand_cnfrs is not None and receptor_cnfrs_list is None:
+                for _lcnfr in ligand_cnfrs:
+                    self.ligand.cnfrs_ = [_lcnfr]
+                    _score = self.scoring().detach().numpy().ravel()[0]
+                    scores.append(_score)
+            else:
+                for _rcnfr in receptor_cnfrs_list:
+                    self.receptor.cnfrs_ = _rcnfr
+                    _score = self.scoring().detach().numpy().ravel()[0]
+                    scores.append(_score)
+            
+            return torch.Tensor(scores).reshape((-1, 1))
 
 
 In another example, a hybrid scoring method based on OnionNet-SFCT+Vinascore is implemented.
