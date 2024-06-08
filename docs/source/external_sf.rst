@@ -120,7 +120,7 @@ class OnionNetSFCTSF(ExternalScoringFunction):
 
 In another example, a hybrid scoring method based on OnionNet-SFCT+Vinascore is implemented.
 
-.. code:: bash 
+.. code-block:: bash 
 
     class SFCTVinaSF(OnionNetSFCTSF):
         def __init__(self,
@@ -141,7 +141,7 @@ In another example, a hybrid scoring method based on OnionNet-SFCT+Vinascore is 
 
 Here in the following code block, try to run the external scoring function with sampling.
 
-.. code: bash 
+.. code-block: bash 
 
     if __name__ == "__main__":
         if len(sys.argv) < 2:
