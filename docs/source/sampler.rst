@@ -14,8 +14,9 @@ The sampler keeps modifying the cnfrs, and then evaluates the scores or energies
 1. Genetic Algorithm Sampler
 -------------------------------------------
 Genetic Algorithms (GAs) are computational search and optimization techniques inspired by the principles of natural selection and genetics.
-The core concept of a genetic algorithm is based on the theory of evolution. Just as in nature, a GA starts with a population of potential solutions, represented as individuals or chromosomes. Each chromosome encodes a possible solution to the problem at hand. 
-The GA then applies a set of genetic operators to simulate the process of reproduction, mutation, and selection. 
+The core concept of a genetic algorithm is based on the theory of evolution. 
+
+Just as in nature, a GA starts with a population of potential solutions, represented as individuals or chromosomes. Each chromosome encodes a possible solution to the problem at hand. The GA then applies a set of genetic operators to simulate the process of reproduction, mutation, and selection. 
 These operators mimic the actions of natural selection, crossover (recombination), and mutation in order to create new candidate solutions. 
 Through successive generations, the algorithm encourages the survival and propagation of fitter individuals while gradually improving the quality of the solutions.
 
@@ -81,8 +82,10 @@ In this sampler, several parameters (such as number of populations and number of
 
 Particle Swarm Optimization (PSO) is a powerful optimization technique inspired by the social behavior of swarms. 
 It is a population-based evolutionary algorithm that mimics the collective intelligence observed in natural systems, such as flocks of birds or schools of fish.
+
 The behavior of each particle is influenced by its position, velocity, and a memory of its best solution found so far. 
 By updating its velocity and position according to these factors, particles are guided towards better solutions throughout the search process. 
+
 Over multiple iterations, the particles adapt their positions, constantly refining their search and ultimately converging towards an optimal or near-optimal solution.
 
 In the OpenDock implemention of PSO, the ligand docking poses (represented by 6+k cnfrs) are treated as particles (single swarms), and several groups of swarms (docking pose cnfrs) are evaluated and updated in each step. An example of this ``ParticleSwarmOptimizer`` sampler is demonstrated in the following code block. 
@@ -107,12 +110,15 @@ In the OpenDock implemention of PSO, the ligand docking poses (represented by 6+
 3. Monte Carlo Sampler
 ---------------------------------------
 Monte Carlo sampling is a powerful computational technique used in docking simulations to explore the conformational space of molecules and predict their binding interactions. 
+
 In docking simulations, Monte Carlo sampling is employed to generate a diverse set of ligand conformations and orientations within the binding site of the receptor. This sampling technique is based on random perturbations and probabilistic acceptance criteria, allowing exploration of a wide range of ligand configurations.
 The Monte Carlo method begins by randomly placing the ligand within the receptor's binding site. The ligand is then subjected to a series of perturbations, such as translations, rotations, or torsional changes, which alter its conformation and position. These perturbations are typically guided by predefined rules or algorithms that maintain the ligand's geometric and energetic compatibility with the receptor.
 After each perturbation, the new ligand conformation is evaluated based on a scoring function (like ``VinaSF``) that quantifies its fitness or compatibility with the receptor. 
+
 The scoring function considers factors such as shape complementarity, electrostatic interactions, and hydrophobicity, among others. The acceptance or rejection of the new ligand conformation is determined probabilistically, often following the Metropolis criterion or other acceptance criteria based on energy differences.
 The process of perturbation, evaluation, and acceptance/rejection is repeated for a large number of iterations to explore a significant portion of the conformational space. 
 By generating a diverse ensemble of ligand conformations, Monte Carlo sampling allows for the identification of potential binding modes and the estimation of binding affinities.
+
 Overall, Monte Carlo sampling in docking is a stochastic exploration technique that generates and evaluates ligand conformations within a protein's binding site. 
 By employing random perturbations and probabilistic acceptance criteria, Monte Carlo sampling enables the exploration of ligand-receptor interactions, facilitating the prediction of binding modes and affinity.
 
