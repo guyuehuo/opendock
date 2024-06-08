@@ -40,3 +40,4 @@ from `github.com/guyuehuo/opendock-open <https://github.com/guyuehuo/opendock-op
    side-chain_optimization
    multi-CPU
    sampler
+   external_sf
