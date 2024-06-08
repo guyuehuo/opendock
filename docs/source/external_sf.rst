@@ -179,7 +179,4 @@ Here in the following code block, try to run the external scoring function with 
         score = score.detach().numpy().ravel()[0] 
         tf.write(f'{tag},{score:.3f}\n')
         tf.close()
-    
-    
-                                                                                 
-                                                                                
+                                                       
