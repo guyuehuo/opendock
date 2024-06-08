@@ -50,6 +50,12 @@ Next, make sure you have already installed OnionNet-SFCT (https://github.com/zhe
 
     You may change the content of SFCT_PY_BIN and SFCT_PY_SCRIPT according to your installation of OnionNet-SFCT. 
 
+Now, define a scoring function class inherit from the ``ExternalScoringFunction`` class (defined in ``opendock/scorer/scoring_function.py``). This base scorer takes the receptor and the ligand objects as input, it could invoke ``subprocess`` to execute commond line and read the output file of the external tool.
+
+In the following code block, the method ``_score`` executes the command line and parse the output file. 
+
+.. code-block:: bash
+
 class OnionNetSFCTSF(ExternalScoringFunction):
     def __init__(self, receptor=None, ligand=None, **kwargs):
         super(OnionNetSFCTSF, self).__init__(receptor=receptor, ligand=ligand)
@@ -112,61 +118,68 @@ class OnionNetSFCTSF(ExternalScoringFunction):
         return torch.Tensor(scores).reshape((-1, 1))
 
 
-class SFCTVinaSF(OnionNetSFCTSF):
-    def __init__(self,
-                 receptor = None,
-                 ligand = None,
-                 weight_alpha: float = 0.8,
-                 ):
-        # inheritant from base class
-        super(SFCTVinaSF, self).__init__(receptor, ligand)
-        self.weight_alpha = weight_alpha # the vina score weight
+In another example, a hybrid scoring method based on OnionNet-SFCT+Vinascore is implemented.
+
+.. code:: bash 
+
+    class SFCTVinaSF(OnionNetSFCTSF):
+        def __init__(self,
+                     receptor = None,
+                     ligand = None,
+                     weight_alpha: float = 0.8,
+                     ):
+            # inheritant from base class
+            super(SFCTVinaSF, self).__init__(receptor, ligand)
+            self.weight_alpha = weight_alpha # the vina score weight
+        
+        def scoring(self):
+            _vina_sf = VinaSF(ligand=self.ligand, 
+                              receptor=self.receptor)
     
-    def scoring(self):
-        _vina_sf = VinaSF(ligand=self.ligand, 
-                          receptor=self.receptor)
+            return _vina_sf.scoring() * self.weight_alpha + \
+                   self.scoring() * (1 - self.weight_alpha)
 
-        return _vina_sf.scoring() * self.weight_alpha + \
-               self.scoring() * (1 - self.weight_alpha)
+Here in the following code block, try to run the external scoring function with sampling.
 
+.. code: bash 
 
-if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("usage: onnetsfct.py protein.pdbqt ligand.pdbqt output tag")
-        sys.exit(0)
-
-    if os.path.exists(sys.argv[3]):
-        print(f"find previous output {sys.argv[3]}, exit now!!!")
-        sys.exit(0)
-
-    from opendock.core.conformation import ReceptorConformation
-    from opendock.core.conformation import LigandConformation
-
-    # define a flexible ligand object 
-    ligand = LigandConformation(sys.argv[1])
-    xyz_center = ligand._get_geo_center().detach().numpy()[0]
-    print("Ligand XYZ COM", xyz_center) 
-    receptor = ReceptorConformation(sys.argv[2], 
-                                    xyz_center,
-                                    ligand.init_heavy_atoms_coords)
-
-    sf = OnionNetSFCTSF(receptor, ligand, 
-                        python_exe=SFCT_PY_BIN, 
-                        scorer_bin=SFCT_PY_SCRIPT, 
-                        verbose=True)
-    score = sf.scoring(remove_temp=True)
-    print("SFCT score ", score)
-
-    tf = open(sys.argv[3], 'w')
-    try:
-        tag = sys.argv[4]
-    except:
-        tag = "decoy"
-
-    score = score.detach().numpy().ravel()[0] 
-    tf.write(f'{tag},{score:.3f}\n')
-    tf.close()
-
-
-                                                                             
-                                                                            
+    if __name__ == "__main__":
+        if len(sys.argv) < 2:
+            print("usage: onnetsfct.py protein.pdbqt ligand.pdbqt output tag")
+            sys.exit(0)
+    
+        if os.path.exists(sys.argv[3]):
+            print(f"find previous output {sys.argv[3]}, exit now!!!")
+            sys.exit(0)
+    
+        from opendock.core.conformation import ReceptorConformation
+        from opendock.core.conformation import LigandConformation
+    
+        # define a flexible ligand object 
+        ligand = LigandConformation(sys.argv[1])
+        xyz_center = ligand._get_geo_center().detach().numpy()[0]
+        print("Ligand XYZ COM", xyz_center) 
+        receptor = ReceptorConformation(sys.argv[2], 
+                                        xyz_center,
+                                        ligand.init_heavy_atoms_coords)
+    
+        sf = OnionNetSFCTSF(receptor, ligand, 
+                            python_exe=SFCT_PY_BIN, 
+                            scorer_bin=SFCT_PY_SCRIPT, 
+                            verbose=True)
+        score = sf.scoring(remove_temp=True)
+        print("SFCT score ", score)
+    
+        tf = open(sys.argv[3], 'w')
+        try:
+            tag = sys.argv[4]
+        except:
+            tag = "decoy"
+    
+        score = score.detach().numpy().ravel()[0] 
+        tf.write(f'{tag},{score:.3f}\n')
+        tf.close()
+    
+    
+                                                                                 
+                                                                                
