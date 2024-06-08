@@ -120,6 +120,10 @@ In the following code block, the method ``_score`` executes the command line and
 
 In another example, a hybrid scoring method based on OnionNet-SFCT+Vinascore is implemented.
 
+.. note::
+
+    The parameter alpha is a linear weight factor for the combination of Vinascore with OnionNet-SFCT. It is suggested to use alpha = 0.5 in most of the docking tasks and use alpha = 0.8 in virtual screening tasks.
+
 .. code-block:: bash 
 
     class SFCTVinaSF(OnionNetSFCTSF):
