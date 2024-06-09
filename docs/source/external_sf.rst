@@ -145,7 +145,7 @@ In another example, a hybrid scoring method based on OnionNet-SFCT+Vinascore is 
 
 Here in the following code block, try to run the external scoring function with sampling.
 
-.. code-block: bash 
+.. code-block:: bash 
 
     if __name__ == "__main__":
         if len(sys.argv) < 2:
