@@ -1,6 +1,12 @@
 .. image:: ../picture/logo.png
-   :alt: Overall framework diagram
-Welcome to OpenDock's documentation! 
+   :alt: opendock logo
+   :scale: 50%
+   :align: middle
+
+.. raw:: html
+
+   <span style="vertical-align:middle;">Welcome to OpenDock's documentation!</span>
+
 ===================================
 OpenDock is a versitile protein-ligand docking framework with diverse scoring functions. 
 
@@ -15,7 +21,7 @@ Availability
 ------------
 
 All **source code** is available under the `Apache License, version 2.0 <https://www.apache.org/licenses/LICENSE-2.0>`_ 
-from `github.com/guyuehuo/opendock-open <https://github.com/guyuehuo/opendock-open>`_
+from `github.com/guyuehuo/opendock <https://github.com/guyuehuo/opendock-open>`_
 
 
 .. toctree::
