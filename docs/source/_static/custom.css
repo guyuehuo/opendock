@@ -1,0 +1,4 @@
+.logo {
+    max-width: 50%; /* 设置宽度为50% */
+    height: auto;   /* 保持纵横比 */
+}
