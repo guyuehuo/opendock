@@ -1,8 +1,5 @@
-body {
-    background-color: #8b2525; /* 更改背景颜色以验证自定义 CSS 是否生效 */
-}
 
-.logo {
-    max-width: 50% !important; /* 使用 !important 强制覆盖其他样式 */
+.wy-side-nav-search .logo {
+    max-width: 100px; /* 使用 !important 强制覆盖其他样式 */
     height: auto !important;   /* 保持纵横比 */
 }
