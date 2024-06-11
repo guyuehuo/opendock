@@ -1,12 +1,12 @@
-.. image:: ../picture/logo.png
-   :alt: opendock logo
-   :scale: 50%
-   :align: middle
+.. .. image:: ../picture/logo.png
+..    :alt: opendock logo
+..    :scale: 50%
+..    :align: middle
 
-.. raw:: html
+.. .. raw:: html
 
-   <span style="vertical-align:middle;">Welcome to OpenDock's documentation!</span>
-
+..    <span style="vertical-align:middle;">Welcome to OpenDock's documentation!</span>
+Welcome to OpenDock's documentation!
 ===================================
 OpenDock is a versitile protein-ligand docking framework with diverse scoring functions. 
 
