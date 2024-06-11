@@ -29,6 +29,10 @@ templates_path = ['_templates']
 html_static_path = ['_static']
 html_logo = '../picture/logo.png'
 
+# 引用自定义 CSS 文件
+html_css_files = [
+    'custom.css',
+]
 # -- Options for HTML output
 
 html_theme = 'sphinx_rtd_theme'
