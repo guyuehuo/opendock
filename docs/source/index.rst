@@ -1,3 +1,5 @@
+.. image:: ../picture/logo.png
+   :alt: Overall framework diagram
 Welcome to OpenDock's documentation! 
 ===================================
 OpenDock is a versitile protein-ligand docking framework with diverse scoring functions. 
