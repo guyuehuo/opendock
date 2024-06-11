@@ -27,7 +27,7 @@ intersphinx_disabled_domains = ['std']
 
 templates_path = ['_templates']
 html_static_path = ['_static']
-html_logo = '_static/logo_resized_20.png'
+html_logo = '_static/logo.png'
 
 # 引用自定义 CSS 文件
 html_css_files = [
