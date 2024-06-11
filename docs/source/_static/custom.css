@@ -1,4 +1,8 @@
+body {
+    background-color: #8b2525; /* 更改背景颜色以验证自定义 CSS 是否生效 */
+}
+
 .logo {
-    max-width: 20%; /* 设置宽度为50% */
-    height: auto;   /* 保持纵横比 */
+    max-width: 50% !important; /* 使用 !important 强制覆盖其他样式 */
+    height: auto !important;   /* 保持纵横比 */
 }
