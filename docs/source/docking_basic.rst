@@ -51,7 +51,7 @@ you can generate a configuration file by running the prepare_configs.py file,whi
 
 .. note::
 
-    ``refer`` usually to the natural structure of the ligand.
+    ``refer`` usually indicates a reference ligand which is used to define the docking box center.
 
 4. A simple example of running opendock
 --------------------
@@ -132,6 +132,11 @@ go to your terminal/console/command prompt window. Navigate to the ``examples`` 
 
 If only the representative docking poses are required for output, a clustering is needed. 
 
+.. note::
+    The clustering class (``BaseCluster``) is a simple strategy to group the docking poses by their pairwise RMSD with a user defined cutoff (usually 1 angstrom). 
+    In this strategy, the ligand symmetric groups are not considered for RMSD calculation. 
+    The user may compose their own clustering method following the similar coding pattern.
+
 .. code-block:: bash
 
     from opendock.core.clustering import BaseCluster
@@ -156,6 +161,9 @@ If only the representative docking poses are required for output, a clustering i
 5. Rescore the docking poses
 --------------------
 If you need to rescore the docking poses, a scorer should be defined, and the docking poses (encoded by ``LigandConformation`` object) shoud be provided. 
+
+.. note::
+    Before you can use this ``OnionNetSFCTSF`` class, the package OnionNet-SFCT should be installed (https://github.com/zhenglz/OnionNet-SFCT). OpenDock uses the ``subprocess`` to call the external scoring functions (such as OnionNet-SFCT and RTMscore). Because this ``OnionNet-SFCT`` is not designed to be differentiable, thus it could only be used as a post-scoring method.
 
 .. code-block:: bash
 
