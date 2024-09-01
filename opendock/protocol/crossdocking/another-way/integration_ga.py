@@ -81,6 +81,9 @@ def main():
 
     # define a flexible ligand object
     ligand = LigandConformation(configs['ligand'])
+    ligand.ligand_center[0][0] = xyz_center[0]
+    ligand.ligand_center[0][1] = xyz_center[1]
+    ligand.ligand_center[0][2] = xyz_center[2]
     receptor = ReceptorConformation(configs['receptor'],
                                     torch.Tensor(xyz_center).reshape((1, 3)),
                                     init_lig_heavy_atoms_xyz=ligand.init_lig_heavy_atoms_xyz,
