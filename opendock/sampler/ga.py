@@ -61,7 +61,7 @@ class GeneticAlgorithmSampler(BaseSampler):
         self.n_pop = kwargs.pop("n_pop", 4)
         self.minimization_ratio = kwargs.pop("minimization_ratio", 1. / 5.)
         self.early_stop_tolerance = kwargs.pop("early_stop_tolerance", 10)
-        self.bound_value = kwargs.pop('bound_value', 3.0)
+        self.bound_value = kwargs.pop('bound_value', 1.0)
         self.kt_ = kwargs.pop('kt', 1.0)
 
         print("self.bound_value",self.bound_value)
@@ -112,9 +112,9 @@ class GeneticAlgorithmSampler(BaseSampler):
             #self.bound_init = xyz_ranges
             # self.bound += [[-1.0, 1.0] for x in range(self.n_var - 3)]
             #for crossdocking
-            #self.bound += [[-1*self.bound_value, self.bound_value] for x in range(self.n_var - 3)]
+            self.bound += [[-1*self.bound_value, self.bound_value] for x in range(self.n_var - 3)]
             #for redocking
-            self.bound += [[-1, 1] for x in range(self.n_var - 3)]
+            #self.bound += [[-1, 1] for x in range(self.n_var - 3)]
             #self.bound_init =[[-1.0, 1.0] for x in range(self.n_var - 3)]
         else:
             self.bound = kwargs.pop("bound", [[-1. * np.pi, np.pi] for x in self.n_var])
