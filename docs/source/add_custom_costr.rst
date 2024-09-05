@@ -1,7 +1,7 @@
 .. add_custom_constraint:
 
 
-Step-by-step external custom constraints implementation
+Step-by-step custom constraints implementation
 =====================================================
 
 Users can customize various types of constraints, such as distance constraints, angle constraints, dihedral angle constraints, hydrogen bond constraints, etc
@@ -23,16 +23,19 @@ in the following part,we will demonstrate in detail how to implement angle const
 ---------------------------------------------------
 The added custom constraints can be understood as a new scoring function, 
 so first go to the scorer folder and open constraints.py
+
 .. code-block:: bash
+    
     cd opendock/scorer/constraints.py
 
 In the constrains.py file, it can be seen that distance constraints have been implemented, 
 such as DistanceConstraintSF and DistanceMatrixConstraintSF.
 To add angle constraints, the first step is to implement an 
 angle calculation function located in the base class ConstraintSF.
-The input is 3 coordinate points, and for ease of calculation, the output is the radian value of the angle
+The input is 3 coordinate points, and for ease of calculation, the output is the radian value of the angle.
 
 .. code-block:: bash
+
     def _angle(self, x, y, z):
         # Calculate the two vectors
         vec1 = x - y
@@ -60,6 +63,7 @@ Then we can define AngleConstraintSF,
 which inherits from the base class ConstraintSF
 
 .. code-block:: bash
+
     class AngleConstraintSF(ConstraintSF):
 
       def __init__(self, 
