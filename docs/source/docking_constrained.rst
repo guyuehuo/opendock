@@ -52,7 +52,7 @@ The modeling code is as follows:
 
 .. note:: 
     Please note that the residue index (``residx``) is generally 1-based as indicated in the PDB file.
-
+       The above atomic names have some differences between protein PDB files and PDBQT files, but the atoms are the same.
 .. code-block:: bash
 
     from opendock.scorer.constraints import DistanceConstraintSF
@@ -61,7 +61,7 @@ The modeling code is as follows:
 
      #set constrain
     asl = AtomSelection(molecule=receptor)
-    indices_r = asl.select_atom(atomnames=['OG', ], chains=['A'], residx=['87'],resnames=['SER'] )
+    indices_r = asl.select_atom(atomnames=['OG', ], chains=['A'], residx=['78'],resnames=['SER'] )
     
     asl = AtomSelection(molecule=ligand)
     indices_l = asl.select_atom(atomnames=['CAF', ])

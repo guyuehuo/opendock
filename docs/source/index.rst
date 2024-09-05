@@ -47,3 +47,4 @@ from `github.com/guyuehuo/opendock <https://github.com/guyuehuo/opendock-open>`_
    multi-CPU
    sampler
    external_sf
+   add_custom_costr.rst
