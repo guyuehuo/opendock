@@ -36,7 +36,7 @@ The Anaconda Python distribution, which can be download from `https://docs.conti
     $ pip install scipy
     $ pip install scikit-learn
 
-4. Install `OpenDock` package by using pip install
+4. Install `OpenDock` package from source
 
 .. code-block:: bash
 
