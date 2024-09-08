@@ -10,7 +10,7 @@ Currently working on Linux. We did not test on Windows and Mac.
 
 .. code-block:: bash
     
-    $ pip install opendock #(not functional by now...)
+    $ pip install opendock 
 
 **OpenDock installation in a Conda environment**:
 
