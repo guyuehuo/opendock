@@ -94,7 +94,28 @@ class ConstraintSF(BaseScoringFunction):
         return torch.sqrt(torch.sum(torch.pow((x - y), 2)))
     
     def _angle(self, x, y, z):
-        return NotImplemented
+        # Calculate the two vectors
+        vec1 = x - y
+        vec2 = z - y
+        
+        # Compute the dot product of the two vectors
+        dot_product = torch.sum(vec1 * vec2)
+        
+        # Compute the magnitudes of the vectors
+        mag1 = torch.sqrt(torch.sum(torch.pow(vec1, 2)))
+        mag2 = torch.sqrt(torch.sum(torch.pow(vec2, 2)))
+        
+        # Calculate the cosine of the angle using the dot product formula
+        cos_theta = dot_product / (mag1 * mag2)
+        
+        # Ensure cos_theta is within the valid range [-1, 1] to avoid numerical errors
+        cos_theta = torch.clamp(cos_theta, -1.0, 1.0)
+        
+        # Calculate the angle (in radians) using the arccosine function
+        angle = torch.acos(cos_theta)
+        
+        return angle
+
     
     def _apply_constraint(self, x):
 
@@ -115,6 +136,69 @@ class ConstraintSF(BaseScoringFunction):
 
         return score.reshape((1, -1))
 
+
+class AngleConstraintSF(ConstraintSF):
+
+    def __init__(self, 
+                 receptor = None,
+                 ligand = None, 
+                 **kwargs):
+        super(AngleConstraintSF, self)\
+        .__init__(receptor=receptor, ligand=ligand)
+
+        self.grpA_mol_ = kwargs.pop('groupA_mol', "receptor") 
+
+        self.grpB_mol_ = kwargs.pop('groupB_mol', "receptor") # receptor or ligand
+
+        self.grpC_mol_ = kwargs.pop('groupC_mol', "ligand")  
+
+        self.grpA_idx_ = kwargs['grpA_ha_indices']
+        self.grpB_idx_ = kwargs['grpB_ha_indices']
+        self.grpC_idx_ = kwargs['grpC_ha_indices']
+
+        self.constraint_type_ = kwargs.pop('constraint', 'harmonic')
+        self.force_constant_ = kwargs.pop('force', 1.0)
+        #self.constraint_reference_ = kwargs.pop('reference', None)
+        # distance boundary, unit is angstrom
+        self.bounds_ = kwargs.pop('bounds', [3.0, 8.0])
+        #print(len(self.grpA_idx_))
+        #print(len(self.grpB_idx_))
+
+        assert (len(self.grpA_idx_) > 0 and len(self.grpB_idx_) > 0 and len(self.grpC_idx_) > 0)
+
+    def scoring(self):
+
+        if self.grpA_mol_.lower() in ['receptor', 'protein']:
+            _grpA_xyz = self.receptor.rec_heavy_atoms_xyz
+        elif self.grpA_mol_.lower() in ['ligand', 'molecule']:
+            _grpA_xyz = self.ligand.pose_heavy_atoms_coords[0]
+        
+        #print("_grpA_xyz ", _grpA_xyz.shape)
+
+        if self.grpB_mol_.lower() in ['receptor', 'protein']:
+            _grpB_xyz = self.receptor.rec_heavy_atoms_xyz
+        elif self.grpB_mol_.lower() in ['ligand', 'molecule']:
+            _grpB_xyz = self.ligand.pose_heavy_atoms_coords[0]
+
+        if self.grpC_mol_.lower() in ['receptor', 'protein']:
+            _grpC_xyz = self.receptor.rec_heavy_atoms_xyz
+        elif self.grpC_mol_.lower() in ['ligand', 'molecule']:
+            _grpC_xyz = self.ligand.pose_heavy_atoms_coords[0]
+        #print("_grpB_xyz ",_grpB_xyz, _grpB_xyz.shape)
+        
+        pairs = list(zip(self.grpA_idx_, self.grpB_idx_,self.grpC_idx_))
+        #print("pairs",pairs)
+        self._angle_paired_ = []
+        for i, (atm1, atm2,atm3) in enumerate(pairs):
+            _a = self._angle(_grpA_xyz[atm1], _grpB_xyz[atm2], _grpC_xyz[atm3])
+            self._angle_paired_.append(_a)
+
+        self.angle_paired = torch.stack(self._angle_paired_)
+        #print("angle_paired", self.angle_paired)
+
+        score = self._apply_constraint(torch.mean(self.angle_paired))
+
+        return score.reshape((1, -1))
 
 class DistanceConstraintSF(ConstraintSF):
 

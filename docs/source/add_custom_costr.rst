@@ -137,7 +137,9 @@ protein side chain atoms ser87-OG, and GLY19-O as cases
     Please note that the residue index (``residx``) is generally 1-based as indicated in the PDB file.
     The above atomic names have some differences between protein PDB files and PDBQT files, but the atoms are the same.
 
-
+.. code-block:: bash
+    
+    vim opendock/example/3gzj/atom_angle_constraint_example.py
    
 .. code-block:: bash
 
