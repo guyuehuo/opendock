@@ -26,7 +26,7 @@ so first go to the scorer folder and open constraints.py
 
 .. code-block:: bash
     
-    cd opendock/scorer/constraints.py
+    vim opendock/scorer/constraints.py
 
 In the constrains.py file, it can be seen that distance constraints have been implemented, 
 such as DistanceConstraintSF and DistanceMatrixConstraintSF.
