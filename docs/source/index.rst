@@ -43,8 +43,8 @@ from `github.com/guyuehuo/opendock <https://github.com/guyuehuo/opendock-open>`_
    docking_basic
    docking_multiple
    docking_constrained
+   add_custom_costr.rst
    side-chain_optimization
    multi-CPU
    sampler
    external_sf
-   .. add_custom_costr.rst
