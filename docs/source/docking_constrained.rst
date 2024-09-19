@@ -155,11 +155,10 @@ go to your terminal/console/command prompt window. Navigate to the ``examples`` 
     $ python distance_matrix_constraint_example.py -c vina.config # Distance matrix constraint
 
 
-.. add_custom_constraint:
 
 
-4.Step-by-step custom constraints implementation
-=====================================================
+4. Step-by-step custom constraints implementation
+===================================================
 
 Users can customize various types of constraints, such as distance constraints, angle constraints, dihedral angle constraints, hydrogen bond constraints, etc
 
@@ -176,7 +175,7 @@ In order to guide users to implement custom constraints, taking the example of a
 in the following part,we will demonstrate in detail how to implement angle constraints
  
 
-4.1 Define angle constraint class--AngleConstraintSF
+5. Define angle constraint class--AngleConstraintSF
 ---------------------------------------------------
 The added custom constraints can be understood as a new scoring function, 
 so first go to the scorer folder and open constraints.py
@@ -284,7 +283,7 @@ which inherits from the base class ConstraintSF
 Thus, we successfully defined the angle constraint through the class AngleConstrainSF. 
 Next, we will demonstrate how to use the newly defined angle constraint
 
-4.2 Use newly defined angle constraints
+6. Use newly defined angle constraints
 ----------------------------------------
 
 Consistent with previous constraint cases, taking pdb: 3gzj as an example, we chose ligand atom CAF,
