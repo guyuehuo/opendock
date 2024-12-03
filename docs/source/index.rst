@@ -18,7 +18,7 @@ Check out the :doc:`installation` section for installing, and the :doc:`docking_
 Availability
 ------------
 
-All **source code** is available under the MIT License <https://opensource.org/licenses/MIT>_ 
+All **source code** is available under the `MIT License <https://opensource.org/licenses/MIT>`_ 
 from `github.com/guyuehuo/opendock <https://github.com/guyuehuo/opendock-open>`_
 
 
