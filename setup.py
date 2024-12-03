@@ -19,7 +19,7 @@ setup(name='opendock',
       url='',
       author='Qiuyue Hu, Zechen Wang, Liangzhen Zheng',
       author_email='zhenglz@outlook.com',
-      license='GPL-3.0',
+      license='MIT',
       packages=['opendock.core', 'opendock.scorer', 
                 'opendock.sampler', 'opendock'],
       install_requires=[
