@@ -12,9 +12,7 @@ Some of the common scoring functions could be:
 .. code-block:: bash
 
   OnionNet-SFCT
-  RTMscore
-  X-score
-  zPoseScore
+  HybridSP
 
 Or any other scoring functions that use the receptor and the docking pose as input. 
 In the following part, we demostrate how external scoring functions are defined. 
