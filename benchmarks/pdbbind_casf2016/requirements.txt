@@ -1,0 +1,14 @@
+# PDBbind CASF-2016 docking-power benchmark harness
+# Tested with Python >= 3.9 (64-bit Linux)
+numpy
+pandas
+scipy
+torch>=1.10
+rdkit>=2021.3
+prody
+spyrmsd>=0.4
+# optional, for pdbqt prep:
+#   meeko  (py3-native ligand pdbqt fallback)
+# system tools (not pip installable):
+#   openbabel>=3.2, mgltools (prepare_receptor4.py / prepare_ligand4.py),
+#   standalone idock binary (build from https://github.com/zhenglz/idock)

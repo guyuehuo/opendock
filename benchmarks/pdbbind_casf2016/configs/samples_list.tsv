@@ -1,0 +1,9 @@
+# PDBbind refined set v2016 CASF-2016 core members (290 complexes).
+# One PDB code per line; '#' starts a comment. Regenerate this file from
+# $PDBBIND/INDEX_core_data.2016 (2nd column) with:
+#   tail -n +6 INDEX_core_data.2016 | awk '{print $2}' | sort > samples_list.tsv
+# The entries below are placeholders used for pilot runs only.
+1gpn
+4tmn
+3gzj
+1tae

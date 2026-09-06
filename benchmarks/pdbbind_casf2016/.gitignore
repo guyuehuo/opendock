@@ -1,0 +1,10 @@
+# per-complex artifacts
+work/
+
+# aggregated result CSVs (summary.md is tracked)
+results/*.csv
+results/rmsd.tsv
+
+# misc
+*.pyc
+__pycache__/

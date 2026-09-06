@@ -1,0 +1,29 @@
+{
+  "tools": {
+    "opendock": {"scorer": "vina"},
+    "idock": {}
+  },
+  "ligand_sources": ["crystal", "rdkit"],
+  "docking_modes": ["pocket", "blind"],
+  "opendock_samplers": [
+    {"name": "mc-lbfgs", "sampler": "mc", "steps_per_ha": 50, "minimizer": "lbfgs"},
+    {"name": "mc-nomin", "sampler": "mc", "steps_per_ha": 100, "minimizer": "none"},
+    {"name": "ga-lbfgs", "sampler": "ga", "steps_per_ha": 5, "minimizer": "lbfgs", "n_pop": 100},
+    {"name": "ga-nomin", "sampler": "ga", "steps_per_ha": 10, "minimizer": "none", "n_pop": 200},
+    {"name": "pso-lbfgs", "sampler": "pso", "steps_per_ha": 50, "minimizer": "lbfgs"},
+    {"name": "pso-nomin", "sampler": "pso", "steps_per_ha": 100, "minimizer": "none"}
+  ],
+  "box": {
+    "pocket_half_extent": 10.0,
+    "blind_margin": 10.0,
+    "clip_default": 20.0,
+    "clip_blind_factor": 1.5
+  },
+  "output": {
+    "num_modes": 10,
+    "cluster_cutoff": 2.0
+  },
+  "metrics": {
+    "rmsd_thresholds": [1.0, 2.0, 2.5]
+  }
+}
