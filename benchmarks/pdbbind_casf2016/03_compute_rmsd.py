@@ -36,9 +36,21 @@ from benchlib import CONFIG_DIR, default_results_dir, default_work_dir, ensure_d
 
 HYDROGEN = {"H", "HD"}
 
-# atomic number -> element symbol used for the DockRMSD MOL2 atom types
-ELEMENTS = {6: "C", 7: "N", 8: "O", 9: "F", 15: "P", 16: "S", 17: "Cl",
-            35: "Br", 53: "I", 5: "B", 14: "Si", 33: "As", 34: "Se"}
+# AD4 atom-type codes -> element symbol (used to sanity-check pose atom order)
+_AD4_ELEMENT = {"A": "C", "C": "C", "N": "N", "NA": "N", "OA": "O",
+                "O": "O", "S": "S", "SA": "S", "F": "F", "P": "P",
+                "CL": "Cl", "BR": "Br", "I": "I", "SI": "Si"}
+
+
+def canonical_element(s):
+    """Canonical element symbol (e.g. 'C', 'Cl', 'Br')."""
+    s = (s or "").strip()
+    if not s:
+        return ""
+    s = s.upper()
+    if s in ("CL", "BR"):
+        return s[0] + s[1:].lower()
+    return s[0]
 
 # coordinates live in the PDB coordinate window (cols ~27-54 for OpenDock's
 # custom writer, cols 30-54 for standard PDBQT); pull the first three floats
@@ -61,21 +73,39 @@ def decode_condition_name(name, sources=("crystal", "rdkit"),
 
 
 def _coords_and_heavy(line):
-    """Return (coords, is_hydrogen) for an ATOM/HETATM line."""
+    """Return (coords, element|None, is_hydrogen) for an ATOM/HETATM line."""
     ad4 = line[77:79].strip()
     last = line.split()[-1] if line.split() else ""
     if ad4 in HYDROGEN or last in HYDROGEN:
-        return None, True
+        return None, None, True
     nums = _XYZ_RE.findall(line[_XYZ_WINDOW])[:3]
     if len(nums) != 3:
-        return None, False
-    return np.array([float(n) for n in nums]), False
+        return None, None, False
+    element = _element_of(line, ad4, last)
+    return np.array([float(n) for n in nums]), element, False
+
+
+def _element_of(line, ad4, last):
+    """Element symbol for a heavy atom in an ATOM/HETATM line.
+
+    PDBQT lines carry the AD4 type at cols 78-80 (e.g. ``A`` aromatic carbon);
+    OpenDock's writer instead puts the element symbol as the final token.
+    """
+    if ad4:
+        code = ad4.upper()
+        if code in _AD4_ELEMENT:
+            return _AD4_ELEMENT[code]
+        # e.g. other single-letter codes: assume the first character
+        return code[0]
+    # OpenDock style: last token is the element symbol
+    return canonical_element(last)
 
 
 def parse_output_models(fpath):
     """Parse a multi-model PDBQT/PDB output into a list of poses.
 
-    Returns list of dicts: ``{"score": float, "coords": np.ndarray (N,3)}``.
+    Returns list of dicts with ``score``, ``coords`` (N,3) and ``elements``
+    (list of canonical element symbols in heavy-atom order).
     """
     models, current = [], None
     score_lines = []
@@ -97,14 +127,16 @@ def parse_output_models(fpath):
                     if not np.isnan(score):
                         break
                 if len(current):
-                    models.append({"score": float(score),
-                                   "coords": np.asarray(current, dtype=float)})
+                    coords = np.asarray([c for c, _, _ in current], dtype=float)
+                    elements = [e for _, e, _ in current]
+                    models.append({"score": float(score), "coords": coords,
+                                   "elements": elements})
                 current = None
         elif current is not None and (line.startswith("ATOM")
                                       or line.startswith("HETATM")):
-            xyz, is_h = _coords_and_heavy(line)
+            xyz, element, is_h = _coords_and_heavy(line)
             if xyz is not None and not is_h:
-                current.append(xyz)
+                current.append((xyz, element, False))
         elif current is not None and line.startswith("REMARK"):
             score_lines.append(line)
     return models
@@ -126,7 +158,7 @@ def load_reference(ref_sdf):
                        for i in range(mol.GetNumAtoms())], dtype=float)
     atomicnums = np.array([a.GetAtomicNum() for a in mol.GetAtoms()])
     adj = np.asarray(Chem.GetAdjacencyMatrix(mol), dtype=int)
-    elements = [ELEMENTS.get(n, "C") for n in atomicnums]
+    elements = [canonical_element(a.GetSymbol()) for a in mol.GetAtoms()]
     bonds = [(int(i), int(j))
              for i in range(len(atomicnums)) for j in range(i + 1, len(atomicnums))
              if adj[i, j]]
@@ -279,9 +311,18 @@ def main():
             models = parse_output_models(fpath)
             for rank, model in enumerate(models):
                 n_pose = model["coords"].shape[0]
-                if n_pose != len(elements):
-                    log(f"{code} model {rank}: heavy-atom count mismatch "
-                        f"({n_pose} vs {len(elements)}), marking NaN")
+                pose_ele = [e or "" for e in model.get("elements", [])]
+                order_ok = (n_pose == len(elements)
+                            and pose_ele == [e or "" for e in elements])
+                if not order_ok:
+                    # count/order mismatch would corrupt the 1:1 mapping used to
+                    # build the MOL2 bonding network -> mark NaN instead
+                    if n_pose != len(elements):
+                        log(f"{code} model {rank}: heavy-atom count mismatch "
+                            f"({n_pose} vs {len(elements)}), marking NaN")
+                    else:
+                        log(f"{code} model {rank}: heavy-atom element order "
+                            f"differs from reference, marking NaN")
                     rmsd = np.nan
                 elif use_dockrmsd:
                     pose_mol2 = os.path.join(

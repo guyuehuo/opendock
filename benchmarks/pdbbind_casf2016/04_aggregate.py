@@ -30,20 +30,23 @@ def render_markdown(df, thresholds):
                  f"(thresholds: {thresholds} A).", )
     lines.append("")
 
+    # best-any column is shown at 2.0 A when configured, else the coarsest one
+    t_bestany = 2.0 if 2.0 in thresholds else thresholds[-1]
     lines.append("| tool | cfg | source | mode | n | "
                  + " | ".join(f"top1<={t:.1f}" for t in thresholds)
-                 + f" | best-any<={thresholds[1]:.1f} | mean top1 RMSD |")
+                 + f" | best-any<={t_bestany:.1f} | mean top1 RMSD |")
     lines.append("|" + "---|" * (9 + len(thresholds)))
     for _, row in df.iterrows():
         vals = [str(row["n"])]
         vals += [f"{row[f'top1_{t:.1f}']:.1f}%" for t in thresholds]
-        vals.append(f"{row['best_any_2.0']:.1f}%")
-        vals.append(f"{row['mean_top1_rmsd']:.2f}")
+        vals.append(f"{row[f'best_any_{t_bestany:.1f}']:.1f}%")
+        mean = row["mean_top1_rmsd"]
+        vals.append("n/a" if pd.isna(mean) else f"{mean:.2f}")
         lines.append("| " + " | ".join([str(row[k]) for k in
                                         ("tool", "cfg", "source", "mode")])
                      + " | " + " | ".join(vals) + " |")
     lines.append("")
-    lines.append("Notes:")
+    lines.append(f"Notes (best-any shown at {t_bestany:.1f} A):")
     lines.append("- OpenDock ``box_size`` is a half extent; idock/Vina ``size`` "
                  "is full length (harness converts).")
     lines.append("- idock performs its own stochastic global search: the "
@@ -78,8 +81,11 @@ def main():
     ensure_dir(results_dir)
 
     df = pd.read_csv(rmsd_tsv, sep="\t")
-    df = df.dropna(subset=["rmsd_heavy"])
-    df["rmsd_heavy"] = df["rmsd_heavy"].astype(float)
+    # a model whose RMSD could not be computed (NaN) counts as a failure,
+    # i.e. it keeps the complex in the denominator but never satisfies a cutoff
+    df["rmsd_heavy"] = pd.to_numeric(df["rmsd_heavy"], errors="coerce")
+    df["rmsd_heavy"] = df["rmsd_heavy"].fillna(np.inf)
+    df["pose_rank"] = pd.to_numeric(df["pose_rank"], errors="coerce")
 
     rows = []
     group_cols = ["tool", "cfg", "source", "mode"]
@@ -94,7 +100,8 @@ def main():
             row[f"top1_{t:.1f}"] = 100.0 * (top1["rmsd_heavy"] <= t).mean()
             row[f"best_any_{t:.1f}"] = 100.0 * (
                 g.groupby("code")["rmsd_heavy"].min() <= t).mean()
-        row["mean_top1_rmsd"] = top1["rmsd_heavy"].mean()
+        finite = top1[np.isfinite(top1["rmsd_heavy"])]["rmsd_heavy"]
+        row["mean_top1_rmsd"] = finite.mean() if len(finite) else np.nan
         rows.append(row)
 
     out_df = pd.DataFrame(rows).sort_values(group_cols)

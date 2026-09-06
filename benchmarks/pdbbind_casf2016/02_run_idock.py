@@ -20,13 +20,15 @@ import os
 import shutil
 import subprocess
 import sys
+import traceback
 
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from benchlib import (CONFIG_DIR, condition_id, default_work_dir, ensure_dir,
-                      append_rows, docking_center_and_half, is_done,
-                      load_conditions, load_meta, load_samples_list, mark_done)
+                      append_rows, docking_center_and_half, job_state,
+                      load_conditions, load_meta, load_samples_list, mark_done,
+                      mark_failed)
 
 HYDROGEN = {"H", "HD"}
 SCORES_HEADER = ["code", "tool", "cfg", "source", "mode", "pose_rank", "score"]
@@ -112,6 +114,7 @@ def run_one_job(code, source, mode, cfg_name, prep_dir, run_dir, idock_bin,
         f.write(f"size_x = {full[0]:.3f}\n")
         f.write(f"size_y = {full[1]:.3f}\n")
         f.write(f"size_z = {full[2]:.3f}\n")
+        f.write(f"threads = {idock_cfg.get('threads', 16)}\n")
         f.write(f"tasks = {idock_cfg.get('exhaustiveness', 32)}\n")
         f.write(f"conformations = {idock_cfg.get('num_modes', 20)}\n")
         f.write(f"seed = {idock_cfg.get('seed', 2026)}\n")
@@ -149,6 +152,8 @@ def main():
     parser.add_argument("--cfg", default="default")
     parser.add_argument("--idock-bin", default=os.environ.get("IDOCK_BIN"))
     parser.add_argument("--max-cases", type=int, default=None)
+    parser.add_argument("--resume", action="store_true", default=True)
+    parser.add_argument("--no-resume", dest="resume", action="store_false")
     parser.add_argument("--list-jobs", action="store_true")
     args = parser.parse_args()
 
@@ -168,6 +173,16 @@ def main():
                 for mode in conditions["docking_modes"]:
                     yield (code, source, mode, args.cfg)
 
+    def _safe_run(code, source, mode, cfg):
+        cond = condition_id(source, mode, cfg)
+        try:
+            return run_one_job(code, source, mode, cfg, prep_dir, run_dir,
+                               args.idock_bin, conditions)
+        except Exception as exc:
+            log(f"{code} {cond}: FAILED - {exc}")
+            mark_failed(run_dir, code, cond, traceback.format_exc())
+            return None
+
     if args.list_jobs:
         for code, source, mode, cfg in jobs():
             print(code, source, mode, cfg)
@@ -175,26 +190,35 @@ def main():
 
     if args.code is not None:
         assert args.source and args.mode
-        run_one_job(args.code, args.source, args.mode, args.cfg, prep_dir,
-                    run_dir, args.idock_bin, conditions)
+        cond = condition_id(args.source, args.mode, args.cfg)
+        if args.resume and job_state(run_dir, args.code, cond) != "pending":
+            log(f"{args.code} {cond}: already done/failed, skipping")
+        else:
+            _safe_run(args.code, args.source, args.mode, args.cfg)
         return
 
-    done = total = 0
+    done = failed = total = 0
     for code, source, mode, cfg in jobs():
         if args.max_cases and codes.index(code) >= args.max_cases:
             break
         total += 1
         cond = condition_id(source, mode, cfg)
-        if is_done(run_dir, code, cond):
-            done += 1
+        state = job_state(run_dir, code, cond)
+        if args.resume and state in ("done", "failed"):
+            if state == "done":
+                done += 1
+            else:
+                failed += 1
             continue
         if not os.path.exists(os.path.join(prep_dir, code, "meta.json")):
             log(f"{code}: not prepared, skipping")
             continue
-        run_one_job(code, source, mode, cfg, prep_dir, run_dir, args.idock_bin,
-                    conditions)
-        done += 1
-    log(f"finished {done}/{total} jobs")
+        res = _safe_run(code, source, mode, cfg)
+        if res is not None:
+            done += 1
+        else:
+            failed += 1
+    log(f"finished {done}/{total} jobs done, {failed} failed")
 
 
 if __name__ == "__main__":

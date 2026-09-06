@@ -105,20 +105,31 @@ def pdbqt_heavy_atom_count(fpath):
 
 
 def pdb_coords(fpath, exclude_waters=True):
-    """Return (elements, xyz) for heavy ATOM/HETATM records of a PDB file."""
+    """Return (elements, xyz) for heavy ATOM/HETATM records of a PDB file.
+
+    Element is read from the PDB element column (cols 77-78, 1-based); when the
+    file omits it (common for older entries) the atom-name field is used with
+    the standard PDB rule (element is the first alpha character of the name,
+    e.g. `` CA `` -> C, `` FE `` -> F). Hydrogens are excluded.
+    """
     elements, xyz = [], []
     for line in open(fpath):
         if not (line.startswith("ATOM") or line.startswith("HETATM")):
             continue
         if exclude_waters and line[17:20].strip() == "HOH":
             continue
-        name = line[12:16].strip()
-        element = name.rstrip("0123456789")
-        if len(element) > 1 and element[0].isalpha():
-            element = element[0] + element[1:].lower() if element[1:].isalpha() else element[0]
-        if element in ("H",):
+        element = line[76:78].strip()
+        if not element:
+            name = line[12:16]
+            # element is the first non-space alpha char of the atom name
+            element = next((c for c in name if c.isalpha()), "")
+        element = element[:1].upper() + element[1:].lower()
+        if element == "H":
             continue
-        x, y, z = float(line[30:38]), float(line[38:46]), float(line[46:54])
+        try:
+            x, y, z = float(line[30:38]), float(line[38:46]), float(line[46:54])
+        except ValueError:
+            continue
         elements.append(element)
         xyz.append([x, y, z])
     return elements, np.asarray(xyz, dtype=float)
@@ -149,9 +160,13 @@ def rdkit_de_novo_sdf(ref_heavy_sdf, out_sdf, seed=2026):
     from rdkit.Chem import AllChem
     mol = Chem.SDMolSupplier(ref_heavy_sdf, removeHs=True)[0]
     molH = Chem.AddHs(mol)
-    params = AllChem.ETKDGv3()
-    params.randomSeed = seed
-    status = AllChem.EmbedMolecule(molH, params)
+    status = -1
+    for trial in range(5):
+        params = AllChem.ETKDGv3()
+        params.randomSeed = seed + trial
+        status = AllChem.EmbedMolecule(molH, params)
+        if status == 0:
+            break
     if status != 0:
         raise ValueError(f"RDKit embedding failed for {ref_heavy_sdf}")
     writer = Chem.SDWriter(out_sdf)
@@ -313,6 +328,10 @@ def main():
     prep_dir = args.prep_dir or os.path.join(default_work_dir(), "prep")
     summary_fpath = args.summary or os.path.join(prep_dir, "prep_summary.tsv")
 
+    if not args.data_root or not os.path.isdir(args.data_root):
+        parser.error(f"PDBbind data root not found: {args.data_root!r} "
+                     "(pass --data-root or set $PDBBIND)")
+
     try:
         discovered = find_mgltools()
     except RuntimeError as exc:
@@ -360,8 +379,8 @@ def main():
 
     import pandas as pd
     pd.DataFrame(rows, columns=header).to_csv(summary_fpath, sep="\t", index=False)
-    log(f"summary written to {summary_fpath} "
-        f"({sum(1 for r in rows if r[-3] == 1)}/{len(rows)} ok)")
+    n_ok = sum(1 for r in rows if r[7] == 1)
+    log(f"summary written to {summary_fpath} ({n_ok}/{len(rows)} ok)")
 
 
 if __name__ == "__main__":

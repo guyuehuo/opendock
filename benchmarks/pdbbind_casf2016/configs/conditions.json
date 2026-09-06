@@ -3,6 +3,12 @@
     "opendock": {"scorer": "vina"},
     "idock": {}
   },
+  "idock": {
+    "exhaustiveness": 32,
+    "num_modes": 20,
+    "seed": 2026,
+    "threads": 16
+  },
   "ligand_sources": ["crystal", "rdkit"],
   "docking_modes": ["pocket", "blind"],
   "opendock_samplers": [

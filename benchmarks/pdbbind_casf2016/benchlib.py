@@ -100,8 +100,9 @@ def condition_id(source, mode, cfg_name):
     return f"{source}-{mode}-{cfg_name}"
 
 
-def run_marker_path(run_dir, code, condition):
-    return os.path.join(run_dir, DONE, code, f"{condition}.ok")
+def run_marker_path(run_dir, code, condition, kind=DONE):
+    return os.path.join(run_dir, kind, code, f"{condition}.ok" if kind == DONE
+                        else f"{condition}.{kind}")
 
 
 def is_done(run_dir, code, condition):
@@ -114,6 +115,28 @@ def mark_done(run_dir, code, condition):
     with open(path, "w") as f:
         f.write("ok\n")
     return path
+
+
+def mark_failed(run_dir, code, condition, message=""):
+    """Record a permanent per-condition failure so reruns do not loop."""
+    path = run_marker_path(run_dir, code, condition, kind="failed")
+    ensure_dir(os.path.dirname(path))
+    with open(path, "w") as f:
+        f.write(message or "failed\n")
+    return path
+
+
+def job_state(run_dir, code, condition):
+    """Return 'done', 'failed' or 'pending' for a condition."""
+    if os.path.exists(run_marker_path(run_dir, code, condition)):
+        return "done"
+    if os.path.exists(run_marker_path(run_dir, code, condition, kind="failed")):
+        return "failed"
+    return "pending"
+
+
+def is_skippable(run_dir, code, condition):
+    return job_state(run_dir, code, condition) in ("done", "failed")
 
 
 def append_rows(csv_fpath, rows, header):

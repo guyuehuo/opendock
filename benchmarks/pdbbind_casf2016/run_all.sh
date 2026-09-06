@@ -16,20 +16,23 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$HERE"
 
+PY="${PY:-python}"
 JOBS="${JOBS:-$(nproc)}"
 STEPSCALE="${STEPSCALE:-1}"
-STEPSCALE_ARGS=()
-if [ "$STEPSCALE" != "1" ]; then
-  STEPSCALE_ARGS=(--steps-scale "$STEPSCALE")
-fi
 
 TOOL="${1:-all}"
 
+# build the optional --steps-scale text injected into the runner invocation
+STEPSCALE_TEXT=""
+if [ "$STEPSCALE" != "1" ]; then
+  STEPSCALE_TEXT=" --steps-scale $STEPSCALE"
+fi
+
 run_opendock() {
   echo "[run_all] OpenDock jobs (JOBS=$JOBS) ..."
-  python 02_run_opendock.py --list-jobs |
+  "$PY" 02_run_opendock.py --list-jobs |
     xargs -n 4 -P "$JOBS" bash -c \
-      'python 02_run_opendock.py --code "$0" --source "$1" --mode "$2" --cfg "$3" '"${STEPSCALE_ARGS[*]:-}"
+      'exec "$0" 02_run_opendock.py --code "$1" --source "$2" --mode "$3" --cfg "$4"'"$STEPSCALE_TEXT" "$PY"
 }
 
 run_idock() {
@@ -38,16 +41,16 @@ run_idock() {
     return 0
   fi
   echo "[run_all] idock jobs (JOBS=$JOBS) ..."
-  python 02_run_idock.py --list-jobs |
+  "$PY" 02_run_idock.py --list-jobs |
     xargs -n 4 -P "$JOBS" bash -c \
-      'python 02_run_idock.py --code "$0" --source "$1" --mode "$2" --cfg "$3"'
+      'exec "$0" 02_run_idock.py --code "$1" --source "$2" --mode "$3" --cfg "$4"' "$PY"
 }
 
 run_rmsd() {
   echo "[run_all] computing RMSDs ..."
-  python 03_compute_rmsd.py
+  "$PY" 03_compute_rmsd.py
   echo "[run_all] aggregating success rates ..."
-  python 04_aggregate.py
+  "$PY" 04_aggregate.py
 }
 
 case "$TOOL" in

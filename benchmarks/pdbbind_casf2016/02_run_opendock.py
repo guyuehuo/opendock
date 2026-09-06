@@ -21,19 +21,19 @@ List jobs (for GNU parallel)::
     python 02_run_opendock.py --list-jobs
 """
 import argparse
-import json
 import os
 import random
 import sys
+import traceback
 
 import numpy as np
 import torch
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from benchlib import (CONFIG_DIR, BENCH_DIR, condition_id, default_work_dir,
+from benchlib import (CONFIG_DIR, condition_id, default_work_dir,
                       docking_center_and_half, ensure_dir, append_rows,
-                      is_done, load_conditions, load_meta, load_samples_list,
-                      mark_done)
+                      job_state, load_conditions, load_meta,
+                      load_samples_list, mark_done, mark_failed)
 
 from opendock.core.conformation import LigandConformation, ReceptorConformation
 from opendock.core.clustering import BaseCluster
@@ -233,9 +233,17 @@ def main():
     torch.set_num_threads(args.threads)
     set_seed(args.seed)
 
-    num_cfgs = len(conditions["opendock_samplers"])
-    num_sources = len(conditions["ligand_sources"])
-    num_modes_ = len(conditions["docking_modes"])
+    def _safe_run(code, source, mode, cfg_name, cfg):
+        """Run one job; on exception record a permanent failure marker."""
+        cond = condition_id(source, mode, cfg_name)
+        try:
+            return run_one_job(code, source, mode, cfg_name, cfg, prep_dir,
+                               run_dir, conditions, num_modes, cluster_cutoff,
+                               steps_scale=args.steps_scale)
+        except Exception as exc:
+            log(f"{code} {cond}: FAILED - {exc}")
+            mark_failed(run_dir, code, cond, traceback.format_exc())
+            return None
 
     # ---- single job requested -------------------------------------------
     if args.code is not None:
@@ -243,13 +251,11 @@ def main():
             "single-job mode requires --source --mode --cfg"
         cfg = next(c for c in conditions["opendock_samplers"]
                    if c["name"] == args.cfg)
-        if not (args.resume and is_done(run_dir, args.code,
-                                        condition_id(args.source, args.mode, args.cfg))):
-            run_one_job(args.code, args.source, args.mode, args.cfg, cfg,
-                        prep_dir, run_dir, conditions, num_modes, cluster_cutoff,
-                        steps_scale=args.steps_scale)
+        cond = condition_id(args.source, args.mode, args.cfg)
+        if args.resume and is_skippable(run_dir, args.code, cond):
+            log(f"{args.code} {cond}: already done/failed, skipping")
         else:
-            log(f"{args.code} already done, skipping")
+            _safe_run(args.code, args.source, args.mode, args.cfg, cfg)
         return
 
     if args.list_jobs:
@@ -259,24 +265,29 @@ def main():
 
     # ---- loop mode -------------------------------------------------------
     ensure_dir(run_dir)
-    done, total = 0, 0
+    done, failed, total = 0, 0, 0
     for job in enumerate_jobs(conditions):
         code, source, mode, cfg_name, cfg = job
         if args.max_cases and load_samples_list().index(code) >= args.max_cases:
             break
         total += 1
         cond = condition_id(source, mode, cfg_name)
-        if args.resume and is_done(run_dir, code, cond):
-            done += 1
+        state = job_state(run_dir, code, cond)
+        if args.resume and state in ("done", "failed"):
+            if state == "done":
+                done += 1
+            else:
+                failed += 1
             continue
         if not os.path.exists(os.path.join(prep_dir, code, "meta.json")):
             log(f"{code}: not prepared, skipping")
             continue
-        run_one_job(code, source, mode, cfg_name, cfg, prep_dir, run_dir,
-                    conditions, num_modes, cluster_cutoff,
-                    steps_scale=args.steps_scale)
-        done += 1
-    log(f"finished {done}/{total} jobs")
+        res = _safe_run(code, source, mode, cfg_name, cfg)
+        if res is not None:
+            done += 1
+        else:
+            failed += 1
+    log(f"finished {done}/{total} jobs done, {failed} failed")
 
 
 if __name__ == "__main__":
