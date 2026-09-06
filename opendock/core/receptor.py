@@ -121,14 +121,20 @@ class Receptor(object):
     """
 
     def __init__(self, receptor_fpath: str = None,
-                 docking_center: torch.tensor=None):
+                 docking_center: torch.tensor=None,
+                 clip_cutoff: float = 20.0):
         """The receptor class.
         Args:
             receptor_fpath (str, optional): Input receptor file path. Defaults to None.
+            docking_center (torch.tensor, optional): The docking box center.
+            clip_cutoff (float, optional): The receptor clip radius in angstrom,
+                residues whose minimum distance to the docking center is larger
+                than this value are excluded. Defaults to 20.0.
         """
         self.receptor_fpath = receptor_fpath  # the pdbqt file of protein
 
         self.docking_center = docking_center
+        self.clip_cutoff = clip_cutoff
         self.cnfrs_ = None
         self.init_cnfrs = None
 
@@ -238,7 +244,9 @@ class Receptor(object):
     
     def clip_rec(self):
         
-        cliprec = ClipReceptor(rec_fpath=self.receptor_fpath, docking_center=self.docking_center)
+        cliprec = ClipReceptor(rec_fpath=self.receptor_fpath,
+                               docking_center=self.docking_center,
+                               cutoff=self.clip_cutoff)
         self.rec_ha_indices, self.clp_all_indices, self.clp_ha_indices = cliprec.clip_rec() 
         
         rec_ha_idx_dict = dict(zip(self.rec_ha_indices, range(len(self.rec_ha_indices))))

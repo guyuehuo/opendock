@@ -206,8 +206,10 @@ class ReceptorConformation(Receptor):
     def __init__(self, receptor_fpath: str=None, 
                  docking_center: torch.tensor=None,
                  init_lig_heavy_atoms_xyz: torch.tensor=None, 
-                 pocket_dist_cutoff: float=8.0):
-        super(ReceptorConformation, self).__init__(receptor_fpath, docking_center)
+                 pocket_dist_cutoff: float=8.0,
+                 clip_cutoff: float=20.0):
+        super(ReceptorConformation, self).__init__(receptor_fpath, docking_center,
+                                                   clip_cutoff=clip_cutoff)
         
         # load receptor
         self.parse_receptor()
