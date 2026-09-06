@@ -135,6 +135,44 @@ def pdb_coords(fpath, exclude_waters=True):
     return elements, np.asarray(xyz, dtype=float)
 
 
+def read_ligand_mol(ligand_sdf, ligand_mol2):
+    """Read the crystal ligand as an RDKit mol, trying SDF then MOL2.
+
+    Some PDBbind distributions ship OpenEye ``X-TOOL`` SDFs that RDKit cannot
+    sanitize while the accompanying MOL2 reads fine, so MOL2 is the fallback.
+    """
+    from rdkit import Chem
+    for path in (ligand_sdf, ligand_mol2):
+        if not path or not os.path.exists(path):
+            continue
+        try:
+            if path.lower().endswith((".mol2", ".mol")):
+                mol = Chem.MolFromMol2File(path, removeHs=False, sanitize=True)
+            else:
+                suppl = Chem.SDMolSupplier(path, removeHs=False, sanitize=True)
+                mol = None
+                if suppl is not None:
+                    try:
+                        mol = suppl[0]
+                    except (IndexError, RuntimeError):
+                        mol = None
+        except Exception:
+            mol = None
+        if mol is not None:
+            return mol, path
+    return None, None
+
+
+def write_heavy_sdf(mol, sdf_out):
+    """Write the heavy-atom-only SDF, preserving heavy-atom order."""
+    from rdkit import Chem
+    heavy = Chem.RemoveHs(mol)
+    writer = Chem.SDWriter(sdf_out)
+    writer.write(heavy)
+    writer.close()
+    return heavy.GetNumHeavyAtoms()
+
+
 def heavy_sdf_from_sdf(sdf_in, sdf_out):
     """Write an SDF keeping only heavy atoms, preserving heavy-atom order."""
     from rdkit import Chem
@@ -203,14 +241,35 @@ def prepare_ligand(ligand_sdf, out_pdbqt, tools):
     run(cmd, workdir=lig_dir, timeout=600)
 
 
+def sdf_to_mol2(in_sdf, out_mol2, obabel_bin):
+    """Convert an SDF to MOL2 for ADT input (ADT MolKit often rejects SDFs
+    written by RDKit, e.g. OpenEye X-TOOL charge encodings, while MOL2 works).
+
+    Uses the OpenBabel CLI when given; falls back to the python bindings.
+    """
+    if obabel_bin:
+        run([obabel_bin, in_sdf, "-O", out_mol2], timeout=600)
+        return out_mol2
+    try:
+        from openbabel import openbabel as ob
+    except ImportError:
+        raise RuntimeError("no OpenBabel available for SDF->MOL2 conversion")
+    conv = ob.OBConversion()
+    conv.SetInAndOutFormats("sdf", "mol2")
+    mol = ob.OBMol()
+    if not conv.ReadFile(mol, in_sdf) or not conv.WriteFile(mol, out_mol2):
+        raise RuntimeError(f"OpenBabel SDF->MOL2 failed for {in_sdf}")
+    return out_mol2
+
+
 def prepare_one(code, data_root, prep_dir, tools):
     code_dir = os.path.join(data_root, code)
     protein_pdb = os.path.join(code_dir, "protein.pdb")
     ligand_sdf = os.path.join(code_dir, "ligand.sdf")
+    ligand_mol2 = os.path.join(code_dir, "ligand.mol2")
 
-    for fpath in (protein_pdb, ligand_sdf):
-        if not os.path.exists(fpath):
-            raise FileNotFoundError(f"missing input file {fpath}")
+    if not os.path.exists(protein_pdb):
+        raise FileNotFoundError(f"missing receptor file {protein_pdb}")
 
     out_dir = ensure_dir(os.path.join(prep_dir, code))
     rec_pdbqt = os.path.join(out_dir, "rec.pdbqt")
@@ -221,28 +280,46 @@ def prepare_one(code, data_root, prep_dir, tools):
 
     order_ok = True
 
+    # ---- crystal ligand heavy reference --------------------------------
+    # Read the crystal ligand (SDF preferred, MOL2 fallback - some shipped
+    # SDFs are OpenEye X-TOOL files RDKit cannot sanitize), then write the
+    # canonical heavy-atom reference SDF. The same heavy-only SDF is the ADT
+    # input, so crystal pdbqt and reference share the identical atom ordering.
+    crystal_mol, ligand_src = read_ligand_mol(ligand_sdf, ligand_mol2)
+    if crystal_mol is None:
+        raise ValueError(f"cannot read crystal ligand for {code} "
+                         f"(tried {ligand_sdf} and {ligand_mol2})")
+    n_heavy_crystal = write_heavy_sdf(crystal_mol, ref_sdf)
+    log(f"{code}: crystal ligand from {os.path.basename(ligand_src)} "
+        f"({n_heavy_crystal} heavy atoms)")
+
     # ---- receptor --------------------------------------------------------
     prepare_receptor(protein_pdb, rec_pdbqt, tools)
     n_rec = pdbqt_heavy_atom_count(rec_pdbqt)
 
-    # ---- crystal ligand (heavy count from SDF is authoritative) ----------
-    n_heavy_crystal = heavy_sdf_from_sdf(ligand_sdf, ref_sdf)
+    # ---- crystal ligand pdbqt -------------------------------------------
+    # ADT MolKit reads MOL2 more reliably than some shipped (OpenEye X-TOOL)
+    # SDFs, so prefer the original MOL2 when present.
+    crystal_ad_input = ligand_mol2 if os.path.exists(ligand_mol2) else ligand_src
     try:
-        prepare_ligand(ligand_sdf, lig_crystal_pdbqt, tools)
+        prepare_ligand(crystal_ad_input, lig_crystal_pdbqt, tools)
     except subprocess.CalledProcessError:
         if not tools.get("obabel"):
             raise
-        log(f"{code}: prepare_ligand4 failed, falling back to OpenBabel")
-        run([tools["obabel"], ligand_sdf, "-O", lig_crystal_pdbqt, "-p", "7.4"],
-            timeout=600)
+        log(f"{code}: prepare_ligand4 failed on {crystal_ad_input}, "
+            f"falling back to OpenBabel")
+        run([tools["obabel"], crystal_ad_input, "-O", lig_crystal_pdbqt,
+             "-p", "7.4"], timeout=600)
         order_ok = False
     n_crystal_pdbqt = pdbqt_heavy_atom_count(lig_crystal_pdbqt)
 
     # ---- RDKit de-novo ligand (order preserved by construction) ----------
     rdkit_sdf = os.path.join(out_dir, "_lig_rdkit_pose.sdf")
+    rdkit_mol2 = os.path.join(out_dir, "_lig_rdkit_pose.mol2")
     n_heavy_rdkit = rdkit_de_novo_sdf(ref_sdf, rdkit_sdf)
     try:
-        prepare_ligand(rdkit_sdf, lig_rdkit_pdbqt, tools)
+        sdf_to_mol2(rdkit_sdf, rdkit_mol2, tools.get("obabel"))
+        prepare_ligand(rdkit_mol2, lig_rdkit_pdbqt, tools)
     except subprocess.CalledProcessError:
         if not tools.get("obabel"):
             raise
@@ -251,6 +328,12 @@ def prepare_one(code, data_root, prep_dir, tools):
             timeout=600)
         order_ok = False
     n_rdkit_pdbqt = pdbqt_heavy_atom_count(lig_rdkit_pdbqt)
+
+    for tmp in (rdkit_sdf, rdkit_mol2):
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
 
     # ---- geometry metadata ------------------------------------------------
     # pocket centre == crystal ligand heavy-atom COM
@@ -288,10 +371,6 @@ def prepare_one(code, data_root, prep_dir, tools):
         meta["heavy_atom_order_corresponds_ref"] = False
     save_meta(meta, meta_fpath)
 
-    try:
-        os.remove(rdkit_sdf)
-    except OSError:
-        pass
     return meta
 
 

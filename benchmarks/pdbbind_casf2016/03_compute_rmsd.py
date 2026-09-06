@@ -41,6 +41,9 @@ _AD4_ELEMENT = {"A": "C", "C": "C", "N": "N", "NA": "N", "OA": "O",
                 "O": "O", "S": "S", "SA": "S", "F": "F", "P": "P",
                 "CL": "Cl", "BR": "Br", "I": "I", "SI": "Si"}
 
+_ELEMENT_NUM = {"C": 6, "N": 7, "O": 8, "F": 9, "P": 15, "S": 16, "Cl": 17,
+                "Br": 35, "I": 53, "B": 5, "Si": 14, "Se": 34, "As": 33}
+
 
 def canonical_element(s):
     """Canonical element symbol (e.g. 'C', 'Cl', 'Br')."""
@@ -165,7 +168,8 @@ def load_reference(ref_sdf):
     return coords, atomicnums, adj, elements, bonds
 
 
-def symm_rmsd(coords_ref, coords_pose, atomicnums, adj):
+def symm_rmsd(coords_ref, atomicnums_ref, adj_ref,
+              coords_pose, atomicnums_pose, adj_pose):
     import spyrmsd
     import spyrmsd.rmsd
     coords_ref = np.asarray(coords_ref, dtype=float)
@@ -173,8 +177,38 @@ def symm_rmsd(coords_ref, coords_pose, atomicnums, adj):
     if coords_ref.shape != coords_pose.shape:
         return np.nan
     return float(spyrmsd.rmsd.symmrmsd(coords_ref, coords_pose,
-                                       atomicnums, atomicnums,
-                                       adj, adj))
+                                       atomicnums_ref, atomicnums_pose,
+                                       adj_ref, adj_pose))
+
+
+def perceive_pose_bonds(elements, coords):
+    """Infer the pose's own bonding network from its 3D coordinates.
+
+    Returns a list of ``(i, j)`` bonds in the *pose* atom ordering, or None if
+    perception fails. Used when a docking tool reordered the heavy atoms (so
+    the reference bonding network cannot be applied by index). A bond is
+    assigned when the interatomic distance is below the sum of covalent radii
+    (with a small tolerance) - reliable for real docked geometries.
+    """
+    from rdkit import Chem
+    n = len(elements)
+    if n == 0:
+        return None
+    pt = Chem.GetPeriodicTable()
+    radii = []
+    for e in elements:
+        num = _ELEMENT_NUM.get(e, 6)
+        radii.append(pt.GetRcovalent(num))
+    radii = np.asarray(radii, dtype=float)
+    d2 = ((np.asarray(coords, dtype=float)[:, None, :]
+           - np.asarray(coords, dtype=float)[None, :, :]) ** 2).sum(-1)
+    bonds = []
+    for i in range(n):
+        for j in range(i + 1, n):
+            limit = (radii[i] + radii[j]) * 1.15 + 0.4
+            if d2[i, j] <= limit * limit:
+                bonds.append((i, j))
+    return bonds
 
 
 def find_dockrmsd():
@@ -312,27 +346,42 @@ def main():
             for rank, model in enumerate(models):
                 n_pose = model["coords"].shape[0]
                 pose_ele = [e or "" for e in model.get("elements", [])]
-                order_ok = (n_pose == len(elements)
-                            and pose_ele == [e or "" for e in elements])
-                if not order_ok:
-                    # count/order mismatch would corrupt the 1:1 mapping used to
-                    # build the MOL2 bonding network -> mark NaN instead
-                    if n_pose != len(elements):
-                        log(f"{code} model {rank}: heavy-atom count mismatch "
-                            f"({n_pose} vs {len(elements)}), marking NaN")
-                    else:
-                        log(f"{code} model {rank}: heavy-atom element order "
-                            f"differs from reference, marking NaN")
+                rmsd = None
+                pose_bonds = pose_atomicnums = pose_ele_out = pose_coords = None
+                if n_pose != len(elements):
+                    log(f"{code} model {rank}: heavy-atom count mismatch "
+                        f"({n_pose} vs {len(elements)}), marking NaN")
                     rmsd = np.nan
-                elif use_dockrmsd:
-                    pose_mol2 = os.path.join(
-                        tmp_root,
-                        f"{code}_{os.path.basename(fpath)[:-6]}_{rank}.mol2")
-                    write_mol2(pose_mol2, elements, model["coords"], bonds,
-                               name="pose")
-                    rmsd = run_dockrmsd(dockrmsd_bin, ref_mol2, pose_mol2)
+                elif pose_ele == elements:
+                    # identical heavy-atom ordering: reuse the reference graph
+                    pose_bonds, pose_atomicnums = bonds, atomicnums
+                    pose_ele_out, pose_coords = elements, model["coords"]
                 else:
-                    rmsd = symm_rmsd(coords_ref, model["coords"], atomicnums, adj)
+                    # reordered atoms: perceive the pose's own bonding network
+                    pose_bonds = perceive_pose_bonds(pose_ele, model["coords"])
+                    if pose_bonds is None:
+                        log(f"{code} model {rank}: cannot perceive pose bonding "
+                            f"network, marking NaN")
+                        rmsd = np.nan
+                    else:
+                        pose_atomicnums = np.array(
+                            [_ELEMENT_NUM.get(e, 6) for e in pose_ele])
+                        pose_ele_out, pose_coords = pose_ele, model["coords"]
+                if rmsd is None:
+                    if use_dockrmsd:
+                        pose_mol2 = os.path.join(
+                            tmp_root,
+                            f"{code}_{os.path.basename(fpath)[:-6]}_{rank}.mol2")
+                        write_mol2(pose_mol2, pose_ele_out, pose_coords,
+                                   pose_bonds, name="pose")
+                        rmsd = run_dockrmsd(dockrmsd_bin, ref_mol2, pose_mol2)
+                    else:
+                        adj_pose = np.zeros((len(pose_ele_out), len(pose_ele_out)),
+                                            dtype=int)
+                        for i, j in pose_bonds:
+                            adj_pose[i, j] = adj_pose[j, i] = 1
+                        rmsd = symm_rmsd(coords_ref, atomicnums, adj,
+                                         pose_coords, pose_atomicnums, adj_pose)
                 out.write("\t".join([
                     code, tool, cfg, source, mode, str(rank),
                     f"{model['score']:.3f}", f"{rmsd:.3f}",
