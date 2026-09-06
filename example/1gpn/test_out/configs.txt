@@ -1,0 +1,11 @@
+
+receptor = /user/zhengliangzhen/apps/opendock/example/1gpn/test_out/receptor.pdbqt
+ligand = /user/zhengliangzhen/apps/opendock/example/1gpn/test_out/ligand.pdbqt
+out = /user/zhengliangzhen/apps/opendock/example/1gpn/test_out/docking_results.pdbqt
+size_x = 15
+size_y = 15
+size_z = 15
+center_x = 3.560
+center_y = 67.023
+center_z = 63.797
+exhaustiveness = 4
