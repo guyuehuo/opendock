@@ -111,17 +111,30 @@ to `work/<tool>/scores.csv`.
 ## RMSD evaluation
 
 `03_compute_rmsd.py` evaluates every pose against the crystal reference
-(`ref_lig_heavy.sdf`) using **symmetry-corrected heavy-atom RMSD** (spyrmsd).
+(`ref_lig_heavy.sdf`) and computes the **symmetry-corrected heavy-atom RMSD**.
 Success is RMSD <= 2.0 A (also tabulated at 1.0 and 2.5 A).
 
+- **Primary engine: DockRMSD** (E.W. Bell & Y. Zhang, *J. Cheminformatics*
+  11:40, 2019). Both structures must be the same molecule in the same
+  receptor frame and require no superposition — matching the CASF convention.
+  DockRMSD enumerates all atomic mappings compatible with the two bonding
+  networks (graph isomorphism) and returns the minimum-RMSD mapping, which is
+  what correctly handles symmetric ligands. Binary at
+  `~/apps/tools/DockRMSD/DockRMSD` (built from `DockRMSD.c`); auto-discovered
+  or `--dockrmsd-bin`. Each pose + reference is converted to SYBYL MOL2 and
+  scored per model.
+- **Fallback engine: spyrmsd** (`--engine spyrmsd`), same symmetry-corrected
+  definition (spyrmsd `symmrmsd` with the reference bonding network reused for
+  the pose, which is valid because the heavy-atom ordering is preserved).
+
+Notes on inputs:
 - The reference is the crystal ligand heavy atoms. By construction the heavy
   atom *ordering* of both `lig_crystal.pdbqt` and `lig_rdkit.pdbqt` equals that
   of `ref_lig_heavy.sdf` (RDKit embedding keeps the reference order), so a
-  1:1 correspondence holds and spyrmsd handles symmetric atoms.
+  1:1 correspondence holds.
 - Docked poses keep the input heavy-atom ordering: OpenDock's
   `write_ligand_traj` emits the input heavy-atom order, and idock preserves the
-  input atom names/serial numbers in its output (verified for `idock223`), so
-  the same identity correspondence is used for both tools.
+  input atom names/serial numbers in its output (verified for `idock223`).
 - If heavy-atom counts mismatch (e.g. a prep problem or an OpenBabel fallback
   that reorders atoms), the model is reported as `NaN`.
 - Coordinates are read from the PDB coordinate window of each ATOM line, which

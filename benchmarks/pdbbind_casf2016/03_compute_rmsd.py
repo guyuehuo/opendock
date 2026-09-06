@@ -3,22 +3,30 @@
 
 Iterates over every pose file produced by ``02_run_opendock.py`` /
 ``02_run_idock.py`` and evaluates each model against the crystal reference
-(``ref_lig_heavy.sdf``) using the symmetry-corrected RMSD from spyrmsd.
+(``ref_lig_heavy.sdf``).
 
-The heavy-atom ordering of the docked pose is identical to that of
-``ref_lig_heavy.sdf`` by construction of ``01_prepare_inputs.py``; therefore
-the reference graph/atom numbers are reused for the pose, which is the correct
-input for spyrmsd's symmetry handling.
+RMSD engine (default ``auto``, override with ``--engine``):
+  * ``dockrmsd`` (Bell & Zhang, J. Cheminformatics 2019): the reference
+    implementation of symmetry-corrected docking-pose RMSD. Each pose and the
+    reference are written as SYBYL MOL2 (same bonding network, receptor frame,
+    no superposition) and scored by the ``DockRMSD`` binary (discovered from
+    ``$DOCKRMSD_BIN``, PATH, ``~/apps/tools/DockRMSD`` or
+    ``/mnt/porality-zheng-202608/apps/tools/DockRMSD``).
+  * ``spyrmsd``: Python fallback using the same symmetry-corrected definition.
+
+Models that cannot be evaluated are marked ``rmsd_heavy = NaN``.
 
 Output: ``results/rmsd.tsv`` with columns
     code | tool | cfg | source | mode | pose_rank | score | rmsd_heavy
-Models that cannot be evaluated are marked ``rmsd_heavy = NaN``.
 """
 import argparse
 import glob
 import os
 import re
+import shutil
+import subprocess
 import sys
+import tempfile
 
 import numpy as np
 
@@ -27,6 +35,10 @@ from benchlib import CONFIG_DIR, default_results_dir, default_work_dir, ensure_d
     load_conditions, load_meta
 
 HYDROGEN = {"H", "HD"}
+
+# atomic number -> element symbol used for the DockRMSD MOL2 atom types
+ELEMENTS = {6: "C", 7: "N", 8: "O", 9: "F", 15: "P", 16: "S", 17: "Cl",
+            35: "Br", 53: "I", 5: "B", 14: "Si", 33: "As", 34: "Se"}
 
 # coordinates live in the PDB coordinate window (cols ~27-54 for OpenDock's
 # custom writer, cols 30-54 for standard PDBQT); pull the first three floats
@@ -99,7 +111,12 @@ def parse_output_models(fpath):
 
 
 def load_reference(ref_sdf):
-    """Load reference heavy atoms -> (coords, atomicnums, adjacency)."""
+    """Load reference heavy atoms.
+
+    Returns ``(coords, atomicnums, adj, elements, bonds)`` where ``bonds`` is
+    the list of ``(i, j)`` heavy-atom bonds (graph of the reference ligand,
+    shared by every pose of the same molecule).
+    """
     from rdkit import Chem
     mol = Chem.SDMolSupplier(ref_sdf, removeHs=True)[0]
     if mol is None:
@@ -109,7 +126,11 @@ def load_reference(ref_sdf):
                        for i in range(mol.GetNumAtoms())], dtype=float)
     atomicnums = np.array([a.GetAtomicNum() for a in mol.GetAtoms()])
     adj = np.asarray(Chem.GetAdjacencyMatrix(mol), dtype=int)
-    return coords, atomicnums, adj
+    elements = [ELEMENTS.get(n, "C") for n in atomicnums]
+    bonds = [(int(i), int(j))
+             for i in range(len(atomicnums)) for j in range(i + 1, len(atomicnums))
+             if adj[i, j]]
+    return coords, atomicnums, adj, elements, bonds
 
 
 def symm_rmsd(coords_ref, coords_pose, atomicnums, adj):
@@ -124,6 +145,70 @@ def symm_rmsd(coords_ref, coords_pose, atomicnums, adj):
                                        adj, adj))
 
 
+def find_dockrmsd():
+    """Locate the DockRMSD binary (Bell & Zhang, J. Cheminformatics 2019)."""
+    candidates = [os.environ.get("DOCKRMSD_BIN"),
+                  shutil.which("DockRMSD"),
+                  os.path.expanduser("~/apps/tools/DockRMSD/DockRMSD"),
+                  "/mnt/porality-zheng-202608/apps/tools/DockRMSD/DockRMSD"]
+    for cand in filter(None, candidates):
+        if os.path.isfile(cand) and os.access(cand, os.X_OK):
+            return cand
+    return None
+
+
+def write_mol2(path, elements, coords, bonds, name="lig"):
+    """Write a minimal SYBYL MOL2 file for DockRMSD.
+
+    DockRMSD reads the atom element from the atom-type token (split on '.')
+    and ignores everything after the charge column, so a bare element type is
+    sufficient. Bond types are kept identical ('1') for both files so the
+    bonding networks match exactly.
+    """
+    n = len(elements)
+    with open(path, "w") as f:
+        f.write("@<TRIPOS>MOLECULE\n")
+        f.write(f"{name}\n")
+        f.write(f"{n} {len(bonds)} 1 0 0\n")
+        f.write("SMALL\n")
+        f.write("GASTEIGER\n\n")
+        f.write("@<TRIPOS>ATOM\n")
+        for i, (ele, xyz) in enumerate(zip(elements, coords)):
+            f.write(f"{i + 1} {ele}{i + 1} {xyz[0]:9.4f} {xyz[1]:9.4f} "
+                    f"{xyz[2]:9.4f} {ele} 1 LIG 0.0000\n")
+        f.write("@<TRIPOS>BOND\n")
+        for k, (i, j) in enumerate(bonds, 1):
+            f.write(f"{k} {i + 1} {j + 1} 1\n")
+    return path
+
+
+def run_dockrmsd(dockrmsd_bin, ref_mol2, pose_mol2):
+    """Return the DockRMSD symmetry-corrected RMSD (float) or NaN.
+
+    DockRMSD expects ``DockRMSD <query> <template> [options]``; options come
+    after the two filenames, ``-s`` prints only the numerical result.
+    """
+    try:
+        proc = subprocess.run([dockrmsd_bin, ref_mol2, pose_mol2, "-s"],
+                              stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                              universal_newlines=True, timeout=120)
+    except (OSError, subprocess.TimeoutExpired):
+        return np.nan
+    text = proc.stdout + proc.stderr
+    for line in text.splitlines():
+        if "Calculated Docking RMSD" in line:
+            try:
+                return float(line.rsplit(":", 1)[-1].strip())
+            except ValueError:
+                return np.nan
+        # with -s DockRMSD prints the bare RMSD value
+        try:
+            return float(line.strip())
+        except ValueError:
+            continue
+    return np.nan
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--work-dir", default=None)
@@ -132,6 +217,13 @@ def main():
     parser.add_argument("--conditions", default=os.path.join(CONFIG_DIR,
                                                             "conditions.json"))
     parser.add_argument("--ref-fname", default="ref_lig_heavy.sdf")
+    parser.add_argument("--engine", choices=["auto", "dockrmsd", "spyrmsd"],
+                        default="auto",
+                        help="RMSD engine: DockRMSD (default when found) or "
+                             "spyrmsd symmetry-corrected RMSD")
+    parser.add_argument("--dockrmsd-bin", default=None)
+    parser.add_argument("--keep-tmp", action="store_true",
+                        help="do not delete temporary MOL2 files")
     args = parser.parse_args()
 
     conditions = load_conditions(args.conditions)
@@ -141,6 +233,13 @@ def main():
     ensure_dir(results_dir)
     out_tsv = os.path.join(results_dir, "rmsd.tsv")
 
+    dockrmsd_bin = args.dockrmsd_bin or find_dockrmsd()
+    if dockrmsd_bin is None and args.engine == "dockrmsd":
+        log("--engine dockrmsd requested but no DockRMSD binary found; "
+            "falling back to spyrmsd")
+    use_dockrmsd = dockrmsd_bin is not None and args.engine != "spyrmsd"
+    log(f"RMSD engine: {'DockRMSD ' + dockrmsd_bin if use_dockrmsd else 'spyrmsd'}")
+
     pose_files = []
     for tool in ("opendock", "idock"):
         pose_files += sorted(glob.glob(
@@ -149,6 +248,7 @@ def main():
         log(f"no pose files under {work_dir}/{{opendock,idock}}/*/*.pdbqt")
         return
 
+    tmp_root = tempfile.mkdtemp(prefix="dockrmsd_")
     header = ["code", "tool", "cfg", "source", "mode", "pose_rank",
               "score", "rmsd_heavy"]
     with open(out_tsv, "w") as out:
@@ -170,16 +270,36 @@ def main():
                 log(f"skip {fpath}: missing meta/reference for {code}")
                 continue
 
-            coords_ref, atomicnums, adj = load_reference(ref_sdf)
+            coords_ref, atomicnums, adj, elements, bonds = load_reference(ref_sdf)
+            ref_mol2 = None
+            if use_dockrmsd:
+                ref_mol2 = os.path.join(tmp_root, f"{code}_ref.mol2")
+                write_mol2(ref_mol2, elements, coords_ref, bonds, name=f"{code}_ref")
+
             models = parse_output_models(fpath)
             for rank, model in enumerate(models):
-                rmsd = symm_rmsd(coords_ref, model["coords"], atomicnums, adj)
+                n_pose = model["coords"].shape[0]
+                if n_pose != len(elements):
+                    log(f"{code} model {rank}: heavy-atom count mismatch "
+                        f"({n_pose} vs {len(elements)}), marking NaN")
+                    rmsd = np.nan
+                elif use_dockrmsd:
+                    pose_mol2 = os.path.join(
+                        tmp_root,
+                        f"{code}_{os.path.basename(fpath)[:-6]}_{rank}.mol2")
+                    write_mol2(pose_mol2, elements, model["coords"], bonds,
+                               name="pose")
+                    rmsd = run_dockrmsd(dockrmsd_bin, ref_mol2, pose_mol2)
+                else:
+                    rmsd = symm_rmsd(coords_ref, model["coords"], atomicnums, adj)
                 out.write("\t".join([
                     code, tool, cfg, source, mode, str(rank),
                     f"{model['score']:.3f}", f"{rmsd:.3f}",
                 ]) + "\n")
             log(f"{code} {tool} {source}-{mode}-{cfg}: {len(models)} poses")
 
+    if not args.keep_tmp:
+        shutil.rmtree(tmp_root, ignore_errors=True)
     log(f"wrote {out_tsv}")
 
 
