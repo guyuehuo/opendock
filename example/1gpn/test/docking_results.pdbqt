@@ -1,0 +1,212 @@
+MODEL        1
+REMARK VINA RESULT:  -10.020   0.000  0.000 
+REMARK 921   NORMALIZED FREE ENERGY PREDICTED BY IDOCK:  -10.02 KCAL/MOL
+REMARK 922        TOTAL FREE ENERGY PREDICTED BY IDOCK:  -10.32 KCAL/MOL
+REMARK 923 INTER-LIGAND FREE ENERGY PREDICTED BY IDOCK:  -10.32 KCAL/MOL
+REMARK 924 INTRA-LIGAND FREE ENERGY PREDICTED BY IDOCK:    0.00 KCAL/MOL
+REMARK 927      BINDING AFFINITY PREDICTED BY RF-SCORE:    6.53 PKD
+ROOT
+ATOM      1  C1  HUB d           5.793  70.115  65.577  0.00  0.00    -0.488 A 
+ATOM      2  O1  HUB d           6.606  70.921  66.037  0.00  0.00    -0.421 OA
+ATOM      3  N1  HUB d           5.885  69.722  64.245  0.00  0.00    -0.705 N 
+ATOM      4  C2  HUB d           4.712  69.534  66.352  0.00  0.00    -0.646 A 
+ATOM      5  C3  HUB d           3.844  68.642  65.774  0.00  0.00    -0.793 A 
+ATOM      6  C4  HUB d           3.948  68.231  64.395  0.00  0.00    -0.554 A 
+ATOM      7  C5  HUB d           5.005  68.820  63.620  0.00  0.00    -0.475 A 
+ATOM      8  C6  HUB d           5.247  68.519  62.153  0.00  0.00    -0.689 C 
+ATOM      9  C7  HUB d           4.130  67.564  61.501  0.00  0.00    -0.567 C 
+ATOM     10  C8  HUB d           2.901  68.388  61.040  0.00  0.00    -0.694 C 
+ATOM     11  C9  HUB d           4.293  64.592  64.032  0.00  0.00    -0.641 C 
+ATOM     12  C10 HUB d           4.795  65.629  63.012  0.00  0.00    -0.593 C 
+ATOM     13  C11 HUB d           3.632  66.505  62.514  0.00  0.00    -0.062 C 
+ATOM     14  C12 HUB d           2.923  67.185  63.726  0.00  0.00    -0.318 C 
+ATOM     15  N2  HUB d           2.468  66.146  64.723  0.00  0.00    -0.416 N 
+ATOM     16  C13 HUB d           1.681  68.001  63.243  0.00  0.00    -0.519 C 
+ATOM     17  C14 HUB d           1.786  68.582  61.837  0.00  0.00    -0.610 C 
+ATOM     18  C90 HUB d           3.632  65.239  65.239  0.00  0.00    -0.458 C 
+ATOM     19  H1  HUB d           6.627  70.105  63.696  0.00  0.00     0.000 HD
+ATOM     20  H2  HUB d           4.587  69.807  67.400  0.00  0.00     0.000 H 
+ATOM     21  H3  HUB d           3.043  68.226  66.383  0.00  0.00     0.000 H 
+ATOM     22  H4  HUB d           6.226  68.026  62.057  0.00  0.00     0.000 H 
+ATOM     23  H5  HUB d           5.258  69.470  61.600  0.00  0.00     0.000 H 
+ATOM     24  H6  HUB d           4.571  67.053  60.632  0.00  0.00     0.000 H 
+ATOM     25  H7  HUB d           2.914  68.833  60.046  0.00  0.00     0.000 H 
+ATOM     26  H8  HUB d           5.149  63.993  64.378  0.00  0.00     0.000 H 
+ATOM     27  H9  HUB d           3.562  63.937  63.537  0.00  0.00     0.000 H 
+ATOM     28  H10 HUB d           5.552  66.269  63.489  0.00  0.00     0.000 H 
+ATOM     29  H11 HUB d           5.247  65.105  62.157  0.00  0.00     0.000 H 
+ATOM     30  H12 HUB d           2.904  65.858  62.003  0.00  0.00     0.000 H 
+ATOM     31  H13 HUB d           1.776  65.560  64.282  0.00  0.00     0.000 HD
+ATOM     32  H14 HUB d           2.054  66.618  65.511  0.00  0.00     0.000 HD
+ATOM     33  H15 HUB d           1.529  68.834  63.945  0.00  0.00     0.000 H 
+ATOM     34  H16 HUB d           0.806  67.335  63.270  0.00  0.00     0.000 H 
+ATOM     35  H20 HUB d           4.366  65.851  65.785  0.00  0.00     0.000 H 
+ATOM     36  H21 HUB d           3.233  64.463  65.906  0.00  0.00     0.000 H 
+ENDROOT
+BRANCH  17  37
+ATOM     37  C15 HUB d           0.573  69.369  61.409  0.00  0.00    -0.669 C 
+ATOM     38  H17 HUB d           0.728  69.757  60.393  0.00  0.00     0.000 H 
+ATOM     39  H18 HUB d           0.417  70.208  62.102  0.00  0.00     0.000 H 
+ATOM     40  H19 HUB d          -0.312  68.714  61.421  0.00  0.00     0.000 H 
+ENDBRANCH  17  37
+TORSDOF 1
+ENDMDL
+MODEL        2
+REMARK VINA RESULT:  -4.540   0.000  0.000 
+REMARK 921   NORMALIZED FREE ENERGY PREDICTED BY IDOCK:   -4.54 KCAL/MOL
+REMARK 922        TOTAL FREE ENERGY PREDICTED BY IDOCK:   -4.67 KCAL/MOL
+REMARK 923 INTER-LIGAND FREE ENERGY PREDICTED BY IDOCK:   -4.67 KCAL/MOL
+REMARK 924 INTRA-LIGAND FREE ENERGY PREDICTED BY IDOCK:    0.00 KCAL/MOL
+REMARK 927      BINDING AFFINITY PREDICTED BY RF-SCORE:    6.58 PKD
+ROOT
+ATOM      1  C1  HUB d           4.286  70.717  67.502  0.00  0.00     0.800 A 
+ATOM      2  O1  HUB d           5.232  71.468  67.751  0.00  0.00    -0.614 OA
+ATOM      3  N1  HUB d           4.440  69.694  66.571  0.00  0.00    -0.241 N 
+ATOM      4  C2  HUB d           2.982  70.831  68.131  0.00  0.00    -0.050 A 
+ATOM      5  C3  HUB d           1.976  69.957  67.807  0.00  0.00    -0.581 A 
+ATOM      6  C4  HUB d           2.142  68.894  66.847  0.00  0.00    -0.625 A 
+ATOM      7  C5  HUB d           3.425  68.791  66.207  0.00  0.00    -0.389 A 
+ATOM      8  C6  HUB d           3.767  67.748  65.160  0.00  0.00    -0.612 C 
+ATOM      9  C7  HUB d           2.516  66.832  64.733  0.00  0.00    -0.414 C 
+ATOM     10  C8  HUB d           1.670  67.531  63.637  0.00  0.00    -0.350 C 
+ATOM     11  C9  HUB d           1.419  65.585  68.269  0.00  0.00     0.612 C 
+ATOM     12  C10 HUB d           2.348  65.842  67.070  0.00  0.00     0.875 C 
+ATOM     13  C11 HUB d           1.585  66.552  65.937  0.00  0.00    -0.392 C 
+ATOM     14  C12 HUB d           0.953  67.875  66.471  0.00  0.00    -0.398 C 
+ATOM     15  N2  HUB d           0.070  67.595  67.664  0.00  0.00    -0.380 N 
+ATOM     16  C13 HUB d           0.096  68.558  65.357  0.00  0.00    -0.426 C 
+ATOM     17  C14 HUB d           0.566  68.314  63.928  0.00  0.00    -0.560 C 
+ATOM     18  C90 HUB d           0.822  66.868  68.827  0.00  0.00    -0.424 C 
+ATOM     19  H1  HUB d           5.332  69.594  66.131  0.00  0.00     0.000 HD
+ATOM     20  H2  HUB d           2.802  71.615  68.866  0.00  0.00     0.000 H 
+ATOM     21  H3  HUB d           1.010  70.072  68.296  0.00  0.00     0.000 H 
+ATOM     22  H4  HUB d           4.555  67.095  65.564  0.00  0.00     0.000 H 
+ATOM     23  H5  HUB d           4.142  68.265  64.264  0.00  0.00     0.000 H 
+ATOM     24  H6  HUB d           2.899  65.877  64.343  0.00  0.00     0.000 H 
+ATOM     25  H7  HUB d           1.956  67.399  62.595  0.00  0.00     0.000 H 
+ATOM     26  H8  HUB d           1.996  65.091  69.065  0.00  0.00     0.000 H 
+ATOM     27  H9  HUB d           0.600  64.926  67.945  0.00  0.00     0.000 H 
+ATOM     28  H10 HUB d           3.188  66.475  67.393  0.00  0.00     0.000 H 
+ATOM     29  H11 HUB d           2.735  64.882  66.700  0.00  0.00     0.000 H 
+ATOM     30  H12 HUB d           0.774  65.892  65.598  0.00  0.00     0.000 H 
+ATOM     31  H13 HUB d          -0.698  67.014  67.365  0.00  0.00     0.000 HD
+ATOM     32  H14 HUB d          -0.287  68.471  68.011  0.00  0.00     0.000 HD
+ATOM     33  H15 HUB d           0.106  69.642  65.538  0.00  0.00     0.000 H 
+ATOM     34  H16 HUB d          -0.934  68.182  65.443  0.00  0.00     0.000 H 
+ATOM     35  H20 HUB d           1.623  67.516  69.214  0.00  0.00     0.000 H 
+ATOM     36  H21 HUB d           0.118  66.632  69.636  0.00  0.00     0.000 H 
+ENDROOT
+BRANCH  17  37
+ATOM     37  C15 HUB d          -0.280  68.994  62.881  0.00  0.00    -0.503 C 
+ATOM     38  H17 HUB d           0.126  68.775  61.883  0.00  0.00     0.000 H 
+ATOM     39  H18 HUB d          -0.270  70.080  63.051  0.00  0.00     0.000 H 
+ATOM     40  H19 HUB d          -1.314  68.621  62.947  0.00  0.00     0.000 H 
+ENDBRANCH  17  37
+TORSDOF 1
+ENDMDL
+MODEL        3
+REMARK VINA RESULT:  -2.790   0.000  0.000 
+REMARK 921   NORMALIZED FREE ENERGY PREDICTED BY IDOCK:   -2.79 KCAL/MOL
+REMARK 922        TOTAL FREE ENERGY PREDICTED BY IDOCK:   -2.87 KCAL/MOL
+REMARK 923 INTER-LIGAND FREE ENERGY PREDICTED BY IDOCK:   -2.87 KCAL/MOL
+REMARK 924 INTRA-LIGAND FREE ENERGY PREDICTED BY IDOCK:    0.00 KCAL/MOL
+REMARK 927      BINDING AFFINITY PREDICTED BY RF-SCORE:    6.73 PKD
+ROOT
+ATOM      1  C1  HUB d           2.313  70.120  68.483  0.00  0.00    -0.462 A 
+ATOM      2  O1  HUB d           3.126  70.612  69.270  0.00  0.00    -0.320 OA
+ATOM      3  N1  HUB d           2.608  68.919  67.843  0.00  0.00     0.429 N 
+ATOM      4  C2  HUB d           1.032  70.726  68.167  0.00  0.00     0.745 A 
+ATOM      5  C3  HUB d           0.177  70.120  67.282  0.00  0.00     0.035 A 
+ATOM      6  C4  HUB d           0.483  68.872  66.627  0.00  0.00    -0.418 A 
+ATOM      7  C5  HUB d           1.759  68.279  66.922  0.00  0.00    -0.374 A 
+ATOM      8  C6  HUB d           2.252  66.983  66.308  0.00  0.00    -0.496 C 
+ATOM      9  C7  HUB d           1.263  66.384  65.192  0.00  0.00    -0.336 C 
+ATOM     10  C8  HUB d           1.528  67.038  63.811  0.00  0.00     0.001 C 
+ATOM     11  C9  HUB d          -2.041  66.284  67.273  0.00  0.00    -0.497 C 
+ATOM     12  C10 HUB d          -0.572  66.007  66.913  0.00  0.00     0.599 C 
+ATOM     13  C11 HUB d          -0.220  66.641  65.555  0.00  0.00     0.658 C 
+ATOM     14  C12 HUB d          -0.527  68.170  65.588  0.00  0.00    -0.497 C 
+ATOM     15  N2  HUB d          -1.968  68.411  65.973  0.00  0.00    -0.699 N 
+ATOM     16  C13 HUB d          -0.265  68.809  64.186  0.00  0.00    -0.228 C 
+ATOM     17  C14 HUB d           0.827  68.142  63.357  0.00  0.00    -0.580 C 
+ATOM     18  C90 HUB d          -2.351  67.771  67.347  0.00  0.00     0.200 C 
+ATOM     19  H1  HUB d           3.483  68.482  68.052  0.00  0.00     0.000 HD
+ATOM     20  H2  HUB d           0.748  71.668  68.634  0.00  0.00     0.000 H 
+ATOM     21  H3  HUB d          -0.775  70.602  67.066  0.00  0.00     0.000 H 
+ATOM     22  H4  HUB d           2.363  66.239  67.111  0.00  0.00     0.000 H 
+ATOM     23  H5  HUB d           3.231  67.169  65.842  0.00  0.00     0.000 H 
+ATOM     24  H6  HUB d           1.433  65.300  65.118  0.00  0.00     0.000 H 
+ATOM     25  H7  HUB d           2.298  66.611  63.171  0.00  0.00     0.000 H 
+ATOM     26  H8  HUB d          -2.257  65.830  68.253  0.00  0.00     0.000 H 
+ATOM     27  H9  HUB d          -2.684  65.826  66.507  0.00  0.00     0.000 H 
+ATOM     28  H10 HUB d           0.078  66.433  67.691  0.00  0.00     0.000 H 
+ATOM     29  H11 HUB d          -0.412  64.920  66.858  0.00  0.00     0.000 H 
+ATOM     30  H12 HUB d          -0.848  66.176  64.781  0.00  0.00     0.000 H 
+ATOM     31  H13 HUB d          -2.561  68.018  65.259  0.00  0.00     0.000 HD
+ATOM     32  H14 HUB d          -2.123  69.405  66.027  0.00  0.00     0.000 HD
+ATOM     33  H15 HUB d           0.020  69.860  64.341  0.00  0.00     0.000 H 
+ATOM     34  H16 HUB d          -1.201  68.764  63.611  0.00  0.00     0.000 H 
+ATOM     35  H20 HUB d          -1.762  68.236  68.152  0.00  0.00     0.000 H 
+ATOM     36  H21 HUB d          -3.422  67.920  67.542  0.00  0.00     0.000 H 
+ENDROOT
+BRANCH  17  37
+ATOM     37  C15 HUB d           1.057  68.790  62.015  0.00  0.00    -0.634 C 
+ATOM     38  H17 HUB d           1.859  68.257  61.484  0.00  0.00     0.000 H 
+ATOM     39  H18 HUB d           1.348  69.841  62.160  0.00  0.00     0.000 H 
+ATOM     40  H19 HUB d           0.131  68.745  61.423  0.00  0.00     0.000 H 
+ENDBRANCH  17  37
+TORSDOF 1
+ENDMDL
+MODEL        4
+REMARK VINA RESULT:  7.820   0.000  0.000 
+REMARK 921   NORMALIZED FREE ENERGY PREDICTED BY IDOCK:    7.82 KCAL/MOL
+REMARK 922        TOTAL FREE ENERGY PREDICTED BY IDOCK:    8.05 KCAL/MOL
+REMARK 923 INTER-LIGAND FREE ENERGY PREDICTED BY IDOCK:    8.05 KCAL/MOL
+REMARK 924 INTRA-LIGAND FREE ENERGY PREDICTED BY IDOCK:    0.00 KCAL/MOL
+REMARK 927      BINDING AFFINITY PREDICTED BY RF-SCORE:    6.81 PKD
+ROOT
+ATOM      1  C1  HUB d           1.808  70.667  68.420  0.00  0.00     0.569 A 
+ATOM      2  O1  HUB d           2.180  71.707  68.971  0.00  0.00     3.431 OA
+ATOM      3  N1  HUB d           1.905  69.454  69.093  0.00  0.00    -0.221 N 
+ATOM      4  C2  HUB d           1.262  70.622  67.075  0.00  0.00     2.687 A 
+ATOM      5  C3  HUB d           0.866  69.429  66.526  0.00  0.00     0.350 A 
+ATOM      6  C4  HUB d           0.961  68.174  67.231  0.00  0.00    -0.593 A 
+ATOM      7  C5  HUB d           1.519  68.213  68.555  0.00  0.00     0.196 A 
+ATOM      8  C6  HUB d           1.712  66.988  69.428  0.00  0.00     0.069 C 
+ATOM      9  C7  HUB d           1.344  65.608  68.689  0.00  0.00     0.132 C 
+ATOM     10  C8  HUB d           2.544  65.094  67.853  0.00  0.00     2.009 C 
+ATOM     11  C9  HUB d          -2.282  66.472  67.519  0.00  0.00    -0.416 C 
+ATOM     12  C10 HUB d          -1.100  66.281  68.486  0.00  0.00    -0.367 C 
+ATOM     13  C11 HUB d           0.144  65.785  67.728  0.00  0.00     0.962 C 
+ATOM     14  C12 HUB d           0.495  66.778  66.577  0.00  0.00    -0.428 C 
+ATOM     15  N2  HUB d          -0.692  66.968  65.662  0.00  0.00    -0.027 N 
+ATOM     16  C13 HUB d           1.699  66.237  65.739  0.00  0.00    -0.165 C 
+ATOM     17  C14 HUB d           2.699  65.382  66.508  0.00  0.00     0.789 C 
+ATOM     18  C90 HUB d          -1.970  67.466  66.411  0.00  0.00    -0.387 C 
+ATOM     19  H1  HUB d           2.271  69.464  70.023  0.00  0.00     0.000 HD
+ATOM     20  H2  HUB d           1.166  71.541  66.497  0.00  0.00     0.000 H 
+ATOM     21  H3  HUB d           0.463  69.430  65.515  0.00  0.00     0.000 H 
+ATOM     22  H4  HUB d           1.069  67.090  70.316  0.00  0.00     0.000 H 
+ATOM     23  H5  HUB d           2.765  66.945  69.741  0.00  0.00     0.000 H 
+ATOM     24  H6  HUB d           1.087  64.860  69.453  0.00  0.00     0.000 H 
+ATOM     25  H7  HUB d           3.297  64.479  68.344  0.00  0.00     0.000 H 
+ATOM     26  H8  HUB d          -3.149  66.839  68.088  0.00  0.00     0.000 H 
+ATOM     27  H9  HUB d          -2.525  65.501  67.065  0.00  0.00     0.000 H 
+ATOM     28  H10 HUB d          -0.870  67.242  68.970  0.00  0.00     0.000 H 
+ATOM     29  H11 HUB d          -1.376  65.543  69.253  0.00  0.00     0.000 H 
+ATOM     30  H12 HUB d          -0.087  64.806  67.284  0.00  0.00     0.000 H 
+ATOM     31  H13 HUB d          -0.901  66.085  65.221  0.00  0.00     0.000 HD
+ATOM     32  H14 HUB d          -0.447  67.645  64.957  0.00  0.00     0.000 HD
+ATOM     33  H15 HUB d           2.238  67.101  65.324  0.00  0.00     0.000 H 
+ATOM     34  H16 HUB d           1.294  65.629  64.917  0.00  0.00     0.000 H 
+ATOM     35  H20 HUB d          -1.784  68.461  66.842  0.00  0.00     0.000 H 
+ATOM     36  H21 HUB d          -2.815  67.521  65.711  0.00  0.00     0.000 H 
+ENDROOT
+BRANCH  17  37
+ATOM     37  C15 HUB d           3.849  64.885  65.669  0.00  0.00    -0.537 C 
+ATOM     38  H17 HUB d           4.525  64.284  66.294  0.00  0.00     0.000 H 
+ATOM     39  H18 HUB d           4.399  65.743  65.255  0.00  0.00     0.000 H 
+ATOM     40  H19 HUB d           3.462  64.265  64.846  0.00  0.00     0.000 H 
+ENDBRANCH  17  37
+TORSDOF 1
+ENDMDL

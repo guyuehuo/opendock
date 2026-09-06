@@ -1,0 +1,5 @@
+
+.wy-side-nav-search .logo {
+    max-width: 20px; /* 使用 !important 强制覆盖其他样式 */
+    height: auto !important;   /* 保持纵横比 */
+}

@@ -1,0 +1,46 @@
+CRYST1  171.210   44.610  180.410  90.00 104.44  90.00 C 1 2 1      20
+HETATM    1  CAA EVS A1000       2.359   4.261  -8.168  1.00 37.07      F    C  
+HETATM    2  CAE EVS A1000       3.298   5.436  -7.859  1.00 38.70      F    C  
+HETATM    3  CAF EVS A1000      -0.277   6.530  -5.905  1.00 37.92      F    C  
+HETATM    4  CAG EVS A1000      -2.847  13.158  -6.914  1.00 38.52      F    C  
+HETATM    5  CAH EVS A1000      -2.597  12.731  -5.608  1.00 39.33      F    C  
+HETATM    6  CAI EVS A1000      -2.085  12.598  -7.945  1.00 40.40      F    C  
+HETATM    7  CAJ EVS A1000      -1.576  11.780  -5.437  1.00 40.27      F    C  
+HETATM    8  CAK EVS A1000       3.439   7.894  -7.488  1.00 37.18      F    C  
+HETATM    9  CAL EVS A1000       0.671   9.643  -5.456  1.00 38.23      F    C  
+HETATM   10  CAM EVS A1000       0.988   8.030  -8.876  1.00 36.53      F    C  
+HETATM   11  CAP EVS A1000       2.696   6.706  -7.802  1.00 38.02      F    C  
+HETATM   12  CAR EVS A1000       0.099  10.393  -6.538  1.00 38.63      F    C  
+HETATM   13  CAS EVS A1000       0.474  10.231  -7.835  1.00 37.96      F    C  
+HETATM   14  CAT EVS A1000      -1.130  11.678  -7.725  1.00 39.70      F    C  
+HETATM   15  CAU EVS A1000      -0.877  11.289  -6.483  1.00 38.66      F    C  
+HETATM   16  CAV EVS A1000       1.320   6.848  -7.928  1.00 35.61      F    C  
+HETATM   17  CAW EVS A1000       1.546   9.329  -8.240  1.00 38.77      F    C  
+HETATM   18  CAX EVS A1000       1.643   8.519  -6.000  1.00 37.26      F    C  
+HETATM   19  CAZ EVS A1000       1.039   7.111  -6.437  1.00 34.88      F    C  
+HETATM   20  NAN EVS A1000      -0.290  11.043  -8.552  1.00 38.87      F    N  
+HETATM   21  NAY EVS A1000       2.511   9.015  -7.112  1.00 35.18      F    N  
+HETATM   22  OAC EVS A1000      -0.402   5.152  -6.384  1.00 36.09      F    O  
+CONECT    1    2
+CONECT    2    1   11
+CONECT    3   19   22
+CONECT    4    5    6
+CONECT    5    4    7
+CONECT    6    4   14
+CONECT    7    5   15
+CONECT    8   11   21
+CONECT    9   12   18
+CONECT   10   16   17
+CONECT   11    2    8   16
+CONECT   12    9   13   15
+CONECT   13   12   17   20
+CONECT   14    6   15   20
+CONECT   15    7   12   14
+CONECT   16   10   11   19
+CONECT   17   10   13   21
+CONECT   18    9   19   21
+CONECT   19    3   16   18
+CONECT   20   13   14
+CONECT   21    8   17   18
+CONECT   22    3
+END
