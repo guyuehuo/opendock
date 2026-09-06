@@ -1,0 +1,5 @@
+# python
+__pycache__/
+*.py[cod]
+*.egg-info/
+# benchmark artifacts live under benchmarks/pdbbind_casf2016/.gitignore
