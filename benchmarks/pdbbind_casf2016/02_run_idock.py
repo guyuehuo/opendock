@@ -17,6 +17,7 @@ Everything::
 """
 import argparse
 import os
+import shutil
 import subprocess
 import sys
 
@@ -62,6 +63,26 @@ def model_scores(out_pdbqt):
     return scores
 
 
+def rewrite_idock_remarks(src_pdbqt, dst_pdbqt):
+    """Copy an idock multi-model PDBQT to ``dst_pdbqt`` and normalise the
+    per-model score remark so downstream parsing is tool-agnostic.
+
+    idock writes ``REMARK 921  NORMALIZED FREE ENERGY ...``; the line is
+    rewritten as ``REMARK VINA RESULT: <score> 0.000 0.000`` (same convention
+    as the bundled ``pyidock`` wrapper). All other lines are preserved.
+    """
+    out_lines = []
+    with open(src_pdbqt) as src:
+        for line in src:
+            if "REMARK 921" in line and "NORMALIZED" in line:
+                score = float(line.split()[-2])
+                out_lines.append(f"REMARK VINA RESULT:  {score:.3f}   0.000  0.000\n")
+            else:
+                out_lines.append(line)
+    with open(dst_pdbqt, "w") as dst:
+        dst.writelines(out_lines)
+
+
 def run_one_job(code, source, mode, cfg_name, prep_dir, run_dir, idock_bin,
                 conditions):
     cond = condition_id(source, mode, cfg_name)
@@ -71,36 +92,47 @@ def run_one_job(code, source, mode, cfg_name, prep_dir, run_dir, idock_bin,
     cond_dir = ensure_dir(os.path.join(run_dir, code))
     out_pdbqt = os.path.join(cond_dir, f"{cond}.pdbqt")
     cfg_path = os.path.join(cond_dir, f"{cond}.ini")
+    idock_out_dir = os.path.join(cond_dir, f"{cond}_idock_out")
     scores_csv = os.path.join(run_dir, "scores.csv")
 
     lig_pdbqt = os.path.join(prep_dir, code, f"lig_{source}.pdbqt")
     rec_pdbqt = os.path.join(prep_dir, code, "rec.pdbqt")
 
     idock_cfg = conditions.get("idock", {})
+    # idock out is a *folder*; it writes <basename(ligand)>.pdbqt inside it
+    ensure_dir(idock_out_dir)
     full = [2.0 * h for h in half]
     with open(cfg_path, "w") as f:
         f.write(f"receptor = {rec_pdbqt}\n")
         f.write(f"ligand = {lig_pdbqt}\n")
-        f.write(f"out = {out_pdbqt}\n")
+        f.write(f"out = {idock_out_dir}\n")
         f.write(f"center_x = {center[0]:.3f}\n")
         f.write(f"center_y = {center[1]:.3f}\n")
         f.write(f"center_z = {center[2]:.3f}\n")
         f.write(f"size_x = {full[0]:.3f}\n")
         f.write(f"size_y = {full[1]:.3f}\n")
         f.write(f"size_z = {full[2]:.3f}\n")
-        f.write(f"exhaustiveness = {idock_cfg.get('exhaustiveness', 32)}\n")
-        f.write(f"num_modes = {idock_cfg.get('num_modes', 20)}\n")
+        f.write(f"tasks = {idock_cfg.get('exhaustiveness', 32)}\n")
+        f.write(f"conformations = {idock_cfg.get('num_modes', 20)}\n")
         f.write(f"seed = {idock_cfg.get('seed', 2026)}\n")
 
     log(f"{code} {cond}: running idock")
     subprocess.run([idock_bin, "--config", cfg_path], check=True)
 
+    src_pdbqt = os.path.join(idock_out_dir, os.path.basename(lig_pdbqt))
+    if not os.path.exists(src_pdbqt):
+        raise FileNotFoundError(
+            f"idock produced no output file {src_pdbqt} "
+            f"(check the log in {idock_out_dir})")
+    rewrite_idock_remarks(src_pdbqt, out_pdbqt)
+
     scores = model_scores(out_pdbqt)
     rows = [[code, "idock", cfg_name, source, mode, rank, score]
             for rank, score in enumerate(scores)]
     append_rows(scores_csv, rows, SCORES_HEADER)
-    log(f"{code} {cond}: parsed {len(scores)} models")
+    log(f"{code} {cond}: parsed {len(scores)} models -> {out_pdbqt}")
 
+    shutil.rmtree(idock_out_dir, ignore_errors=True)
     mark_done(run_dir, code, cond)
     return len(scores)
 

@@ -17,6 +17,7 @@ Models that cannot be evaluated are marked ``rmsd_heavy = NaN``.
 import argparse
 import glob
 import os
+import re
 import sys
 
 import numpy as np
@@ -26,6 +27,11 @@ from benchlib import CONFIG_DIR, default_results_dir, default_work_dir, ensure_d
     load_conditions, load_meta
 
 HYDROGEN = {"H", "HD"}
+
+# coordinates live in the PDB coordinate window (cols ~27-54 for OpenDock's
+# custom writer, cols 30-54 for standard PDBQT); pull the first three floats
+_XYZ_RE = re.compile(r"-?\d+\.\d+")
+_XYZ_WINDOW = slice(26, 56)
 
 
 def log(msg):
@@ -48,15 +54,10 @@ def _coords_and_heavy(line):
     last = line.split()[-1] if line.split() else ""
     if ad4 in HYDROGEN or last in HYDROGEN:
         return None, True
-    toks = line.split()
-    try:
-        x, y, z = float(toks[6]), float(toks[7]), float(toks[8])
-    except (IndexError, ValueError):
-        try:
-            x, y, z = float(line[30:38]), float(line[38:46]), float(line[46:54])
-        except ValueError:
-            return None, False
-    return np.array([x, y, z]), False
+    nums = _XYZ_RE.findall(line[_XYZ_WINDOW])[:3]
+    if len(nums) != 3:
+        return None, False
+    return np.array([float(n) for n in nums]), False
 
 
 def parse_output_models(fpath):

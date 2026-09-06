@@ -36,16 +36,58 @@ def log(msg):
     print(f"[prep] {msg}", flush=True)
 
 
-def find_program(name, hint=None):
+def find_program(name, candidates=()):
     path = shutil.which(name)
-    if path is None and hint:
-        path = os.path.join(hint, name) if os.path.exists(os.path.join(hint, name)) else None
+    if path is None:
+        for cand in candidates:
+            if cand and os.path.isfile(cand):
+                return cand
     return path
 
 
-def run(cmd, **kwargs):
-    log(" ".join(cmd))
-    subprocess.run(cmd, check=True, **kwargs)
+def find_mgltools():
+    """Locate MGLTools (pythonsh + prepare_*4.py) on PATH or in common envs.
+
+    Order: explicit env/flag (handled by caller) -> PATH -> FBDesign3-style
+    conda env layout (``envs/mgltools/bin`` under ~/apps or the workspace).
+    Returns dict with 'pythonsh', 'prepare_receptor4', 'prepare_ligand4' or
+    raises if none of the prepare scripts can be found.
+    """
+    pythonsh = find_program("pythonsh")
+    rec = find_program("prepare_receptor4.py")
+    lig = find_program("prepare_ligand4.py")
+
+    if rec is None or lig is None:
+        home_candidates = [
+            os.path.expanduser("~/apps/FBDesign3/envs/mgltools/bin"),
+            "/mnt/porality-zheng-202608/apps/FBDesign3/envs/mgltools/bin",
+            os.environ.get("MGLTOOLS_HOME", ""),
+        ]
+        for bdir in filter(None, home_candidates):
+            pythonsh = pythonsh or (os.path.join(bdir, "pythonsh")
+                                    if os.path.exists(os.path.join(bdir, "pythonsh"))
+                                    else None)
+            rec = rec or (os.path.join(bdir, "prepare_receptor4.py")
+                          if os.path.exists(os.path.join(bdir, "prepare_receptor4.py"))
+                          else None)
+            lig = lig or (os.path.join(bdir, "prepare_ligand4.py")
+                          if os.path.exists(os.path.join(bdir, "prepare_ligand4.py"))
+                          else None)
+
+    missing = [k for k, v in (("pythonsh", pythonsh),
+                              ("prepare_receptor4", rec),
+                              ("prepare_ligand4", lig)) if not v]
+    if missing:
+        raise RuntimeError(
+            "MGLTools tools not found: %s. Install AutoDockTools/mgltools or "
+            "set MGLTOOLS_HOME." % ", ".join(missing))
+    return {"pythonsh": pythonsh, "prepare_receptor4": rec,
+            "prepare_ligand4": lig}
+
+
+def run(cmd, workdir=None, **kwargs):
+    log(" ".join(cmd) + (f"  (cwd={workdir})" if workdir else ""))
+    subprocess.run(cmd, check=True, cwd=workdir, **kwargs)
 
 
 def pdbqt_heavy_atom_count(fpath):
@@ -118,14 +160,32 @@ def rdkit_de_novo_sdf(ref_heavy_sdf, out_sdf, seed=2026):
     return molH.GetNumHeavyAtoms()
 
 
-def prepare_receptor(protein_pdb, out_pdbqt, prepare_receptor4="prepare_receptor4.py"):
-    run([prepare_receptor4, "-r", protein_pdb, "-o", out_pdbqt,
-         "-A", "hydrogens", "-U", "nphs_lps_waters"])
+def prepare_receptor(protein_pdb, out_pdbqt, tools):
+    """Receptor PDBQT via MGLTools (mirrors FBDesign3 step2_docking.py).
+
+    ``-A hydrogens -U nphs_lps_waters``: add hydrogens, then strip nonpolar H,
+    lone pairs and waters. FBDesign3 additionally uses ``-e False`` on its
+    refined structures; both choices are fine for docking, the plan's
+    convention is kept here.
+    """
+    cmd = [tools["pythonsh"], tools["prepare_receptor4"], "-r", protein_pdb,
+           "-o", out_pdbqt, "-A", "hydrogens", "-U", "nphs_lps_waters"]
+    run(cmd, timeout=900)
 
 
-def prepare_ligand(ligand_sdf, out_pdbqt, prepare_ligand4="prepare_ligand4.py"):
-    """Prepare ligand PDBQT, preserving heavy-atom order of the input SDF."""
-    run([prepare_ligand4, "-l", ligand_sdf, "-o", out_pdbqt, "-U", "nphs_lps"])
+def prepare_ligand(ligand_sdf, out_pdbqt, tools):
+    """Ligand PDBQT via MGLTools, preserving heavy-atom order of the input.
+
+    Mirrors FBDesign3 step2_docking.py: prepare_ligand4.py resolves the ``-l``
+    argument with ``os.path.basename`` and MolKit then reads that bare name
+    from the *current working directory*, so the command must run with the
+    input file's directory as CWD.
+    """
+    lig_dir = os.path.dirname(os.path.abspath(ligand_sdf))
+    cmd = [tools["pythonsh"], tools["prepare_ligand4"], "-l",
+           os.path.basename(ligand_sdf), "-o", out_pdbqt,
+           "-A", "bonds_hydrogens", "-U", "nphs_lps"]
+    run(cmd, workdir=lig_dir, timeout=600)
 
 
 def prepare_one(code, data_root, prep_dir, tools):
@@ -144,19 +204,37 @@ def prepare_one(code, data_root, prep_dir, tools):
     ref_sdf = os.path.join(out_dir, "ref_lig_heavy.sdf")
     meta_fpath = os.path.join(out_dir, "meta.json")
 
+    order_ok = True
+
     # ---- receptor --------------------------------------------------------
-    prepare_receptor(protein_pdb, rec_pdbqt, tools["prepare_receptor4"])
+    prepare_receptor(protein_pdb, rec_pdbqt, tools)
     n_rec = pdbqt_heavy_atom_count(rec_pdbqt)
 
     # ---- crystal ligand (heavy count from SDF is authoritative) ----------
     n_heavy_crystal = heavy_sdf_from_sdf(ligand_sdf, ref_sdf)
-    prepare_ligand(ligand_sdf, lig_crystal_pdbqt, tools["prepare_ligand4"])
+    try:
+        prepare_ligand(ligand_sdf, lig_crystal_pdbqt, tools)
+    except subprocess.CalledProcessError:
+        if not tools.get("obabel"):
+            raise
+        log(f"{code}: prepare_ligand4 failed, falling back to OpenBabel")
+        run([tools["obabel"], ligand_sdf, "-O", lig_crystal_pdbqt, "-p", "7.4"],
+            timeout=600)
+        order_ok = False
     n_crystal_pdbqt = pdbqt_heavy_atom_count(lig_crystal_pdbqt)
 
     # ---- RDKit de-novo ligand (order preserved by construction) ----------
     rdkit_sdf = os.path.join(out_dir, "_lig_rdkit_pose.sdf")
     n_heavy_rdkit = rdkit_de_novo_sdf(ref_sdf, rdkit_sdf)
-    prepare_ligand(rdkit_sdf, lig_rdkit_pdbqt, tools["prepare_ligand4"])
+    try:
+        prepare_ligand(rdkit_sdf, lig_rdkit_pdbqt, tools)
+    except subprocess.CalledProcessError:
+        if not tools.get("obabel"):
+            raise
+        log(f"{code}: rdkit ligand prepare_ligand4 failed, OpenBabel fallback")
+        run([tools["obabel"], rdkit_sdf, "-O", lig_rdkit_pdbqt, "-p", "7.4"],
+            timeout=600)
+        order_ok = False
     n_rdkit_pdbqt = pdbqt_heavy_atom_count(lig_rdkit_pdbqt)
 
     # ---- geometry metadata ------------------------------------------------
@@ -186,7 +264,7 @@ def prepare_one(code, data_root, prep_dir, tools):
         "heavy_atoms_rdkit": int(n_heavy_rdkit),
         "heavy_atoms_rdkit_pdbqt": int(n_rdkit_pdbqt),
         "heavy_atoms_receptor": int(n_rec),
-        "heavy_atom_order_corresponds_ref": True,
+        "heavy_atom_order_corresponds_ref": bool(order_ok),
         "margin": margin,
         "ok": True,
         "error": "",
@@ -219,6 +297,14 @@ def main():
                         help="blind-docking margin added to the protein bbox")
     parser.add_argument("--summary", default=None,
                         help="output summary TSV (default: <prep>/prep_summary.tsv)")
+    parser.add_argument("--mgltools-pythonsh", default=None,
+                        help="MGLTools pythonsh binary (auto-discovered)")
+    parser.add_argument("--prepare-receptor4", default=None,
+                        help="prepare_receptor4.py path (auto-discovered)")
+    parser.add_argument("--prepare-ligand4", default=None,
+                        help="prepare_ligand4.py path (auto-discovered)")
+    parser.add_argument("--obabel", default=os.environ.get("OBABEL"),
+                        help="OpenBabel binary for the ligand fallback path")
     parser.add_argument("--dry", action="store_true",
                         help="check tool availability and exit")
     args = parser.parse_args()
@@ -227,19 +313,28 @@ def main():
     prep_dir = args.prep_dir or os.path.join(default_work_dir(), "prep")
     summary_fpath = args.summary or os.path.join(prep_dir, "prep_summary.tsv")
 
+    try:
+        discovered = find_mgltools()
+    except RuntimeError as exc:
+        discovered = {}
     tools = {
-        "prepare_receptor4": find_program("prepare_receptor4.py"),
-        "prepare_ligand4": find_program("prepare_ligand4.py"),
+        "pythonsh": args.mgltools_pythonsh or discovered.get("pythonsh"),
+        "prepare_receptor4": args.prepare_receptor4 or discovered.get("prepare_receptor4"),
+        "prepare_ligand4": args.prepare_ligand4 or discovered.get("prepare_ligand4"),
+        "obabel": args.obabel or find_program("obabel"),
     }
     if args.dry:
         for name, path in tools.items():
             log(f"{name}: {path or 'NOT FOUND'}")
         log(f"data-root: {args.data_root}")
-        sys.exit(0 if all(tools.values()) and os.path.isdir(args.data_root) else 1)
-    for name, path in tools.items():
-        if path is None:
-            parser.error(f"required tool {name} not found on PATH "
-                         "(install mgltools / AutoDockTools)")
+        ok = (all(tools[k] for k in ("pythonsh", "prepare_receptor4",
+                                     "prepare_ligand4"))
+              and os.path.isdir(args.data_root))
+        sys.exit(0 if ok else 1)
+    for name in ("pythonsh", "prepare_receptor4", "prepare_ligand4"):
+        if not tools[name]:
+            parser.error(f"required MGLTools tool {name} not found "
+                         "(install mgltools/AutoDockTools or set MGLTOOLS_HOME)")
 
     codes = args.codes or load_samples_list(args.samples_list)
     if args.max_cases:

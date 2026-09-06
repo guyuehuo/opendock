@@ -12,12 +12,24 @@ Implementation plan: `docs/plans/2026-09-06-pdbbind-casf2016-docking-benchmark.m
 - Linux x86-64 server, Python >= 3.9
 - conda env with: `torch` (CPU is enough), `numpy`, `pandas`, `scipy`,
   `rdkit`, `prody`, `spyrmsd` (see `requirements.txt`)
-- AutoDockTools `prepare_receptor4.py` / `prepare_ligand4.py` (bioconda
-  `mgltools`) — Meeko/OpenBabel fallback paths are documented in
-  `01_prepare_inputs.py` but the reference ordering guarantees rely on ADT
-- OpenBabel >= 3.2
-- standalone idock binary (build from https://github.com/zhenglz/idock or use
-  the released Linux binary), exported as `IDOCK_BIN`
+- AutoDockTools/MGLTools `pythonsh` + `prepare_receptor4.py` /
+  `prepare_ligand4.py` (bioconda `mgltools`, or the conda env shipped with the
+  FBDesign3 pipeline, e.g. `~/apps/FBDesign3/envs/mgltools/bin`). These are
+  auto-discovered by `01_prepare_inputs.py` (PATH -> `~/apps/FBDesign3`-style
+  layout -> `$MGLTOOLS_HOME`); override with
+  `--mgltools-pythonsh --prepare-receptor4 --prepare-ligand4`.
+- OpenBabel >= 3.2 (optional). The MGLTools prepare scripts are the primary
+  ligand path (kept identical to the FBDesign3 pipeline: run from the input
+  directory with basenames, `-A bonds_hydrogens -U nphs_lps`); OpenBabel is
+  only a fallback if `prepare_ligand4.py` rejects an SDF
+  (`--obabel /path/to/obabel`). Note the FBDesign3 repo does not itself call
+  OpenBabel for PDBQT prep — its `tools.obabel` entry is a legacy/empty path.
+- standalone idock binary. On this server it lives at
+  `~/apps/FBDesign3/bin/idock223`; export it as `IDOCK_BIN` or pass
+  `--idock-bin`. The harness runs `idock --config` with `out = <folder>`,
+  finds the produced `<ligand-basename>.pdbqt`, and rewrites idock's
+  `REMARK 921 NORMALIZED FREE ENERGY` lines to a tool-agnostic
+  `REMARK VINA RESULT: <score>` convention (same as FBDesign3 `pyidock`).
 - PDBbind refined set v2016 at `$PDBBIND` (one folder per complex:
   `protein.pdb`, `ligand.mol2`, `ligand.sdf`). Registration + license required.
 
@@ -106,10 +118,16 @@ Success is RMSD <= 2.0 A (also tabulated at 1.0 and 2.5 A).
   atom *ordering* of both `lig_crystal.pdbqt` and `lig_rdkit.pdbqt` equals that
   of `ref_lig_heavy.sdf` (RDKit embedding keeps the reference order), so a
   1:1 correspondence holds and spyrmsd handles symmetric atoms.
-- If heavy-atom counts mismatch (e.g. a prep problem), the model is reported
-  as `NaN`.
-- idock output atoms keep the input ligand order; polar-hydrogen entries are
-  removed before comparison.
+- Docked poses keep the input heavy-atom ordering: OpenDock's
+  `write_ligand_traj` emits the input heavy-atom order, and idock preserves the
+  input atom names/serial numbers in its output (verified for `idock223`), so
+  the same identity correspondence is used for both tools.
+- If heavy-atom counts mismatch (e.g. a prep problem or an OpenBabel fallback
+  that reorders atoms), the model is reported as `NaN`.
+- Coordinates are read from the PDB coordinate window of each ATOM line, which
+  handles both standard PDBQT and OpenDock's fixed-width writer (idock residue
+  fields such as `HUB d` shift whitespace-token indices, so token-based
+  parsing must not be used).
 
 ## Interpretation notes
 

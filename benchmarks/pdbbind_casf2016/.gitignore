@@ -1,9 +1,10 @@
 # per-complex artifacts
 work/
 
-# aggregated result CSVs (summary.md is tracked)
+# aggregated results (summary.md is committed only from real full runs)
 results/*.csv
 results/rmsd.tsv
+results/summary.md
 
 # misc
 *.pyc
