@@ -329,3 +329,301 @@ def _components_after_removing(n_atoms, bonds, banned):
     for atom, c in comp_of.items():
         comps.setdefault(c, []).append(atom)
     return comp_of, comps
+
+
+# --------------------------------------------------------------------------- #
+# typed PDBQT handling
+# --------------------------------------------------------------------------- #
+def find_mgltools(mgltools_home=None):
+    """Locate MGLTools (pythonsh + prepare_ligand4.py).
+
+    Search order: PATH, an explicit ``mgltools_home`` argument, then the
+    ``MGLTOOLS_HOME`` environment variable.  ``mgltools_home`` points at the
+    MGLTools ``bin`` directory.
+    """
+    pythonsh = find_program("pythonsh")
+    lig = find_program("prepare_ligand4.py")
+    if pythonsh is None or lig is None:
+        for bdir in (mgltools_home, os.environ.get("MGLTOOLS_HOME")):
+            if not bdir:
+                continue
+            pythonsh = pythonsh or (
+                os.path.join(bdir, "pythonsh")
+                if os.path.exists(os.path.join(bdir, "pythonsh")) else None)
+            lig = lig or (
+                os.path.join(bdir, "prepare_ligand4.py")
+                if os.path.exists(os.path.join(bdir, "prepare_ligand4.py"))
+                else None)
+    missing = [k for k, v in (("pythonsh", pythonsh),
+                              ("prepare_ligand4", lig)) if not v]
+    if missing:
+        raise RuntimeError(
+            "MGLTools tools not found: %s. Install AutoDockTools/mgltools or "
+            "set MGLTOOLS_HOME (or pass --mgltools DIR)." % ", ".join(missing))
+    return {"pythonsh": pythonsh, "prepare_ligand4": lig}
+
+
+@dataclass
+class AtomRecord:
+    line: str          # typed PDBQT ATOM/HETATM line (columns preserved)
+    ad4: str           # AD4 atom type from cols 77:79
+    xyz: tuple
+    mol_idx: int = -1  # heavy-atom index into the peptide molecule; -1 = H
+
+
+def _write_sdf(mol, path):
+    Chem, _, _ = _require_rdkit()
+    writer = Chem.SDWriter(path)
+    writer.write(mol)
+    writer.close()
+
+
+def _sdf_to_mol2_python(in_sdf, out_mol2):
+    """Convert SDF to MOL2 with the OpenBabel python bindings (the `obabel`
+    wrapper script in relocated conda envs often has a stale shebang)."""
+    try:
+        from openbabel import openbabel as ob
+    except ImportError:
+        obabel = find_program(
+            "obabel", candidates=(os.path.join(os.path.dirname(sys.executable),
+                                               "obabel"),))
+        if obabel is None:
+            raise RuntimeError("OpenBabel is required to convert the RDKit SDF "
+                               "to MOL2 for MGLTools") from None
+        subprocess.run([obabel, in_sdf, "-O", out_mol2], check=True,
+                       stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                       timeout=600)
+        return out_mol2
+    conv = ob.OBConversion()
+    conv.SetInAndOutFormats("sdf", "mol2")
+    mol = ob.OBMol()
+    if not conv.ReadFile(mol, in_sdf) or not conv.WriteFile(mol, out_mol2):
+        raise RuntimeError(f"OpenBabel SDF->MOL2 conversion failed for "
+                           f"{in_sdf}")
+    return out_mol2
+
+
+def generate_typed_pdbqt(mol, out_pdbqt, tools=None, workdir=None):
+    """AD4-typed PDBQT via MGLTools prepare_ligand4.py.
+
+    MolKit frequently rejects RDKit SDFs, so the SDF is converted to MOL2 with
+    OpenBabel first.  The typed heavy atoms keep the coordinates/elements of
+    `mol`; their order may change (we map back by coordinates later).
+    """
+    tools = tools or find_mgltools()
+    Chem, _, _ = _require_rdkit()
+    lig_dir = os.path.abspath(workdir or tempfile.mkdtemp(prefix="pep_pdbqt_"))
+    os.makedirs(lig_dir, exist_ok=True)
+    sdf_in = os.path.join(lig_dir, "ligand.sdf")
+    mol2_in = os.path.join(lig_dir, "ligand.mol2")
+    _write_sdf(Chem.RemoveHs(Chem.Mol(mol)), sdf_in)
+    _sdf_to_mol2_python(sdf_in, mol2_in)
+
+    cmd = [tools["pythonsh"], tools["prepare_ligand4"],
+           "-l", os.path.basename(mol2_in), "-o", out_pdbqt,
+           "-A", "bonds_hydrogens", "-U", "nphs_lps"]
+    log(" ".join(cmd) + f"  (cwd={lig_dir})")
+    try:
+        subprocess.run(cmd, check=True, cwd=lig_dir,
+                       stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                       timeout=900)
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError("prepare_ligand4 failed:\n" +
+                           (e.output or b"").decode(errors="replace")) from e
+    if not os.path.exists(out_pdbqt):
+        raise RuntimeError(f"prepare_ligand4 produced no output {out_pdbqt}")
+    return out_pdbqt
+
+
+def read_typed_atoms(pdbqt_path):
+    records = []
+    with open(pdbqt_path) as f:
+        for line in f:
+            if not (line.startswith("ATOM") or line.startswith("HETATM")):
+                continue
+            ad4 = line[77:79].strip()
+            try:
+                xyz = (float(line[30:38]), float(line[38:46]),
+                       float(line[46:54]))
+            except ValueError:
+                continue
+            records.append(AtomRecord(line=line, ad4=ad4, xyz=xyz))
+    return records
+
+
+_AD4_ELEMENTS = {
+    "A": "C", "C": "C", "N": "N", "NA": "N", "NS": "N",
+    "O": "O", "OA": "O", "OS": "O", "S": "S", "SA": "S",
+    "H": "H", "HD": "H", "F": "F", "Cl": "Cl", "Br": "Br", "I": "I",
+    "P": "P", "Mg": "Mg", "Mn": "Mn", "Zn": "Zn", "Ca": "Ca",
+    "Fe": "Fe", "Se": "Se",
+}
+
+
+def _element_of_ad4(ad4):
+    ad4 = (ad4 or "").strip()
+    if not ad4:
+        return "C"
+    if ad4 in _AD4_ELEMENTS:
+        return _AD4_ELEMENTS[ad4]
+    return ad4[0].capitalize()
+
+
+def map_typed_to_mol(mol, records):
+    """Associate typed heavy atoms with peptide heavy atoms (element + coords)
+    and attach typed hydrogens to the nearest heavy atom."""
+    conf = mol.GetConformer()
+    mol_coords = [tuple(conf.GetAtomPosition(i)) for i in range(mol.GetNumAtoms())]
+    mol_elems = [a.GetSymbol() for a in mol.GetAtoms()]
+
+    heavy = [r for r in records if r.ad4 not in AD4_HYDROGEN_TYPES]
+    if len(heavy) != mol.GetNumAtoms():
+        raise RuntimeError(
+            f"typed PDBQT has {len(heavy)} heavy atoms but the peptide has "
+            f"{mol.GetNumAtoms()}; the MGLTools output does not match the "
+            f"input geometry")
+
+    used = [False] * mol.GetNumAtoms()
+    heavy_by_mol = {}
+    for rec in heavy:
+        best, best_d2 = -1, 1e9
+        want = _element_of_ad4(rec.ad4)
+        for i in range(mol.GetNumAtoms()):
+            if used[i] or mol_elems[i] != want:
+                continue
+            c = mol_coords[i]
+            d2 = (c[0] - rec.xyz[0]) ** 2 + (c[1] - rec.xyz[1]) ** 2 + \
+                (c[2] - rec.xyz[2]) ** 2
+            if d2 < best_d2:
+                best, best_d2 = i, d2
+        if best < 0 or best_d2 > 1e-2:
+            raise RuntimeError(
+                f"cannot map typed atom {rec.ad4} {rec.xyz} to peptide heavy "
+                f"atoms (nearest d2 = {best_d2:.4f})")
+        rec.mol_idx = best
+        heavy_by_mol[best] = rec
+        used[best] = True
+
+    h_records = []
+    for rec in records:
+        if rec.ad4 in AD4_HYDROGEN_TYPES:
+            best, best_d2 = -1, 1e9
+            for mi, h in heavy_by_mol.items():
+                d2 = (h.xyz[0] - rec.xyz[0]) ** 2 + \
+                    (h.xyz[1] - rec.xyz[1]) ** 2 + \
+                    (h.xyz[2] - rec.xyz[2]) ** 2
+                if d2 < best_d2:
+                    best, best_d2 = mi, d2
+            rec.mol_idx = best
+            h_records.append(rec)
+    return heavy_by_mol, h_records
+
+
+def _with_serial(line, serial):
+    s = str(serial)
+    if len(s) > 5:
+        raise ValueError("atom serial too long")
+    return line[:6] + s.rjust(5) + line[11:]
+
+
+def _h_lines_for(h_records, mi):
+    return sorted((h for h in h_records if h.mol_idx == mi), key=lambda r: r.xyz)
+
+
+def write_frozen_pdbqt(mol, flexible_pairs, heavy_by_mol, h_records,
+                       out_pdbqt, model):
+    """Serialize the backbone-frozen PDBQT (see module docstring).
+
+    Serial numbers are assigned left-to-right over the final file's atom
+    records (heavy atoms interleaved with their attached hydrogens), so they
+    are contiguous 1..N as the OpenDock parser expects
+    (``opendock/core/ligand.py`` uses the running H/HD count to derive heavy
+    indices).
+    """
+    n_atoms = mol.GetNumAtoms()
+    bonds = [(b.GetBeginAtomIdx(), b.GetEndAtomIdx()) for b in mol.GetBonds()]
+    banned = {frozenset(p) for p in flexible_pairs}
+
+    comp_of, comps = _components_after_removing(n_atoms, bonds, banned)
+    backbone = set(model.backbone_atoms)
+    root_cid = comp_of[next(iter(backbone))]
+
+    # orient flexible-edge tree away from the backbone component
+    comp_adj, edge_of = {}, {}
+    for (a, b) in flexible_pairs:
+        ca, cb = comp_of[a], comp_of[b]
+        comp_adj.setdefault(ca, set()).add(cb)
+        comp_adj.setdefault(cb, set()).add(ca)
+        edge_of[(ca, cb)] = (a, b)
+        edge_of[(cb, ca)] = (b, a)
+
+    comp_parent = {root_cid: None}
+    frontier = [root_cid]
+    seen = {root_cid}
+    while frontier:
+        c = frontier.pop(0)
+        for nb in comp_adj.get(c, ()):
+            if nb in seen:
+                continue
+            seen.add(nb)
+            comp_parent[nb] = c
+            frontier.append(nb)
+    if len(seen) != len(comps):
+        raise RuntimeError("flexible-bond graph is not a tree rooted on the "
+                           "backbone")
+
+    # DFS component order == final file atom order (markers carry no serial)
+    comp_tokens = {}
+    comp_order = []
+
+    def collect(cid):
+        comp_order.append(cid)
+        toks = []
+        for mi in sorted(comps[cid]):
+            toks.append(("atom", mi, heavy_by_mol[mi]))
+            for h in _h_lines_for(h_records, mi):
+                toks.append(("h", mi, h))
+        comp_tokens[cid] = toks
+        for nb in sorted(comp_adj.get(cid, ())):
+            if comp_parent.get(nb) == cid:
+                collect(nb)
+
+    collect(root_cid)
+
+    # contiguous serial numbers in file order
+    flat = []
+    for cid in comp_order:
+        flat.extend(comp_tokens[cid])
+    serials = list(range(1, len(flat) + 1))
+    heavy_serial = {}
+    for (kind, mi, _rec), ser in zip(flat, serials):
+        if kind == "atom":
+            heavy_serial[mi] = ser
+
+    cursor = {"i": 0}
+
+    def token_line(tok):
+        ser = serials[cursor["i"]]
+        cursor["i"] += 1
+        rec = tok[2]
+        return _with_serial(rec.line, ser)
+
+    with open(out_pdbqt, "w") as f:
+        f.write("ROOT\n")
+        for tok in comp_tokens[root_cid]:
+            f.write(token_line(tok))
+        f.write("ENDROOT\n")
+
+        def emit_children(cid, fh):
+            for nb in sorted(comp_adj.get(cid, ())):
+                if comp_parent.get(nb) != cid:
+                    continue
+                pa, ch = edge_of[(cid, nb)]
+                fh.write("BRANCH %d %d\n" % (heavy_serial[pa], heavy_serial[ch]))
+                for tok in comp_tokens[nb]:
+                    fh.write(token_line(tok))
+                emit_children(nb, fh)
+                fh.write("ENDBRANCH\n")
+
+        emit_children(root_cid, f)
+    return
