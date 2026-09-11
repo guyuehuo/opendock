@@ -374,20 +374,43 @@ def test_apply_potential_wall_and_upper():
     assert torch.allclose(up, torch.tensor([0.0, 0.0, 0.0, 2.0]))
 
 
-def test_angle_wall_nonnegative(mols):
+def _nth_residue(df, n):
+    seen = []
+    for _, row in df.iterrows():
+        key = f"{row['chain']}:{row['resSeq']}"
+        if key not in seen:
+            seen.append(key)
+    return seen[n]
+
+
+def _selection_com(df, xyz, spec):
+    from opendock.scorer.composite import _residue_groups
+    idx = sorted({i for _, idxs in _residue_groups(df, [spec]) for i in idxs})
+    return xyz[idx].mean(0)
+
+
+def test_angle_matches_manual(mols):
     lig, rec = mols
-    r = _first_residue(rec.dataframe_ha_)
-    # A, B, C all select the whole ligand: their centers coincide, so the
-    # angle is acos(0) = pi/2, which lies inside the wall [0, pi] -> 0.
+    a_spec = _nth_residue(rec.dataframe_ha_, 0)
+    b_spec = _nth_residue(rec.dataframe_ha_, 1)
+    c_spec = _nth_residue(lig.dataframe_ha_, 0)
+    rec_xyz = rec.rec_heavy_atoms_xyz
+    lig_xyz = lig.pose_heavy_atoms_coords[0]
+    ca = _selection_com(rec.dataframe_ha_, rec_xyz, a_spec)
+    cb = _selection_com(rec.dataframe_ha_, rec_xyz, b_spec)
+    cc = _selection_com(lig.dataframe_ha_, lig_xyz, c_spec)
+    va, vc = ca - cb, cc - cb
+    cos = torch.dot(va, vc) / (torch.linalg.norm(va) * torch.linalg.norm(vc))
+    want = float(torch.acos(torch.clamp(cos, -1.0, 1.0)))
     comp = CompositeSF(rec, lig, components=[
         {"type": "angle", "weight": 1.0, "params": {
-            "A": {"mol": "ligand", "residues": []},
-            "B": {"mol": "ligand", "residues": []},
-            "C": {"mol": "ligand", "residues": []},
-            "constraint": "wall", "bounds": [0.0, 3.141592653589793],
-            "force": 1.0}}])
-    val = comp.scoring().reshape(-1)
-    assert (val >= 0).all()
+            "A": {"mol": "receptor", "residues": [a_spec]},
+            "B": {"mol": "receptor", "residues": [b_spec]},
+            "C": {"mol": "ligand", "residues": [c_spec]},
+            "constraint": "upper", "bounds": [want - 0.1], "force": 1.0}}])
+    got = float(comp.scoring().reshape(-1)[0])
+    # upper potential with exponent 2: (want - (want - 0.1))^2 == 0.01
+    assert got == pytest.approx(0.01, abs=1e-4)
 
 
 def test_angle_missing_selection_is_zero(mols):
