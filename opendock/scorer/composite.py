@@ -128,11 +128,11 @@ class CompositeSF(BaseScoringFunction):
         if not tgt_idx or not lig_idx:
             return torch.zeros(n_poses)
         if comp_type == "sidechain_com_dist":
+            # Sidechain filtering applies to the target (receptor) residue
+            # only; the ligand/peptide fragment uses its selected atoms as-is.
             tgt_idx = self._sidechain_indices(self.receptor.dataframe_ha_,
                                               tgt_idx)
-            lig_idx = self._sidechain_indices(self.ligand.dataframe_ha_,
-                                              lig_idx)
-            if not tgt_idx or not lig_idx:
+            if not tgt_idx:
                 return torch.zeros(n_poses)
         lig = self._lig_coords()
         rec = self._rec_coords()[tgt_idx, :]
