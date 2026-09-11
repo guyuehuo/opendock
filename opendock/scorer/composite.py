@@ -2,12 +2,13 @@
 
 A docking run can combine several scoring components (Vina, epitope contact
 ratio, min/COM distance between chosen target residues and ligand residues, and
-future distance/angle constraints).  Each component reports its own value per
-pose, and :meth:`CompositeSF.scoring` returns the weighted sum (minimized).
+distance/angle restraints).  Each component reports its own value per pose, and
+:meth:`CompositeSF.scoring` returns the weighted sum (minimized).
 
-Component value convention: every component is written so that **smaller is
-better**.  Components whose natural direction is "higher is better" (e.g. the
-contact ratio) are internally negated.
+Component value convention: every component reports a non-negative target
+shortfall that is minimized.  ``contact_ratio`` contributes
+``max(0, target_ratio - contacted_fraction)``; distance and angle restraints
+contribute a flat-bottom penalty above their bound.
 """
 from __future__ import annotations
 
@@ -24,7 +25,8 @@ class ScoreComponent:
     """One scoring component.
 
     Attributes:
-        type: ``vina`` | ``contact_ratio`` | ``min_dist`` | ``com_dist``.
+        type: ``vina`` | ``contact_ratio`` | ``min_dist`` | ``com_dist`` |
+            ``sidechain_com_dist`` | ``angle``.
         weight: contribution to the composite score (minimized).
         params: component-specific options.
         name: optional report key (defaults to ``type``).
@@ -125,9 +127,6 @@ class CompositeSF(BaseScoringFunction):
     def _rec_coords(self) -> torch.Tensor:
         return self.receptor.rec_heavy_atoms_xyz.reshape(-1, 3)
 
-    def _lig_groups(self, specs) -> List[Tuple[str, List[int]]]:
-        return _residue_groups(self.ligand.dataframe_ha_, specs)
-
     def _group_indices(self, df, specs):
         groups = _residue_groups(df, specs)
         return sorted({i for _, idxs in groups for i in idxs})
@@ -139,19 +138,22 @@ class CompositeSF(BaseScoringFunction):
         return [i for i in indices if names[i] not in BACKBONE_ATOM_NAMES]
 
     def _distance_value(self, comp_type, spec, n_poses):
+        coords = self.ligand.pose_heavy_atoms_coords
         tgt_idx = self._group_indices(self.receptor.dataframe_ha_,
                                       spec.get("target_residues", []))
         lig_idx = self._group_indices(self.ligand.dataframe_ha_,
                                       spec.get("ligand_residues", []))
         if not tgt_idx or not lig_idx:
-            return torch.zeros(n_poses)
+            return torch.zeros(n_poses, device=coords.device,
+                               dtype=coords.dtype)
         if comp_type == "sidechain_com_dist":
             # Sidechain filtering applies to the target (receptor) residue
             # only; the ligand/peptide fragment uses its selected atoms as-is.
             tgt_idx = self._sidechain_indices(self.receptor.dataframe_ha_,
                                               tgt_idx)
             if not tgt_idx:
-                return torch.zeros(n_poses)
+                return torch.zeros(n_poses, device=coords.device,
+                                   dtype=coords.dtype)
         lig = self._lig_coords()
         rec = self._rec_coords()[tgt_idx, :]
         sub = lig[:, lig_idx, :]
@@ -181,13 +183,16 @@ class CompositeSF(BaseScoringFunction):
         b = self._selection_com(p.get("B"), n_poses)
         c = self._selection_com(p.get("C"), n_poses)
         if a is None or b is None or c is None:
-            return torch.zeros(n_poses)
+            coords = self.ligand.pose_heavy_atoms_coords
+            return torch.zeros(n_poses, device=coords.device,
+                               dtype=coords.dtype)
         va = a - b
         vc = c - b
-        cos = (va * vc).sum(-1) / (
-            torch.linalg.norm(va, dim=-1) * torch.linalg.norm(vc, dim=-1)
-            + 1e-8)
-        angle = torch.acos(torch.clamp(cos, -1.0, 1.0))
+        na = torch.sqrt(torch.sum(va ** 2, dim=-1) + 1e-8)
+        nc = torch.sqrt(torch.sum(vc ** 2, dim=-1) + 1e-8)
+        cos = (va * vc).sum(-1) / (na * nc)
+        cos = torch.clamp(cos, -1.0 + 1e-6, 1.0 - 1e-6)
+        angle = torch.acos(cos)
         return _apply_potential(angle, p.get("constraint", "wall"),
                                 p.get("bounds", [0.0, 3.141592653589793]),
                                 float(p.get("force", 1.0)))
@@ -206,14 +211,16 @@ class CompositeSF(BaseScoringFunction):
             if not groups:
                 # no epitope residues selected -> no contacts -> ratio 0
                 return torch.full((n_poses,),
-                                  float(p.get("target_ratio", 1.0)))
+                                  float(p.get("target_ratio", 1.0)),
+                                  device=lig.device, dtype=lig.dtype)
             if "ligand_residues" in p:
                 lig_groups = _residue_groups(self.ligand.dataframe_ha_,
                                              p["ligand_residues"])
                 lig_idx = sorted({i for _, idxs in lig_groups for i in idxs})
                 if not lig_idx:
                     return torch.full((n_poses,),
-                                      float(p.get("target_ratio", 1.0)))
+                                      float(p.get("target_ratio", 1.0)),
+                                      device=lig.device, dtype=lig.dtype)
                 lig = lig[:, lig_idx, :]
             cutoff = float(p.get("cutoff", 4.5))
             temp = float(p.get("temperature", 0.5))
@@ -237,7 +244,8 @@ class CompositeSF(BaseScoringFunction):
         if comp.type in ("min_dist", "com_dist", "sidechain_com_dist"):
             pairs = p.get("pairs")
             if pairs:
-                total = torch.zeros(n_poses)
+                total = torch.zeros(n_poses, device=lig.device,
+                                    dtype=lig.dtype)
                 for pair in pairs:
                     total = total + self._distance_value(comp.type, pair,
                                                          n_poses)

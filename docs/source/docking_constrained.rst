@@ -168,8 +168,10 @@ with ``weight`` acting as the force constant, so ``exponent=2`` gives
 ``k * (d - dmin)^2``.
 
 Available component types: ``vina``, ``contact_ratio``, ``min_dist``,
-``com_dist``, ``sidechain_com_dist`` (COM of sidechain atoms only, i.e.
-excluding N, CA, C, O) and ``angle``.
+``com_dist``, ``sidechain_com_dist`` and ``angle``.  For
+``sidechain_com_dist`` the backbone filter (excluding N, CA, C, O) is applied
+to the target/receptor residue only; the ligand side uses exactly its selected
+atoms (no backbone filtering).
 
 .. code-block:: python
 

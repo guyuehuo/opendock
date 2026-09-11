@@ -885,6 +885,12 @@ def build_cyclo_peptide_components(receptor, ligand, distance_pairs=None,
                                    distance_type="min_dist", weight=1.0):
     """Build CompositeSF component dicts for a cyclopeptide hybrid score.
 
+    ``distance_type`` selects the component used for ``distance_pairs`` (one of
+    ``min_dist``, ``com_dist`` or ``sidechain_com_dist``; default
+    ``min_dist``).  ``weight`` is the default weight applied to every generated
+    component; an individual angle entry may override it with its own
+    ``weight``.
+
     ``distance_pairs`` -> one ``distance_type`` component with a ``pairs`` list
     (each pair: ``target_residues``, ``ligand_residues``, ``dmin``,
     ``exponent``).  ``epitope`` -> one ``contact_ratio`` component

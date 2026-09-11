@@ -3,7 +3,10 @@ import os
 import pytest
 import torch
 
-from opendock.scorer.composite import _flat_bottom
+from opendock.core.conformation import (LigandConformation,
+                                        ReceptorConformation)
+from opendock.scorer.composite import (CompositeSF, _apply_potential,
+                                       _flat_bottom, _residue_groups)
 
 
 def test_flat_bottom_zero_below_dmin():
@@ -22,10 +25,6 @@ def test_flat_bottom_differentiable():
     _flat_bottom(d, dmin=4.0, exponent=2.0).sum().backward()
     assert d.grad is not None and float(d.grad) != 0.0
 
-
-from opendock.core.conformation import (LigandConformation,
-                                        ReceptorConformation)
-from opendock.scorer.composite import CompositeSF
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
@@ -71,21 +70,20 @@ def test_min_dist_huge_dmin_is_zero(mols):
 
 
 def test_com_dist_matches_manual(mols):
-    from opendock.scorer.composite import _residue_groups
     lig, rec = mols
     r = _first_residue(rec.dataframe_ha_)
     lr = _first_residue(lig.dataframe_ha_)
     comp = CompositeSF(rec, lig, components=[
         {"type": "com_dist", "weight": 1.0,
          "params": {"target_residues": [r], "ligand_residues": [lr]}}])
-    got = float(comp.scoring().reshape(-1)[0])
+    got = float(comp.scoring().reshape(-1)[0].detach())
     tgt = sorted({i for _, idxs in
                   _residue_groups(rec.dataframe_ha_, [r]) for i in idxs})
     ligi = sorted({i for _, idxs in
                    _residue_groups(lig.dataframe_ha_, [lr]) for i in idxs})
     rec_com = rec.rec_heavy_atoms_xyz[tgt].mean(0)
     lig_com = lig.pose_heavy_atoms_coords[0][ligi].mean(0)
-    want = float(torch.linalg.norm(lig_com - rec_com))
+    want = float(torch.linalg.norm(lig_com - rec_com).detach())
     assert got == pytest.approx(want, abs=1e-5)
 
 
@@ -93,13 +91,20 @@ def test_sidechain_com_excludes_backbone(mols):
     lig, rec = mols
     r = _first_residue(rec.dataframe_ha_)
     lr = _first_residue(lig.dataframe_ha_)
-    full = CompositeSF(rec, lig, components=[
-        {"type": "com_dist", "weight": 1.0,
-         "params": {"target_residues": [r], "ligand_residues": [lr]}}])
-    side = CompositeSF(rec, lig, components=[
+    comp = CompositeSF(rec, lig, components=[
         {"type": "sidechain_com_dist", "weight": 1.0,
          "params": {"target_residues": [r], "ligand_residues": [lr]}}])
-    assert not torch.allclose(full.scoring(), side.scoring())
+    got = float(comp.scoring().reshape(-1)[0].detach())
+    rec_idx = sorted({i for _, idxs in
+                      _residue_groups(rec.dataframe_ha_, [r]) for i in idxs})
+    lig_idx = sorted({i for _, idxs in
+                      _residue_groups(lig.dataframe_ha_, [lr]) for i in idxs})
+    names_r = list(rec.dataframe_ha_["atomname"])
+    rec_sc = [i for i in rec_idx if names_r[i] not in ("N", "CA", "C", "O")]
+    rec_com = rec.rec_heavy_atoms_xyz[rec_sc].mean(0)
+    lig_com = lig.pose_heavy_atoms_coords[0][lig_idx].mean(0)
+    want = float(torch.linalg.norm(lig_com - rec_com).detach())
+    assert got == pytest.approx(want, abs=1e-4)
 
 
 def test_pairs_sum(mols):
@@ -158,7 +163,15 @@ def test_contact_ratio_ligand_residues_filter(mols):
     assert torch.allclose(comp.scoring().reshape(-1), torch.ones(1))
 
 
-from opendock.scorer.composite import _apply_potential
+def test_contact_ratio_no_groups_uses_target_ratio(mols):
+    lig, rec = mols
+    # a target selection that matches nothing -> no groups branch -> shortfall
+    # equals target_ratio (not the default 1.0)
+    comp = CompositeSF(rec, lig, differentiable=False, components=[
+        {"type": "contact_ratio", "weight": 1.0,
+         "params": {"residues": ["Z:9999"], "target_ratio": 0.3}}])
+    assert torch.allclose(comp.scoring().reshape(-1),
+                          torch.full((1,), 0.3), atol=1e-6)
 
 
 def test_apply_potential_wall_and_upper():
@@ -180,7 +193,6 @@ def _nth_residue(df, n):
 
 
 def _selection_com(df, xyz, spec):
-    from opendock.scorer.composite import _residue_groups
     idx = sorted({i for _, idxs in _residue_groups(df, [spec]) for i in idxs})
     return xyz[idx].mean(0)
 
@@ -197,16 +209,52 @@ def test_angle_matches_manual(mols):
     cc = _selection_com(lig.dataframe_ha_, lig_xyz, c_spec)
     va, vc = ca - cb, cc - cb
     cos = torch.dot(va, vc) / (torch.linalg.norm(va) * torch.linalg.norm(vc))
-    want = float(torch.acos(torch.clamp(cos, -1.0, 1.0)))
+    want = float(torch.acos(torch.clamp(cos, -1.0, 1.0)).detach())
     comp = CompositeSF(rec, lig, components=[
         {"type": "angle", "weight": 1.0, "params": {
             "A": {"mol": "receptor", "residues": [a_spec]},
             "B": {"mol": "receptor", "residues": [b_spec]},
             "C": {"mol": "ligand", "residues": [c_spec]},
             "constraint": "upper", "bounds": [want - 0.1], "force": 1.0}}])
-    got = float(comp.scoring().reshape(-1)[0])
+    got = float(comp.scoring().reshape(-1)[0].detach())
     # upper potential with exponent 2: (want - (want - 0.1))^2 == 0.01
     assert got == pytest.approx(0.01, abs=1e-4)
+
+
+def test_angle_degenerate_selection_has_finite_gradient(mols):
+    lig, rec = mols
+    a_spec = _nth_residue(rec.dataframe_ha_, 0)
+    c_spec = _nth_residue(lig.dataframe_ha_, 0)
+    comp = CompositeSF(rec, lig, components=[
+        {"type": "angle", "weight": 1.0, "params": {
+            "A": {"mol": "receptor", "residues": [a_spec]},
+            "B": {"mol": "receptor", "residues": [a_spec]},
+            "C": {"mol": "ligand", "residues": [c_spec]},
+            "constraint": "harmonic", "bounds": [0.0], "force": 1.0}}])
+    lig.pose_heavy_atoms_coords = (
+        lig.pose_heavy_atoms_coords.detach().clone().requires_grad_(True))
+    comp.scoring().sum().backward()
+    grad = lig.pose_heavy_atoms_coords.grad
+    assert grad is not None and torch.isfinite(grad).all()
+
+
+def test_angle_parallel_selection_has_finite_gradient(mols):
+    # A == C makes va parallel to vc, so cos sits at the +/-1 boundary where
+    # acos' is singular; the epsilon-inside-norm + clamp keep it finite.
+    lig, rec = mols
+    a_spec = _nth_residue(lig.dataframe_ha_, 0)
+    b_spec = _nth_residue(rec.dataframe_ha_, 0)
+    comp = CompositeSF(rec, lig, components=[
+        {"type": "angle", "weight": 1.0, "params": {
+            "A": {"mol": "ligand", "residues": [a_spec]},
+            "B": {"mol": "receptor", "residues": [b_spec]},
+            "C": {"mol": "ligand", "residues": [a_spec]},
+            "constraint": "harmonic", "bounds": [0.0], "force": 1.0}}])
+    lig.pose_heavy_atoms_coords = (
+        lig.pose_heavy_atoms_coords.detach().clone().requires_grad_(True))
+    comp.scoring().sum().backward()
+    grad = lig.pose_heavy_atoms_coords.grad
+    assert grad is not None and torch.isfinite(grad).all()
 
 
 def test_angle_missing_selection_is_zero(mols):
@@ -265,3 +313,20 @@ def test_build_cyclo_peptide_components(mols):
                  "constraint": "wall", "bounds": [0.0, 3.14]}])
     types = [c["type"] for c in comps]
     assert types == ["min_dist", "contact_ratio", "angle"]
+
+
+def test_build_cyclo_peptide_components_carry_params(mols):
+    from opendock.protocol.cyclo_peptide_docking import (
+        build_cyclo_peptide_components)
+    lig, rec = mols
+    r = _first_residue(rec.dataframe_ha_)
+    pairs = [{"target_residues": [r], "ligand_residues": [],
+              "dmin": 4.0, "exponent": 2.0}]
+    comps = build_cyclo_peptide_components(
+        rec, lig, distance_pairs=pairs, epitope=[r], peptide=["L:1"],
+        weight=2.5)
+    by_type = {c["type"]: c for c in comps}
+    assert by_type["min_dist"]["weight"] == pytest.approx(2.5)
+    assert by_type["min_dist"]["params"]["pairs"] == pairs
+    assert by_type["contact_ratio"]["weight"] == pytest.approx(2.5)
+    assert by_type["contact_ratio"]["params"]["ligand_residues"] == ["L:1"]
