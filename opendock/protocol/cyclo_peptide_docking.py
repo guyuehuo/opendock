@@ -870,6 +870,39 @@ def dock_peptide(ligand_pdbqt, receptor_pdbqt, center, size, cfg="mc-lbfgs",
     return final_scores, final_cnfrs
 
 
+def build_cyclo_peptide_components(receptor, ligand, distance_pairs=None,
+                                   epitope=None, peptide=None, angles=None,
+                                   distance_type="min_dist", weight=1.0):
+    """Build CompositeSF component dicts for a cyclopeptide hybrid score.
+
+    ``distance_pairs`` -> one ``distance_type`` component with a ``pairs`` list
+    (each pair: ``target_residues``, ``ligand_residues``, ``dmin``,
+    ``exponent``).  ``epitope`` -> one ``contact_ratio`` component
+    (``peptide`` optionally restricts the ligand residues).  ``angles`` -> one
+    ``angle`` component per entry (keys ``A``/``B``/``C``/``constraint``/
+    ``bounds``/``force``/``weight``).  Returns a list ready for
+    ``CompositeSF(components=...)`` or ``dock_peptide(scorer_components=...)``.
+    """
+    comps = []
+    if distance_pairs:
+        comps.append({"type": distance_type, "weight": float(weight),
+                      "params": {"pairs": list(distance_pairs)}})
+    if epitope:
+        params = {"residues": list(epitope)}
+        if peptide is not None:
+            params["ligand_residues"] = list(peptide)
+        comps.append({"type": "contact_ratio", "weight": float(weight),
+                      "params": params})
+    for ang in (angles or []):
+        params = {k: ang[k] for k in
+                  ("A", "B", "C", "constraint", "bounds", "force")
+                  if k in ang}
+        comps.append({"type": "angle",
+                      "weight": float(ang.get("weight", weight)),
+                      "params": params})
+    return comps
+
+
 # --------------------------------------------------------------------------- #
 # CLI
 # --------------------------------------------------------------------------- #

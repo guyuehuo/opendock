@@ -236,3 +236,21 @@ def test_component_scores_stable_across_calls(mols):
     first = set(comp.component_scores())
     comp.scoring()
     assert set(comp.component_scores()) == first
+
+
+def test_build_cyclo_peptide_components(mols):
+    from opendock.protocol.cyclo_peptide_docking import (
+        build_cyclo_peptide_components)
+    lig, rec = mols
+    r = _first_residue(rec.dataframe_ha_)
+    comps = build_cyclo_peptide_components(
+        rec, lig,
+        distance_pairs=[{"target_residues": [r], "ligand_residues": [],
+                         "dmin": 4.0, "exponent": 2.0}],
+        epitope=[r],
+        angles=[{"A": {"mol": "ligand", "residues": []},
+                 "B": {"mol": "ligand", "residues": []},
+                 "C": {"mol": "ligand", "residues": []},
+                 "constraint": "wall", "bounds": [0.0, 3.14]}])
+    types = [c["type"] for c in comps]
+    assert types == ["min_dist", "contact_ratio", "angle"]
