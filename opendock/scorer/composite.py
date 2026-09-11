@@ -46,6 +46,14 @@ class ScoreComponent:
         return self.name or self.type
 
 
+BACKBONE_ATOM_NAMES = ("N", "CA", "C", "O")
+
+
+def _flat_bottom(d, dmin=0.0, exponent=1.0):
+    """One-sided flat-bottom potential: 0 for d <= dmin else (d-dmin)**exp."""
+    return torch.clamp(d - dmin, min=0.0) ** exponent
+
+
 def _residue_groups(df, specs: Sequence) -> List[Tuple[str, List[int]]]:
     """Resolve ``["A:11", "12", {chain,resSeq}]`` to (label, atom indices)."""
     if df is None or len(df) == 0:
@@ -102,6 +110,40 @@ class CompositeSF(BaseScoringFunction):
     def _lig_groups(self, specs) -> List[Tuple[str, List[int]]]:
         return _residue_groups(self.ligand.dataframe_ha_, specs)
 
+    def _group_indices(self, df, specs):
+        groups = _residue_groups(df, specs)
+        return sorted({i for _, idxs in groups for i in idxs})
+
+    def _sidechain_indices(self, df, indices):
+        if "atomname" not in df.columns:
+            return list(indices)
+        names = [str(n) for n in df["atomname"]]
+        return [i for i in indices if names[i] not in BACKBONE_ATOM_NAMES]
+
+    def _distance_value(self, comp_type, spec, n_poses):
+        tgt_idx = self._group_indices(self.receptor.dataframe_ha_,
+                                      spec.get("target_residues", []))
+        lig_idx = self._group_indices(self.ligand.dataframe_ha_,
+                                      spec.get("ligand_residues", []))
+        if not tgt_idx or not lig_idx:
+            return torch.zeros(n_poses)
+        if comp_type == "sidechain_com_dist":
+            tgt_idx = self._sidechain_indices(self.receptor.dataframe_ha_,
+                                              tgt_idx)
+            lig_idx = self._sidechain_indices(self.ligand.dataframe_ha_,
+                                              lig_idx)
+            if not tgt_idx or not lig_idx:
+                return torch.zeros(n_poses)
+        lig = self._lig_coords()
+        rec = self._rec_coords()[tgt_idx, :]
+        sub = lig[:, lig_idx, :]
+        if comp_type == "min_dist":
+            d = torch.cdist(sub, rec).amin(dim=(1, 2))
+        else:
+            d = torch.linalg.norm(sub.mean(dim=1) - rec.mean(dim=0), dim=1)
+        return _flat_bottom(d, float(spec.get("dmin", 0.0)),
+                            float(spec.get("exponent", 1.0)))
+
     # ── components ───────────────────────────────────────────────────────
     def _component_value(self, comp: ScoreComponent) -> torch.Tensor:
         p = comp.params
@@ -134,21 +176,15 @@ class CompositeSF(BaseScoringFunction):
             ratio = torch.stack(ratios, dim=1).mean(dim=1)  # (n,)
             return 1.0 - ratio  # minimize (1 - contact ratio)
 
-        if comp.type in ("min_dist", "com_dist"):
-            tgt = _residue_groups(self.receptor.dataframe_ha_, p.get("target_residues", []))
-            lig_groups = self._lig_groups(p.get("ligand_residues", []))
-            tgt_idx = sorted({i for _, idxs in tgt for i in idxs})
-            lig_idx = sorted({i for _, idxs in lig_groups for i in idxs})
-            if not tgt_idx or not lig_idx:
-                return torch.zeros(n_poses)
-            rec = self._rec_coords()[tgt_idx, :]
-            sub = lig[:, lig_idx, :]
-            if comp.type == "min_dist":
-                d = torch.cdist(sub, rec)  # (n, n_lig, n_tgt)
-                return d.amin(dim=(1, 2))
-            lig_com = sub.mean(dim=1)                 # (n, 3)
-            rec_com = rec.mean(dim=0)                 # (3,)
-            return torch.linalg.norm(lig_com - rec_com, dim=1)
+        if comp.type in ("min_dist", "com_dist", "sidechain_com_dist"):
+            pairs = p.get("pairs")
+            if pairs:
+                total = torch.zeros(n_poses)
+                for pair in pairs:
+                    total = total + self._distance_value(comp.type, pair,
+                                                         n_poses)
+                return total
+            return self._distance_value(comp.type, p, n_poses)
 
         raise ValueError(f"unknown score component type {comp.type!r}")
 
