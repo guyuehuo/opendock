@@ -75,7 +75,13 @@ def _apply_potential(x, constraint="wall", bounds=(0.0, 3.141592653589793),
 
 
 def _residue_groups(df, specs: Sequence) -> List[Tuple[str, List[int]]]:
-    """Resolve ``["A:11", "12", {chain,resSeq}]`` to (label, atom indices)."""
+    """Resolve ``["A:11", "12", {chain,resSeq}]`` to (label, atom indices).
+
+    A bare string or dict is treated as a single spec (not iterated
+    character-/key-wise).
+    """
+    if isinstance(specs, (str, dict)):
+        specs = [specs]
     if df is None or len(df) == 0:
         return []
     chains = [str(c) for c in df["chain"]] if "chain" in df.columns else [""] * len(df)

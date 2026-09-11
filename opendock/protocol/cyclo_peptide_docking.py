@@ -334,12 +334,19 @@ def _components_after_removing(n_atoms, bonds, banned):
 # --------------------------------------------------------------------------- #
 # typed PDBQT handling
 # --------------------------------------------------------------------------- #
-def find_mgltools(mgltools_home=None):
-    """Locate MGLTools (pythonsh + prepare_ligand4.py + prepare_receptor4.py).
+def find_mgltools(mgltools_home=None,
+                  required=("pythonsh", "prepare_ligand4")):
+    """Locate MGLTools scripts.
 
     Search order: PATH, an explicit ``mgltools_home`` argument, then the
     ``MGLTOOLS_HOME`` environment variable.  ``mgltools_home`` points at the
     MGLTools ``bin`` directory.
+
+    Only the scripts named in ``required`` must be present; the returned dict
+    always contains the keys ``pythonsh``, ``prepare_ligand4`` and
+    ``prepare_receptor4`` (missing ones are ``None``).  Ligand preparation
+    needs only ``pythonsh`` + ``prepare_ligand4``, so a receptor-less MGLTools
+    install no longer blocks it.
     """
     def _find(script):
         found = find_program(script)
@@ -358,7 +365,7 @@ def find_mgltools(mgltools_home=None):
         "prepare_ligand4": _find("prepare_ligand4.py"),
         "prepare_receptor4": _find("prepare_receptor4.py"),
     }
-    missing = [k for k, v in tools.items() if not v]
+    missing = [k for k in required if not tools.get(k)]
     if missing:
         raise RuntimeError(
             "MGLTools tools not found: %s. Install AutoDockTools/mgltools or "
@@ -373,7 +380,7 @@ def prepare_receptor_pdbqt(protein_pdb, out_pdbqt, tools=None):
     Runs ``pythonsh prepare_receptor4.py -r <pdb> -o <out> -A hydrogens
     -U nphs_lps_waters``.
     """
-    tools = tools or find_mgltools()
+    tools = tools or find_mgltools(required=("pythonsh", "prepare_receptor4"))
     out_pdbqt = os.path.abspath(out_pdbqt)
     os.makedirs(os.path.dirname(out_pdbqt) or ".", exist_ok=True)
     cmd = [tools["pythonsh"], tools["prepare_receptor4"],
@@ -728,15 +735,24 @@ def prepare_peptide_pdbqt(input_path=None, smiles=None,
 # --------------------------------------------------------------------------- #
 SAMPLERS = {"mc": "MonteCarloSampler", "ga": "GeneticAlgorithmSampler",
             "pso": "ParticleSwarmOptimizer"}
+MINIMIZERS = ("lbfgs", "adam", "sgd", "none")
 
 
 def parse_cfg(text):
-    """cfg like mc-lbfgs | ga-nomin | pso-adam -> (sampler, minimizer, kwargs)"""
+    """cfg like mc-lbfgs | ga-nomin | pso-adam -> (sampler, minimizer, kwargs)
+
+    A missing minimizer (``mc``) or ``nomin`` maps to ``none`` (no
+    minimization).  Unknown samplers or minimizers raise ``ValueError`` rather
+    than silently producing a non-callable minimizer.
+    """
     sampler, _, minimizer = text.partition("-")
     if sampler not in SAMPLERS:
         raise ValueError(f"unknown sampler in {text!r}")
-    if minimizer == "nomin":
+    if minimizer in ("", "nomin"):
         minimizer = "none"
+    if minimizer not in MINIMIZERS:
+        raise ValueError(
+            f"unknown minimizer in {text!r}; expected one of {MINIMIZERS}")
     kwargs = {}
     if sampler == "ga":
         kwargs["n_pop"] = 100
@@ -784,7 +800,7 @@ def dock_peptide(ligand_pdbqt, receptor_pdbqt, center, size, cfg="mc-lbfgs",
     torch.manual_seed(seed)
 
     sampler_name, minimizer_name, sampler_kwargs = parse_cfg(cfg)
-    minimizer = minimizer_map.get(minimizer_name)
+    minimizer = minimizer_map.get(minimizer_name, no_minimizer)
     center = [float(x) for x in center]
     half = [float(x) for x in size]
 
@@ -880,6 +896,15 @@ def dock_peptide(ligand_pdbqt, receptor_pdbqt, center, size, cfg="mc-lbfgs",
     return final_scores, final_cnfrs
 
 
+def _as_list(value):
+    """Normalize a single spec (str/dict) or iterable of specs to a list."""
+    if value is None:
+        return []
+    if isinstance(value, (str, dict)):
+        return [value]
+    return list(value)
+
+
 def build_cyclo_peptide_components(receptor, ligand, distance_pairs=None,
                                    epitope=None, peptide=None, angles=None,
                                    distance_type="min_dist", weight=1.0):
@@ -902,14 +927,14 @@ def build_cyclo_peptide_components(receptor, ligand, distance_pairs=None,
     comps = []
     if distance_pairs:
         comps.append({"type": distance_type, "weight": float(weight),
-                      "params": {"pairs": list(distance_pairs)}})
+                      "params": {"pairs": _as_list(distance_pairs)}})
     if epitope:
-        params = {"residues": list(epitope)}
+        params = {"residues": _as_list(epitope)}
         if peptide is not None:
-            params["ligand_residues"] = list(peptide)
+            params["ligand_residues"] = _as_list(peptide)
         comps.append({"type": "contact_ratio", "weight": float(weight),
                       "params": params})
-    for ang in (angles or []):
+    for ang in _as_list(angles):
         params = {k: ang[k] for k in
                   ("A", "B", "C", "constraint", "bounds", "force")
                   if k in ang}
@@ -922,11 +947,11 @@ def build_cyclo_peptide_components(receptor, ligand, distance_pairs=None,
 # --------------------------------------------------------------------------- #
 # CLI
 # --------------------------------------------------------------------------- #
-def _add_prep_args(p):
+def _add_prep_args(p, out_default="peptide_frozen.pdbqt"):
     p.add_argument("--input", default=None)
     p.add_argument("--smiles", default=None)
     p.add_argument("--smiles-file", default=None)
-    p.add_argument("--out", default="peptide_frozen.pdbqt")
+    p.add_argument("--out", default=out_default)
     p.add_argument("--workdir", default=None)
     p.add_argument("--mgltools", default=None,
                    help="MGLTools bin directory (default: PATH/MGLTOOLS_HOME)")
@@ -957,7 +982,7 @@ def build_parser():
     p_dock = sub.add_parser("dock")
     _add_dock_args(p_dock)
     p_run = sub.add_parser("run")
-    _add_prep_args(p_run)
+    _add_prep_args(p_run, out_default=None)
     p_run.add_argument("--receptor", required=True)
     p_run.add_argument("--center", nargs=3, type=float, required=True)
     p_run.add_argument("--size", nargs=3, type=float, required=True)
@@ -981,11 +1006,7 @@ def _resolve_smiles(args):
 
 def _do_prep(args, out_pdbqt):
     _resolve_smiles(args)
-    try:
-        tools = find_mgltools(getattr(args, "mgltools", None))
-    except RuntimeError as e:
-        log(f"warning: {e}")
-        tools = None
+    tools = find_mgltools(getattr(args, "mgltools", None))
     model, meta = prepare_peptide_pdbqt(
         input_path=args.input, smiles=args.smiles, out_pdbqt=out_pdbqt,
         tools=tools, workdir=args.workdir)
@@ -1019,8 +1040,9 @@ def main(argv=None):
         _do_dock(args, args.out)
     elif args.command == "run":
         os.makedirs(args.out_dir, exist_ok=True)
-        frozen = _do_prep(args, os.path.join(args.out_dir,
-                                             "peptide_frozen.pdbqt"))
+        frozen_path = args.out or os.path.join(args.out_dir,
+                                               "peptide_frozen.pdbqt")
+        frozen = _do_prep(args, frozen_path)
         args.ligand = frozen
         _do_dock(args, os.path.join(args.out_dir, "poses.pdbqt"))
 
