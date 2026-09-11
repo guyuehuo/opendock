@@ -71,6 +71,7 @@ def test_min_dist_huge_dmin_is_zero(mols):
 
 
 def test_com_dist_matches_manual(mols):
+    from opendock.scorer.composite import _residue_groups
     lig, rec = mols
     r = _first_residue(rec.dataframe_ha_)
     lr = _first_residue(lig.dataframe_ha_)
@@ -78,7 +79,14 @@ def test_com_dist_matches_manual(mols):
         {"type": "com_dist", "weight": 1.0,
          "params": {"target_residues": [r], "ligand_residues": [lr]}}])
     got = float(comp.scoring().reshape(-1)[0])
-    assert got > 0.0
+    tgt = sorted({i for _, idxs in
+                  _residue_groups(rec.dataframe_ha_, [r]) for i in idxs})
+    ligi = sorted({i for _, idxs in
+                   _residue_groups(lig.dataframe_ha_, [lr]) for i in idxs})
+    rec_com = rec.rec_heavy_atoms_xyz[tgt].mean(0)
+    lig_com = lig.pose_heavy_atoms_coords[0][ligi].mean(0)
+    want = float(torch.linalg.norm(lig_com - rec_com))
+    assert got == pytest.approx(want, abs=1e-5)
 
 
 def test_sidechain_com_excludes_backbone(mols):
