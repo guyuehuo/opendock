@@ -252,7 +252,7 @@ def main():
         cfg = next(c for c in conditions["opendock_samplers"]
                    if c["name"] == args.cfg)
         cond = condition_id(args.source, args.mode, args.cfg)
-        if args.resume and is_skippable(run_dir, args.code, cond):
+        if args.resume and job_state(run_dir, args.code, cond) != "pending":
             log(f"{args.code} {cond}: already done/failed, skipping")
         else:
             _safe_run(args.code, args.source, args.mode, args.cfg, cfg)

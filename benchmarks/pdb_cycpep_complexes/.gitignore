@@ -1,0 +1,7 @@
+data/
+*.log
+complexes_summary.json
+
+# large regenerable artifacts produced by cluster.py
+*.npy
+clustering/representative_sets/

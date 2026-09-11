@@ -84,24 +84,28 @@ def _coords_and_heavy(line):
     nums = _XYZ_RE.findall(line[_XYZ_WINDOW])[:3]
     if len(nums) != 3:
         return None, None, False
-    element = _element_of(line, ad4, last)
+    element = _element_of(ad4, last)
     return np.array([float(n) for n in nums]), element, False
 
 
-def _element_of(line, ad4, last):
+def _element_of(ad4, last):
     """Element symbol for a heavy atom in an ATOM/HETATM line.
 
-    PDBQT lines carry the AD4 type at cols 78-80 (e.g. ``A`` aromatic carbon);
-    OpenDock's writer instead puts the element symbol as the final token.
+    The final whitespace token is authoritative: idock/Vina write the AD4
+    type there (cols 78-80, e.g. ``A`` aromatic carbon, ``Cl`` chlorine),
+    OpenDock writes the element symbol there (e.g. ``C``, ``Cl``). The AD4
+    slice ``line[77:79]`` is only a fallback - it truncates two-letter
+    element symbols in OpenDock output (``Cl`` -> ``l``), which previously
+    mislabelled halogens as ``L``/``R`` and broke DockRMSD matching.
     """
-    if ad4:
-        code = ad4.upper()
-        if code in _AD4_ELEMENT:
-            return _AD4_ELEMENT[code]
-        # e.g. other single-letter codes: assume the first character
-        return code[0]
-    # OpenDock style: last token is the element symbol
-    return canonical_element(last)
+    tok = (last or ad4 or "").strip()
+    if not tok:
+        return ""
+    code = tok.upper()
+    if code in _AD4_ELEMENT:
+        return _AD4_ELEMENT[code]
+    # not a recognised AD4 code: treat as an element symbol (OpenDock style)
+    return canonical_element(tok)
 
 
 def parse_output_models(fpath):
@@ -181,7 +185,19 @@ def symm_rmsd(coords_ref, atomicnums_ref, adj_ref,
                                        adj_ref, adj_pose))
 
 
-def perceive_pose_bonds(elements, coords):
+def _pose_bonds_at_tol(elements, radii, d2, tol):
+    """Return the perceived (i, j) bonds for a fixed distance tolerance."""
+    bonds = []
+    n = len(elements)
+    for i in range(n):
+        for j in range(i + 1, n):
+            limit = (radii[i] + radii[j]) * 1.15 + tol
+            if d2[i, j] <= limit * limit:
+                bonds.append((i, j))
+    return bonds
+
+
+def perceive_pose_bonds(elements, coords, n_ref_bonds=None):
     """Infer the pose's own bonding network from its 3D coordinates.
 
     Returns a list of ``(i, j)`` bonds in the *pose* atom ordering, or None if
@@ -189,6 +205,13 @@ def perceive_pose_bonds(elements, coords):
     the reference bonding network cannot be applied by index). A bond is
     assigned when the interatomic distance is below the sum of covalent radii
     (with a small tolerance) - reliable for real docked geometries.
+
+    When ``n_ref_bonds`` is given, the tolerance is adapted so the perceived
+    network has the same number of bonds as the reference molecule. This is
+    required for DockRMSD, which rejects inputs whose bonding networks are not
+    graph-isomorphic: a single generous tolerance overcounts 1,3- and
+    ring-closure contacts (e.g. 2.0-2.1 A C..C) on some ligands, while the
+    crystal-compatible threshold reproduces the exact reference connectivity.
     """
     from rdkit import Chem
     n = len(elements)
@@ -202,13 +225,23 @@ def perceive_pose_bonds(elements, coords):
     radii = np.asarray(radii, dtype=float)
     d2 = ((np.asarray(coords, dtype=float)[:, None, :]
            - np.asarray(coords, dtype=float)[None, :, :]) ** 2).sum(-1)
-    bonds = []
-    for i in range(n):
-        for j in range(i + 1, n):
-            limit = (radii[i] + radii[j]) * 1.15 + 0.4
-            if d2[i, j] <= limit * limit:
-                bonds.append((i, j))
-    return bonds
+
+    if n_ref_bonds is None:
+        return _pose_bonds_at_tol(elements, radii, d2, 0.4)
+
+    # scan from tight to loose; pick the first tolerance that reproduces the
+    # reference bond count (monotone in the tolerance).
+    best = None
+    for tol in np.arange(0.0, 0.45, 0.02):
+        bonds = _pose_bonds_at_tol(elements, radii, d2, float(tol))
+        if len(bonds) == n_ref_bonds:
+            return bonds
+        if len(bonds) > n_ref_bonds:
+            best = best or bonds
+            break
+    # no tolerance hit the reference count exactly (e.g. a very short 1,3
+    # contact): keep the loosest network that is still <= the reference size
+    return best or _pose_bonds_at_tol(elements, radii, d2, 0.4)
 
 
 def find_dockrmsd():
@@ -358,7 +391,8 @@ def main():
                     pose_ele_out, pose_coords = elements, model["coords"]
                 else:
                     # reordered atoms: perceive the pose's own bonding network
-                    pose_bonds = perceive_pose_bonds(pose_ele, model["coords"])
+                    pose_bonds = perceive_pose_bonds(pose_ele, model["coords"],
+                                                     n_ref_bonds=len(bonds))
                     if pose_bonds is None:
                         log(f"{code} model {rank}: cannot perceive pose bonding "
                             f"network, marking NaN")

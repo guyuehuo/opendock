@@ -294,7 +294,14 @@ class Receptor(object):
             #print(' atom_ad4_type', atom_ad4_type)
             atom_xs_type = self.atomtype_mapping[atom_ad4_type]
             atom_ele = atom_xs_type.split('_')[0]
-            atom_indice = int(line.split()[1])
+            # atom serial lives in fixed PDB columns 7-11; whitespace tokenising
+            # breaks once the serial is 5 digits and abuts the record name
+            # (e.g. 'HETATM14631  N ...'), so read it by column.
+            serial_tok = line[6:11].strip()
+            if serial_tok.isdigit():
+                atom_indice = int(serial_tok)
+            else:
+                atom_indice = int(line.split()[1])
 
             pdb_type = line[12:16].strip()
             res_name = line[17:20].strip()

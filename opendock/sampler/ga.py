@@ -801,13 +801,19 @@ class GeneticAlgorithmSampler(BaseSampler):
         _ec2 = self.decode_entire_chrom(np.array(chrom2))
         _lcnfrs_2, _ = self._variables2cnfrs(_ec2)
 
-        # make out of box check 
-        while self._out_of_box_check(_lcnfrs_1) or self._out_of_box_check(_lcnfrs_2):
+        # make out of box check
+        # bound the retries (mirrors mutate()/init caps): for ligands at or
+        # beyond the box size no random child is ever in-box, and without a
+        # cap this loop would spin forever.
+        _ntry = 0
+        while (self._out_of_box_check(_lcnfrs_1) or
+               self._out_of_box_check(_lcnfrs_2)) and _ntry < 10:
             chrom1, chrom2 = make_chroms()
             _ec1 = self.decode_entire_chrom(np.array(chrom1))
             _lcnfrs_1, _ = self._variables2cnfrs(_ec1)
             _ec2 = self.decode_entire_chrom(np.array(chrom2))
             _lcnfrs_2, _ = self._variables2cnfrs(_ec2)
+            _ntry += 1
 
         return chrom1, chrom2
 
