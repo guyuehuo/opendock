@@ -221,3 +221,111 @@ def build_peptide_model(mol) -> PeptideModel:
     if not backbone:
         raise ValueError("porality did not report any backbone atoms")
     return model
+
+
+# --------------------------------------------------------------------------- #
+# flexible-bond classification (freeze rule)
+# --------------------------------------------------------------------------- #
+def _neighbor_map(n_atoms, bonds):
+    adj = {i: set() for i in range(n_atoms)}
+    for (a, b) in bonds:
+        adj[a].add(b)
+        adj[b].add(a)
+    return adj
+
+
+def _component(start, exclude_bond, adj):
+    """Heavy atoms reachable from `start` when `exclude_bond` is removed."""
+    seen = {start}
+    stack = [start]
+    while stack:
+        x = stack.pop()
+        for y in adj[x]:
+            if y in seen:
+                continue
+            if exclude_bond is not None and frozenset((x, y)) == exclude_bond:
+                continue
+            seen.add(y)
+            stack.append(y)
+    return seen
+
+
+def classify_flexible_bonds(model):
+    """Apply the freeze rule.
+
+    Returns (flexible_pairs, backbone_atoms) with unordered (a, b) pairs.
+    """
+    Chem, _, _ = _require_rdkit()
+    mol = model.mol
+    n_atoms = mol.GetNumAtoms()
+    bonds = []
+    ring_pairs = set()
+    for b in mol.GetBonds():
+        i, j = b.GetBeginAtomIdx(), b.GetEndAtomIdx()
+        bonds.append((i, j))
+        if b.IsInRing():
+            ring_pairs.add(frozenset((i, j)))
+
+    adj = _neighbor_map(n_atoms, bonds)
+    backbone = set(model.backbone_atoms)
+    flexible = []
+    for (i, j) in bonds:
+        if frozenset((i, j)) in ring_pairs:
+            continue                      # ring bond / macrocyclic backbone
+        if mol.GetBondBetweenAtoms(i, j).GetBondType() != Chem.BondType.SINGLE:
+            continue
+        if i in backbone and j in backbone:
+            continue
+        comp_i = _component(i, frozenset((i, j)), adj)
+        comp_j = _component(j, frozenset((i, j)), adj)
+        i_bb, j_bb = bool(backbone & comp_i), bool(backbone & comp_j)
+        if i_bb and j_bb:
+            continue                      # phi/psi/omega split the backbone
+        far = comp_j if i_bb else comp_i
+        if len(far) < 2:                  # terminal methyl/OH/SH only
+            continue
+        flexible.append((i, j))
+
+    flexible_set = {frozenset(p) for p in flexible}
+    reach = _component_excluding(next(iter(backbone)), flexible_set, adj)
+    if not backbone <= reach:
+        raise RuntimeError("backbone disconnected after removing flexible bonds")
+    return flexible, backbone
+
+
+def _component_excluding(start, banned_edges, adj):
+    seen = {start}
+    stack = [start]
+    while stack:
+        x = stack.pop()
+        for y in adj[x]:
+            if y in seen:
+                continue
+            if frozenset((x, y)) in banned_edges:
+                continue
+            seen.add(y)
+            stack.append(y)
+    return seen
+
+
+def _components_after_removing(n_atoms, bonds, banned):
+    """Union-find over all bonds except `banned` -> rigid-group components."""
+    parent = list(range(n_atoms))
+
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    for (i, j) in bonds:
+        if frozenset((i, j)) in banned:
+            continue
+        a, b = find(i), find(j)
+        if a != b:
+            parent[a] = b
+    comp_of = {x: find(x) for x in range(n_atoms)}
+    comps = {}
+    for atom, c in comp_of.items():
+        comps.setdefault(c, []).append(atom)
+    return comp_of, comps

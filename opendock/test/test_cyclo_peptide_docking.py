@@ -27,7 +27,7 @@ pytest.importorskip("rdkit")
 pytest.importorskip("porality")
 
 from opendock.protocol.cyclo_peptide_docking import (  # noqa: E402
-    PeptideModel, build_peptide_model, load_mol)
+    PeptideModel, build_peptide_model, classify_flexible_bonds, load_mol)
 
 
 def test_module_import_does_not_load_heavy_deps():
@@ -48,3 +48,31 @@ def test_model_and_residues(name, smi, cyclic):
     assert len(model.backbone_atoms) >= 3 * model.n_residues
     if cyclic:
         assert model.is_cyclic
+
+
+@pytest.mark.parametrize("name,smi,cyclic", FIXTURES)
+def test_freeze_rule(name, smi, cyclic):
+    mol, _ = load_mol(smiles=smi)
+    model = build_peptide_model(mol)
+    flexible, backbone = classify_flexible_bonds(model)
+    assert flexible, "a peptide side chain must be flexible"
+    for (a, b) in flexible:
+        bnd = mol.GetBondBetweenAtoms(a, b)
+        assert bnd.GetBondType().name == "SINGLE"
+        assert not bnd.IsInRing()
+        assert not ({a, b} <= set(backbone))
+    banned = {frozenset(p) for p in flexible}
+    adj = {i: set() for i in range(mol.GetNumAtoms())}
+    for bb in mol.GetBonds():
+        adj[bb.GetBeginAtomIdx()].add(bb.GetEndAtomIdx())
+        adj[bb.GetEndAtomIdx()].add(bb.GetBeginAtomIdx())
+    start = next(iter(backbone))
+    seen, stack = {start}, [start]
+    while stack:
+        x = stack.pop()
+        for y in adj[x]:
+            if y in seen or frozenset((x, y)) in banned:
+                continue
+            seen.add(y)
+            stack.append(y)
+    assert set(backbone) <= seen
