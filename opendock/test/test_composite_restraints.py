@@ -117,3 +117,31 @@ def test_pairs_sum(mols):
             {"target_residues": [r], "ligand_residues": [lr],
              "dmin": 0.0, "exponent": 2.0}]}}])
     assert torch.allclose(two.scoring(), 2.0 * one.scoring(), atol=1e-5)
+
+
+def test_contact_ratio_target_ratio_full_contact_zero(mols):
+    lig, rec = mols
+    r = _first_residue(rec.dataframe_ha_)
+    comp = CompositeSF(rec, lig, differentiable=False, components=[
+        {"type": "contact_ratio", "weight": 1.0,
+         "params": {"residues": [r], "cutoff": 1e6, "target_ratio": 1.0}}])
+    assert torch.allclose(comp.scoring().reshape(-1), torch.zeros(1))
+
+
+def test_contact_ratio_target_ratio_no_contact(mols):
+    lig, rec = mols
+    r = _first_residue(rec.dataframe_ha_)
+    comp = CompositeSF(rec, lig, differentiable=False, components=[
+        {"type": "contact_ratio", "weight": 2.0,
+         "params": {"residues": [r], "cutoff": 0.0, "target_ratio": 1.0}}])
+    assert torch.allclose(comp.scoring().reshape(-1), torch.full((1,), 2.0))
+
+
+def test_contact_ratio_target_ratio_half(mols):
+    lig, rec = mols
+    r = _first_residue(rec.dataframe_ha_)
+    # target 0.5, no contact -> shortfall 0.5, weight 2 -> 1.0
+    comp = CompositeSF(rec, lig, differentiable=False, components=[
+        {"type": "contact_ratio", "weight": 2.0,
+         "params": {"residues": [r], "cutoff": 0.0, "target_ratio": 0.5}}])
+    assert torch.allclose(comp.scoring().reshape(-1), torch.full((1,), 1.0))

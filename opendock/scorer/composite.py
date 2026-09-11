@@ -157,7 +157,8 @@ class CompositeSF(BaseScoringFunction):
             groups = _residue_groups(self.receptor.dataframe_ha_, p.get("residues", []))
             if not groups:
                 # no epitope residues selected -> no contacts -> ratio 0
-                return torch.ones(n_poses)
+                return torch.full((n_poses,),
+                                  float(p.get("target_ratio", 1.0)))
             cutoff = float(p.get("cutoff", 4.5))
             temp = float(p.get("temperature", 0.5))
             rec = self._rec_coords()
@@ -174,7 +175,8 @@ class CompositeSF(BaseScoringFunction):
                 # a residue is contacted if any of its atoms is near any ligand atom
                 ratios.append(contact[:, :, cols].amax(dim=(1, 2)))
             ratio = torch.stack(ratios, dim=1).mean(dim=1)  # (n,)
-            return 1.0 - ratio  # minimize (1 - contact ratio)
+            target = float(p.get("target_ratio", 1.0))
+            return torch.clamp(target - ratio, min=0.0)
 
         if comp.type in ("min_dist", "com_dist", "sidechain_com_dist"):
             pairs = p.get("pairs")
