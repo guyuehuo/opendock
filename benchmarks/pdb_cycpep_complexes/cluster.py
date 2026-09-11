@@ -202,8 +202,12 @@ def compute_sl(fps):
     sl = np.zeros((n, n), dtype=np.float32)
     log(f"computing ligand similarity (ECFP4 Tanimoto) over {n} ligands")
     t0 = time.time()
-    for i in range(n):
-        sl[i] = BulkTanimotoSimilarity(fps[i], fps)
+    valid = [i for i in range(n) if fps[i] is not None]
+    valid_fps = [fps[i] for i in valid]
+    for i in valid:
+        sims = BulkTanimotoSimilarity(fps[i], valid_fps)
+        for k, j in enumerate(valid):
+            sl[i, j] = sims[k]
     sl = (sl + sl.T) / 2.0
     np.fill_diagonal(sl, 1.0)
     log(f"sl matrix done in {time.time()-t0:.0f}s")
@@ -275,7 +279,8 @@ def save_matrices(out_dir, ids, seqs, lig_natoms, sp, sl, s):
     log(f"wrote matrices + index to {out_dir}")
 
 
-def save_clusters(out_dir, cutoff, ids, labels, medoids):
+def save_clusters(out_dir, cutoff, ids, labels, medoids, data_dir=None):
+    os.makedirs(out_dir, exist_ok=True)
     c = f"{cutoff:.1f}"
     # full assignment
     with open(os.path.join(out_dir, f"clusters_cutoff_{c}.tsv"), "w") as f:
@@ -294,7 +299,7 @@ def save_clusters(out_dir, cutoff, ids, labels, medoids):
     # symlinked copy of each medoid complex dir
     rep_dir = os.path.join(out_dir, "representative_sets", f"cutoff_{c}")
     os.makedirs(rep_dir, exist_ok=True)
-    data_dir = os.path.join(HERE, "data")
+    data_dir = data_dir or os.path.join(HERE, "data")
     for cid_idx in medoids:
         pdb, ch = ids[cid_idx].split("/", 1)
         src = os.path.join(data_dir, pdb, ch)
@@ -345,7 +350,7 @@ def main():
 
     for cutoff in args.cutoffs:
         labels, medoids = cluster_analysis(s, cutoff)
-        save_clusters(out_dir, cutoff, ids, labels, medoids)
+        save_clusters(out_dir, cutoff, ids, labels, medoids, args.data)
 
     log("done")
 

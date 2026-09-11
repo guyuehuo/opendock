@@ -18,8 +18,8 @@ for _p in (_HERE, os.path.join(_HERE, "..", "..")):
 
 from make_fixtures import peptide_smiles  # noqa: E402
 from peptide_pdbqt import (  # noqa: E402
-    PeptideModel, build_peptide_model, classify_flexible_bonds, find_mgltools,
-    load_mol)
+    AtomRecord, PeptideModel, _element_of_ad4, build_peptide_model,
+    classify_flexible_bonds, find_mgltools, load_mol, write_frozen_pdbqt)
 
 try:
     from rdkit import Chem
@@ -174,3 +174,57 @@ def test_frozen_pdbqt_parse(tmp_path, name, seq, cyclic, side_n):
             moved = True
     assert worst < 1e-3, "backbone / macrocycle ring atoms moved under torsions"
     assert moved, "no side-chain atom moved - nothing flexible was sampled"
+
+
+# --------------------------------------------------------------------------- #
+# topology-rewrite helpers
+# --------------------------------------------------------------------------- #
+def _atom_line(serial, name, elem, x, y, z):
+    return ("ATOM  %5d %-4s MOL A   1    %8.3f%8.3f%8.3f  1.00  0.00          %2s\n"
+            % (serial, name, x, y, z, elem))
+
+
+def test_element_of_ad4_halogens_and_heteroatoms():
+    assert _element_of_ad4("A") == "C"
+    assert _element_of_ad4("C") == "C"
+    assert _element_of_ad4("OA") == "O"
+    assert _element_of_ad4("NA") == "N"
+    assert _element_of_ad4("SA") == "S"
+    assert _element_of_ad4("HD") == "H"
+    assert _element_of_ad4("Cl") == "Cl"
+    assert _element_of_ad4("Br") == "Br"
+
+
+def test_write_frozen_pdbqt_keeps_all_hydrogens():
+    """Every declared hydrogen must appear with its own coordinates (regression
+    for the frozen-PDBQT writer reusing the first H line of each heavy atom)."""
+    mol = Chem.MolFromSmiles("CC")   # two heavy atoms, single bond
+
+    heavy = {
+        0: AtomRecord(_atom_line(0, "C1", "C", 0.0, 0.0, 0.0), "C",
+                      (0.0, 0.0, 0.0), 0),
+        1: AtomRecord(_atom_line(0, "C2", "C", 1.5, 0.0, 0.0), "C",
+                      (1.5, 0.0, 0.0), 1),
+    }
+    h_records = []
+    for k, z in enumerate([0.5, -0.5, 1.0]):
+        h_records.append(AtomRecord(_atom_line(0, "H%d" % k, "H", 0.0, 0.0, z),
+                                    "H", (0.0, 0.0, z), 0))
+    for k, z in enumerate([0.5, -0.5, 1.0]):
+        h_records.append(AtomRecord(_atom_line(0, "H%d" % (k + 3), "H", 1.5, 0.0,
+                                               z), "H", (1.5, 0.0, z), 1))
+
+    model = PeptideModel(mol=mol, backbone_atoms={0})
+    out = "/tmp/_frozen_h_test.pdbqt"
+    write_frozen_pdbqt(mol, [], heavy, h_records, out, model)
+
+    coords = []
+    with open(out) as f:
+        for line in f:
+            if line.startswith("ATOM") and line[77:79].strip() == "H":
+                coords.append((round(float(line[30:38]), 3),
+                               round(float(line[38:46]), 3),
+                               round(float(line[46:54]), 3)))
+    os.remove(out)
+    assert len(coords) == 6
+    assert len(set(coords)) == 6, f"hydrogens duplicated/dropped: {coords}"

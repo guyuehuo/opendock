@@ -228,13 +228,18 @@ def struct_conn_evidence(links, chain, residues):
             continue
         pairs.append([min(r1, r2), max(r1, r2)])
         types.append(l["type"])
-    n_ring = residues and residues[-1].resseq != residues[0].resseq
     # ring closure = an intra-chain link joining the first and last residue
-    resseqs = [r.resseq for r in residues]
+    resseqs = []
+    for r in residues:
+        try:
+            resseqs.append(int(float(r.resseq)))
+        except (TypeError, ValueError):
+            continue
     closed = None
     if len(resseqs) >= 2:
+        lo, hi = min(resseqs), max(resseqs)
         for (a, b) in pairs:
-            if {a, b} == {min(map(int, resseqs)), max(map(int, resseqs))}:
+            if {a, b} == {lo, hi}:
                 closed = [a, b]
     return {"linked_residue_pairs": pairs, "link_types": sorted(set(types)),
             "ring_closure_struct_conn": closed}

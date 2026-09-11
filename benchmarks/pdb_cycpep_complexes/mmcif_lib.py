@@ -223,18 +223,32 @@ def _is_water(comp):
 # entity / link metadata
 # --------------------------------------------------------------------------- #
 def load_entities(cats):
-    """Return {auth_asym_id: {'entity_id': str, 'poly_type': str}}."""
-    asym = {}
-    for row in cats.get("struct_asym", []):
-        eid = row.get("entity_id", "")
-        aid = row.get("id", "")
-        asym[aid] = {"entity_id": eid}
-    poly = {}
-    for row in cats.get("entity_poly", []):
-        poly[row.get("entity_id", "")] = row.get("type", "")
-    for aid, info in asym.items():
-        info["poly_type"] = poly.get(info.get("entity_id", ""), "")
-    return asym
+    """Return {auth_asym_id: {'entity_id': str, 'poly_type': str}}.
+
+    ``_struct_asym`` is keyed by the label asym id, while atom records carry the
+    auth asym id; the two differ in many entries. The result is therefore keyed
+    by the auth chain id (as used on ``AtomRec.chain``) via ``_atom_site``.
+    """
+    entity_of_asym = {row.get("id", ""): row.get("entity_id", "")
+                      for row in cats.get("struct_asym", [])}
+    poly = {row.get("entity_id", ""): row.get("type", "")
+            for row in cats.get("entity_poly", [])}
+
+    auth_to_label = {}
+    for row in cats.get("atom_site", []):
+        label = row.get("label_asym_id", "")
+        auth = row.get("auth_asym_id") or label
+        auth_to_label.setdefault(auth, label)
+
+    entities = {}
+    for auth, label in auth_to_label.items():
+        eid = entity_of_asym.get(label, "")
+        entities[auth] = {"entity_id": eid, "poly_type": poly.get(eid, "")}
+    # keep any struct_asym entries not represented in atom_site
+    for aid, eid in entity_of_asym.items():
+        entities.setdefault(aid, {"entity_id": eid,
+                                  "poly_type": poly.get(eid, "")})
+    return entities
 
 
 def load_struct_conn(cats):
