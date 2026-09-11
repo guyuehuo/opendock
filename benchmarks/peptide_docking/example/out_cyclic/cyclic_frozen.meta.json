@@ -1,0 +1,60 @@
+{
+  "n_heavy_atoms": 44,
+  "n_residues": 6,
+  "sequence": [
+    "ALA",
+    "GLY",
+    "PHE",
+    "LYS",
+    "GLU",
+    "SER"
+  ],
+  "is_cyclic": true,
+  "ring_mode": "head-to-tail",
+  "n_backbone_atoms": 24,
+  "n_backbone_ring_atoms": 24,
+  "n_macrocycle_ring_atoms": 18,
+  "n_flexible_bonds": 10,
+  "flexible_bonds": [
+    [
+      5,
+      6
+    ],
+    [
+      11,
+      12
+    ],
+    [
+      12,
+      13
+    ],
+    [
+      13,
+      14
+    ],
+    [
+      20,
+      21
+    ],
+    [
+      21,
+      22
+    ],
+    [
+      22,
+      23
+    ],
+    [
+      23,
+      24
+    ],
+    [
+      29,
+      30
+    ],
+    [
+      30,
+      31
+    ]
+  ]
+}
