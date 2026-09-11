@@ -145,3 +145,42 @@ def test_contact_ratio_target_ratio_half(mols):
         {"type": "contact_ratio", "weight": 2.0,
          "params": {"residues": [r], "cutoff": 0.0, "target_ratio": 0.5}}])
     assert torch.allclose(comp.scoring().reshape(-1), torch.full((1,), 1.0))
+
+
+from opendock.scorer.composite import _apply_potential
+
+
+def test_apply_potential_wall_and_upper():
+    x = torch.tensor([0.0, 1.0, 2.0, 3.0])
+    # wall [1, 2]: zero inside, quadratic outside
+    out = _apply_potential(x, "wall", [1.0, 2.0], force=1.0, exponent=2.0)
+    assert torch.allclose(out, torch.tensor([1.0, 0.0, 0.0, 1.0]))
+    up = _apply_potential(x, "upper", [2.0], force=2.0, exponent=2.0)
+    assert torch.allclose(up, torch.tensor([0.0, 0.0, 0.0, 2.0]))
+
+
+def test_angle_wall_nonnegative(mols):
+    lig, rec = mols
+    r = _first_residue(rec.dataframe_ha_)
+    # A, B, C all select the whole ligand: their centers coincide, so the
+    # angle is acos(0) = pi/2, which lies inside the wall [0, pi] -> 0.
+    comp = CompositeSF(rec, lig, components=[
+        {"type": "angle", "weight": 1.0, "params": {
+            "A": {"mol": "ligand", "residues": []},
+            "B": {"mol": "ligand", "residues": []},
+            "C": {"mol": "ligand", "residues": []},
+            "constraint": "wall", "bounds": [0.0, 3.141592653589793],
+            "force": 1.0}}])
+    val = comp.scoring().reshape(-1)
+    assert (val >= 0).all()
+
+
+def test_angle_missing_selection_is_zero(mols):
+    lig, rec = mols
+    comp = CompositeSF(rec, lig, components=[
+        {"type": "angle", "weight": 1.0, "params": {
+            "A": {"mol": "receptor", "residues": ["Z:9999"]},
+            "B": {"mol": "receptor", "residues": []},
+            "C": {"mol": "ligand", "residues": []},
+            "constraint": "upper", "bounds": [0.0], "force": 1.0}}])
+    assert torch.allclose(comp.scoring().reshape(-1), torch.zeros(1))

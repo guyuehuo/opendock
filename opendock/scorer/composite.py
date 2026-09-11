@@ -54,6 +54,24 @@ def _flat_bottom(d, dmin=0.0, exponent=1.0):
     return torch.clamp(d - dmin, min=0.0) ** exponent
 
 
+def _apply_potential(x, constraint="wall", bounds=(0.0, 3.141592653589793),
+                     force=1.0, exponent=2.0):
+    """Vectorized equivalent of constraints.py's wall/harmonic/upper/lower."""
+    c = str(constraint).lower()
+    lo = float(bounds[0])
+    hi = float(bounds[-1])
+    if c in ("upper", "upper_wall", "upper-wall"):
+        return torch.clamp(x - lo, min=0.0) ** exponent * force
+    if c in ("lower", "lower_wall", "lower-wall"):
+        return torch.clamp(lo - x, min=0.0) ** exponent * force
+    if c == "harmonic":
+        return (x - lo) ** exponent * force
+    if c == "wall":
+        return (torch.clamp(lo - x, min=0.0) ** exponent +
+                torch.clamp(x - hi, min=0.0) ** exponent) * force
+    raise ValueError(f"unknown constraint type {constraint!r}")
+
+
 def _residue_groups(df, specs: Sequence) -> List[Tuple[str, List[int]]]:
     """Resolve ``["A:11", "12", {chain,resSeq}]`` to (label, atom indices)."""
     if df is None or len(df) == 0:
@@ -144,6 +162,36 @@ class CompositeSF(BaseScoringFunction):
         return _flat_bottom(d, float(spec.get("dmin", 0.0)),
                             float(spec.get("exponent", 1.0)))
 
+    def _selection_indices(self, sel):
+        mol = (sel or {}).get("mol", "receptor")
+        df = (self.receptor.dataframe_ha_ if mol == "receptor"
+              else self.ligand.dataframe_ha_)
+        return self._group_indices(df, (sel or {}).get("residues", []))
+
+    def _selection_com(self, sel, n_poses):
+        idx = self._selection_indices(sel)
+        if not idx:
+            return None
+        if (sel or {}).get("mol", "receptor") == "receptor":
+            return self._rec_coords()[idx, :].mean(0).expand(n_poses, 3)
+        return self._lig_coords()[:, idx, :].mean(1)
+
+    def _angle_value(self, p, n_poses):
+        a = self._selection_com(p.get("A"), n_poses)
+        b = self._selection_com(p.get("B"), n_poses)
+        c = self._selection_com(p.get("C"), n_poses)
+        if a is None or b is None or c is None:
+            return torch.zeros(n_poses)
+        va = a - b
+        vc = c - b
+        cos = (va * vc).sum(-1) / (
+            torch.linalg.norm(va, dim=-1) * torch.linalg.norm(vc, dim=-1)
+            + 1e-8)
+        angle = torch.acos(torch.clamp(cos, -1.0, 1.0))
+        return _apply_potential(angle, p.get("constraint", "wall"),
+                                p.get("bounds", [0.0, 3.141592653589793]),
+                                float(p.get("force", 1.0)))
+
     # ── components ───────────────────────────────────────────────────────
     def _component_value(self, comp: ScoreComponent) -> torch.Tensor:
         p = comp.params
@@ -187,6 +235,9 @@ class CompositeSF(BaseScoringFunction):
                                                          n_poses)
                 return total
             return self._distance_value(comp.type, p, n_poses)
+
+        if comp.type == "angle":
+            return self._angle_value(p, n_poses)
 
         raise ValueError(f"unknown score component type {comp.type!r}")
 
