@@ -45,6 +45,7 @@ from `github.com/guyuehuo/opendock <https://github.com/guyuehuo/opendock-open>`_
    docking_constrained
    add_custom_costr.rst
    side-chain_optimization
+   cyclo_peptide_docking
    multi-CPU
    sampler
    external_sf
