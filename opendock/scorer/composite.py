@@ -277,5 +277,7 @@ class CompositeSF(BaseScoringFunction):
             contrib = comp.weight * value
             total = contrib if total is None else total + contrib
         if total is None:
-            total = torch.zeros(self.ligand.pose_heavy_atoms_coords.shape[0])
+            coords = self.ligand.pose_heavy_atoms_coords
+            total = torch.zeros(coords.shape[0], device=coords.device,
+                                dtype=coords.dtype)
         return total.reshape(-1, 1)

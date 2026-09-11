@@ -1,3 +1,4 @@
+import math
 import os
 
 import pytest
@@ -104,6 +105,34 @@ def test_sidechain_com_excludes_backbone(mols):
     rec_com = rec.rec_heavy_atoms_xyz[rec_sc].mean(0)
     lig_com = lig.pose_heavy_atoms_coords[0][lig_idx].mean(0)
     want = float(torch.linalg.norm(lig_com - rec_com).detach())
+    assert got == pytest.approx(want, abs=1e-4)
+
+
+def test_sidechain_com_dist_does_not_filter_ligand(mols, monkeypatch):
+    from opendock.scorer.composite import _residue_groups
+    lig, rec = mols
+    r = _first_residue(rec.dataframe_ha_)
+    lr = _first_residue(lig.dataframe_ha_)
+    lig_idx = sorted({i for _, idxs in
+                      _residue_groups(lig.dataframe_ha_, [lr]) for i in idxs})
+    # Rename one selected ligand atom to a backbone name. A correct
+    # (receptor-only) implementation must still include it.
+    df = lig.dataframe_ha_.copy()
+    df.loc[lig_idx[0], "atomname"] = "C"
+    monkeypatch.setattr(lig, "dataframe_ha_", df)
+
+    comp = CompositeSF(rec, lig, components=[
+        {"type": "sidechain_com_dist", "weight": 1.0,
+         "params": {"target_residues": [r], "ligand_residues": [lr]}}])
+    got = float(comp.scoring().reshape(-1)[0])
+
+    rec_idx = sorted({i for _, idxs in
+                      _residue_groups(rec.dataframe_ha_, [r]) for i in idxs})
+    names_r = list(rec.dataframe_ha_["atomname"])
+    rec_sc = [i for i in rec_idx if names_r[i] not in ("N", "CA", "C", "O")]
+    rec_com = rec.rec_heavy_atoms_xyz[rec_sc].mean(0)
+    lig_com = lig.pose_heavy_atoms_coords[0][lig_idx].mean(0)
+    want = float(torch.linalg.norm(lig_com - rec_com))
     assert got == pytest.approx(want, abs=1e-4)
 
 
@@ -255,6 +284,25 @@ def test_angle_parallel_selection_has_finite_gradient(mols):
     comp.scoring().sum().backward()
     grad = lig.pose_heavy_atoms_coords.grad
     assert grad is not None and torch.isfinite(grad).all()
+
+
+def test_angle_parallel_vectors_use_clamped_cos(mols):
+    lig, rec = mols
+    a_spec = _nth_residue(rec.dataframe_ha_, 0)
+    c_spec = _nth_residue(lig.dataframe_ha_, 0)
+    # A and C select the same ligand residue -> va == vc (exactly parallel)
+    comp = CompositeSF(rec, lig, components=[
+        {"type": "angle", "weight": 1.0, "params": {
+            "A": {"mol": "ligand", "residues": [c_spec]},
+            "B": {"mol": "receptor", "residues": [a_spec]},
+            "C": {"mol": "ligand", "residues": [c_spec]},
+            "constraint": "harmonic", "bounds": [0.0], "force": 1.0}}])
+    got = float(comp.scoring().reshape(-1)[0])
+    want = math.acos(1.0 - 1e-6) ** 2
+    # The clamp runs in float32, where 1.0 - 1e-6 rounds to 1 - 1.0133e-6,
+    # so acos() is ~2.66e-8 above the float64 value; a -1,1 clamp would give 0.
+    assert got == pytest.approx(want, abs=1e-7)
+    assert got > 0.0
 
 
 def test_angle_missing_selection_is_zero(mols):
