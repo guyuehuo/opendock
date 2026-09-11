@@ -780,3 +780,113 @@ def dock_peptide(ligand_pdbqt, receptor_pdbqt, center, size, cfg="mc-lbfgs",
     write_ligand_traj(final_cnfrs, ligand, out_pdbqt,
                       information={"VinaScore": final_scores})
     return final_scores, final_cnfrs
+
+
+# --------------------------------------------------------------------------- #
+# CLI
+# --------------------------------------------------------------------------- #
+def _add_prep_args(p):
+    p.add_argument("--input", default=None)
+    p.add_argument("--smiles", default=None)
+    p.add_argument("--smiles-file", default=None)
+    p.add_argument("--out", default="peptide_frozen.pdbqt")
+    p.add_argument("--workdir", default=None)
+    p.add_argument("--mgltools", default=None,
+                   help="MGLTools bin directory (default: PATH/MGLTOOLS_HOME)")
+
+
+def _add_dock_args(p):
+    p.add_argument("--ligand", required=True)
+    p.add_argument("--receptor", required=True)
+    p.add_argument("--center", nargs=3, type=float, required=True)
+    p.add_argument("--size", nargs=3, type=float, required=True)
+    p.add_argument("--cfg", default="mc-lbfgs")
+    p.add_argument("--steps-scale", type=float, default=1.0)
+    p.add_argument("--steps-per-ha", type=float, default=8.0)
+    p.add_argument("--clip-cutoff", type=float, default=20.0)
+    p.add_argument("--num-modes", type=int, default=10)
+    p.add_argument("--cluster-cutoff", type=float, default=2.0)
+    p.add_argument("--seed", type=int, default=2026)
+    p.add_argument("--threads", type=int, default=1)
+    p.add_argument("--out", default="peptide_poses.pdbqt")
+
+
+def build_parser():
+    parser = argparse.ArgumentParser(prog="cyclo_peptide_docking",
+                                     description=__doc__)
+    sub = parser.add_subparsers(dest="command", required=True)
+    p_prep = sub.add_parser("prep")
+    _add_prep_args(p_prep)
+    p_dock = sub.add_parser("dock")
+    _add_dock_args(p_dock)
+    p_run = sub.add_parser("run")
+    _add_prep_args(p_run)
+    p_run.add_argument("--receptor", required=True)
+    p_run.add_argument("--center", nargs=3, type=float, required=True)
+    p_run.add_argument("--size", nargs=3, type=float, required=True)
+    p_run.add_argument("--out-dir", default="cyclo_peptide_out")
+    p_run.add_argument("--cfg", default="mc-lbfgs")
+    p_run.add_argument("--steps-scale", type=float, default=1.0)
+    p_run.add_argument("--steps-per-ha", type=float, default=8.0)
+    p_run.add_argument("--num-modes", type=int, default=10)
+    p_run.add_argument("--seed", type=int, default=2026)
+    p_run.add_argument("--threads", type=int, default=1)
+    return parser
+
+
+def _resolve_smiles(args):
+    if getattr(args, "smiles_file", None):
+        with open(args.smiles_file) as f:
+            args.smiles = f.read().strip().split()[0]
+    if not args.input and not args.smiles:
+        raise SystemExit("provide --input, --smiles or --smiles-file")
+
+
+def _do_prep(args, out_pdbqt):
+    _resolve_smiles(args)
+    try:
+        tools = find_mgltools(getattr(args, "mgltools", None))
+    except RuntimeError as e:
+        log(f"warning: {e}")
+        tools = None
+    model, meta = prepare_peptide_pdbqt(
+        input_path=args.input, smiles=args.smiles, out_pdbqt=out_pdbqt,
+        tools=tools, workdir=args.workdir)
+    log(f"wrote {out_pdbqt}")
+    log(f"sequence      : {'-'.join(model.sequence)}")
+    log(f"cyclic        : {model.is_cyclic} ({model.ring_mode})")
+    log(f"n_heavy       : {meta['n_heavy_atoms']}")
+    log(f"flexible bonds: {meta['n_flexible_bonds']}")
+    return out_pdbqt
+
+
+def _do_dock(args, out_pdbqt):
+    scores, _ = dock_peptide(
+        args.ligand, args.receptor, args.center, args.size, cfg=args.cfg,
+        steps_scale=args.steps_scale, steps_per_ha=args.steps_per_ha,
+        clip_cutoff=getattr(args, "clip_cutoff", 20.0),
+        num_modes=args.num_modes,
+        cluster_cutoff=getattr(args, "cluster_cutoff", 2.0),
+        seed=args.seed, threads=args.threads, out_pdbqt=out_pdbqt)
+    log(f"wrote {len(scores)} poses to {out_pdbqt}")
+    for rank, s in enumerate(scores):
+        log(f"  pose {rank}: vina = {s:.2f}")
+    return scores
+
+
+def main(argv=None):
+    args = build_parser().parse_args(argv)
+    if args.command == "prep":
+        _do_prep(args, args.out)
+    elif args.command == "dock":
+        _do_dock(args, args.out)
+    elif args.command == "run":
+        os.makedirs(args.out_dir, exist_ok=True)
+        frozen = _do_prep(args, os.path.join(args.out_dir,
+                                             "peptide_frozen.pdbqt"))
+        args.ligand = frozen
+        _do_dock(args, os.path.join(args.out_dir, "poses.pdbqt"))
+
+
+if __name__ == "__main__":
+    main()

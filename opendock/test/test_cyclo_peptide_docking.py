@@ -203,3 +203,17 @@ def test_dock_peptide_smoke(tmp_path):
         seed=1, out_pdbqt=out)
     assert os.path.exists(out)
     assert scores and cnfrs and len(scores) == len(cnfrs)
+
+
+def test_cli_parsing():
+    from opendock.protocol.cyclo_peptide_docking import build_parser
+    p = build_parser()
+    a = p.parse_args(["prep", "--smiles", CYCLIC, "--out", "x.pdbqt"])
+    assert a.command == "prep" and a.out == "x.pdbqt"
+    b = p.parse_args(["dock", "--ligand", "l.pdbqt", "--receptor", "r.pdbqt",
+                      "--center", "0", "0", "0", "--size", "10", "10", "10"])
+    assert b.command == "dock" and b.cfg == "mc-lbfgs"
+    c = p.parse_args(["run", "--smiles", CYCLIC, "--receptor", "r.pdbqt",
+                      "--center", "0", "0", "0", "--size", "10", "10", "10",
+                      "--out-dir", "out"])
+    assert c.command == "run" and c.out_dir == "out"
