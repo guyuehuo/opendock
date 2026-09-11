@@ -207,3 +207,32 @@ def test_angle_missing_selection_is_zero(mols):
             "C": {"mol": "ligand", "residues": []},
             "constraint": "upper", "bounds": [0.0], "force": 1.0}}])
     assert torch.allclose(comp.scoring().reshape(-1), torch.zeros(1))
+
+
+def test_component_scores_disambiguate_duplicates(mols):
+    lig, rec = mols
+    r = _first_residue(rec.dataframe_ha_)
+    comp = CompositeSF(rec, lig, components=[
+        {"type": "min_dist", "weight": 1.0,
+         "params": {"target_residues": [r], "ligand_residues": []}},
+        {"type": "min_dist", "weight": 1.0,
+         "params": {"target_residues": [r], "ligand_residues": [],
+                    "dmin": 0.0, "exponent": 2.0}}])
+    comp.scoring()
+    keys = set(comp.component_scores())
+    assert "min_dist" in keys
+    assert "min_dist#1" in keys
+
+
+def test_component_scores_stable_across_calls(mols):
+    lig, rec = mols
+    r = _first_residue(rec.dataframe_ha_)
+    comp = CompositeSF(rec, lig, components=[
+        {"type": "min_dist", "params": {"target_residues": [r],
+                                        "ligand_residues": []}},
+        {"type": "min_dist", "params": {"target_residues": [r],
+                                        "ligand_residues": []}}])
+    comp.scoring()
+    first = set(comp.component_scores())
+    comp.scoring()
+    assert set(comp.component_scores()) == first

@@ -247,10 +247,17 @@ class CompositeSF(BaseScoringFunction):
         return dict(self._last)
 
     def scoring(self) -> torch.Tensor:
+        self._last = {}
         total = None
         for comp in self.components:
             value = self._component_value(comp).reshape(-1)
-            self._last[comp.key] = value
+            key = comp.key
+            if key in self._last:
+                suffix = 1
+                while f"{key}#{suffix}" in self._last:
+                    suffix += 1
+                key = f"{key}#{suffix}"
+            self._last[key] = value
             contrib = comp.weight * value
             total = contrib if total is None else total + contrib
         if total is None:
