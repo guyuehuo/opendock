@@ -154,3 +154,46 @@ go to your terminal/console/command prompt window. Navigate to the ``examples`` 
     $ cd opendock/example/1gpn
     $ python distance_matrix_constraint_example.py -c vina.config # Distance matrix constraint
 
+4. Composite restraints for cyclic peptides
+-------------------------------------------
+
+``CompositeSF`` combines weighted, per-pose scoring components (Vina, contact
+ratio, distance restraints, angles) and reports each component separately.
+Distance components use a one-sided flat-bottom potential::
+
+    d <= dmin  ->  0
+    d >  dmin  ->  (d - dmin) ** exponent
+
+with ``weight`` acting as the force constant, so ``exponent=2`` gives
+``k * (d - dmin)^2``.
+
+Available component types: ``vina``, ``contact_ratio``, ``min_dist``,
+``com_dist``, ``sidechain_com_dist`` (COM of sidechain atoms only, i.e.
+excluding N, CA, C, O) and ``angle``.
+
+.. code-block:: python
+
+    from opendock.scorer.composite import CompositeSF
+    from opendock.protocol.cyclo_peptide_docking import (
+        build_cyclo_peptide_components)
+
+    components = build_cyclo_peptide_components(
+        receptor, ligand,
+        distance_pairs=[
+            {"target_residues": ["A:78"], "ligand_residues": ["L:6"],
+             "dmin": 4.0, "exponent": 2.0},
+            {"target_residues": ["A:5"], "ligand_residues": ["L:3"],
+             "dmin": 8.0, "exponent": 2.0}],
+        epitope=["A:78", "A:5"],
+        angles=[{"A": {"mol": "receptor", "residues": ["A:78"]},
+                 "B": {"mol": "receptor", "residues": ["A:79"]},
+                 "C": {"mol": "ligand", "residues": ["L:6"]},
+                 "constraint": "wall", "bounds": [1.5, 2.0]}])
+
+    sf = CompositeSF(receptor, ligand, components=components)
+    sf.scoring()
+    print(sf.component_scores())   # each component, duplicates suffixed #1
+
+The composite scorer is passed to docking via
+``dock_peptide(..., scorer_components=components)``.
+
