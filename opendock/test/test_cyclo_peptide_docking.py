@@ -204,12 +204,14 @@ def test_dock_peptide_smoke(tmp_path):
         cfg="mc-nomin", steps_per_ha=3, steps_scale=0.2, num_modes=1,
         seed=1, out_pdbqt=out,
         scorer_components=[{"type": "vina"}, {"type": "contact_ratio"}],
-        components_out=comps, decomposition_out=decomp)
+        components_out=comps, decomposition_out=decomp,
+        decomposition_cutoffs=[4.0, 8.0])
     assert os.path.exists(out)
     assert scores and cnfrs and len(scores) == len(cnfrs)
     assert comps and "vina" in comps[0] and "contact_ratio" in comps[0]
     assert decomp.get("target_residues"), "no decomposition"
     assert len(decomp["target_residues"]) == len(scores)
+    assert set(decomp["by_cutoff"]) == {"4.0", "8.0"}
 
 
 def test_vina_interaction_decomposition():

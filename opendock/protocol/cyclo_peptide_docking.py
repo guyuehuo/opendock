@@ -753,7 +753,7 @@ def dock_peptide(ligand_pdbqt, receptor_pdbqt, center, size, cfg="mc-lbfgs",
                  out_pdbqt="peptide_poses.pdbqt",
                  scorer=None, scorer_components=None, components_out=None,
                  decomposition_out=None, ligand_residue_labels=None,
-                 decomposition_cutoff=8.0):
+                 decomposition_cutoff=8.0, decomposition_cutoffs=None):
     """Dock a backbone-frozen peptide PDBQT with OpenDock.
 
     ``center`` and ``size`` are 3-sequences; ``size`` is the box half-extent
@@ -860,10 +860,20 @@ def dock_peptide(ligand_pdbqt, receptor_pdbqt, center, size, cfg="mc-lbfgs",
             vina_sf = sf._vina_sf() if hasattr(sf, "_vina_sf") else sf
             ligand.cnfrs_, receptor.cnfrs_ = final_cnfrs, None
             ligand.cnfr2xyz(final_cnfrs)
-            decomposition_out.update(vina_sf.interaction_decomposition(
-                cutoff=decomposition_cutoff,
-                ligand_residue_labels=ligand_residue_labels,
-            ))
+            if decomposition_cutoffs:
+                by_cutoff = {}
+                for cut in decomposition_cutoffs:
+                    by_cutoff[str(float(cut))] = vina_sf.interaction_decomposition(
+                        cutoff=float(cut),
+                        ligand_residue_labels=ligand_residue_labels)
+                decomposition_out["by_cutoff"] = by_cutoff
+                decomposition_out.update(
+                    by_cutoff.get(str(float(decomposition_cutoff)),
+                                  next(iter(by_cutoff.values()))))
+            else:
+                decomposition_out.update(vina_sf.interaction_decomposition(
+                    cutoff=decomposition_cutoff,
+                    ligand_residue_labels=ligand_residue_labels))
         except Exception as exc:  # noqa: BLE001 - decomposition is best-effort
             decomposition_out["error"] = str(exc)
 
