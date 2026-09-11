@@ -751,7 +751,9 @@ def dock_peptide(ligand_pdbqt, receptor_pdbqt, center, size, cfg="mc-lbfgs",
                  steps_scale=1.0, steps_per_ha=8.0, clip_cutoff=20.0,
                  num_modes=10, cluster_cutoff=2.0, seed=2026, threads=1,
                  out_pdbqt="peptide_poses.pdbqt",
-                 scorer=None, scorer_components=None, components_out=None):
+                 scorer=None, scorer_components=None, components_out=None,
+                 decomposition_out=None, ligand_residue_labels=None,
+                 decomposition_cutoff=8.0):
     """Dock a backbone-frozen peptide PDBQT with OpenDock.
 
     ``center`` and ``size`` are 3-sequences; ``size`` is the box half-extent
@@ -849,6 +851,22 @@ def dock_peptide(ligand_pdbqt, receptor_pdbqt, center, size, cfg="mc-lbfgs",
         components_out.extend([m for _s, _c, m in rescored])
     write_ligand_traj(final_cnfrs, ligand, out_pdbqt,
                       information={"VinaScore": final_scores})
+
+    # Per-residue Vina energy decomposition of the final poses.  This is done
+    # here (not by re-parsing out_pdbqt) because the docking trajectory is not
+    # a valid AutoDock PDBQT (no ROOT/BRANCH records).
+    if decomposition_out is not None:
+        try:
+            vina_sf = sf._vina_sf() if hasattr(sf, "_vina_sf") else sf
+            ligand.cnfrs_, receptor.cnfrs_ = final_cnfrs, None
+            ligand.cnfr2xyz(final_cnfrs)
+            decomposition_out.update(vina_sf.interaction_decomposition(
+                cutoff=decomposition_cutoff,
+                ligand_residue_labels=ligand_residue_labels,
+            ))
+        except Exception as exc:  # noqa: BLE001 - decomposition is best-effort
+            decomposition_out["error"] = str(exc)
+
     return final_scores, final_cnfrs
 
 
