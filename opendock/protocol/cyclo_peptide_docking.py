@@ -412,6 +412,7 @@ def generate_typed_pdbqt(mol, out_pdbqt, tools=None, workdir=None):
     """
     tools = tools or find_mgltools()
     Chem, _, _ = _require_rdkit()
+    out_pdbqt = os.path.abspath(out_pdbqt)
     lig_dir = os.path.abspath(workdir or tempfile.mkdtemp(prefix="pep_pdbqt_"))
     os.makedirs(lig_dir, exist_ok=True)
     sdf_in = os.path.join(lig_dir, "ligand.sdf")
@@ -627,3 +628,43 @@ def write_frozen_pdbqt(mol, flexible_pairs, heavy_by_mol, h_records,
 
         emit_children(root_cid, f)
     return
+
+
+# --------------------------------------------------------------------------- #
+# public pipeline
+# --------------------------------------------------------------------------- #
+def prepare_peptide_pdbqt(input_path=None, smiles=None,
+                          out_pdbqt="peptide_frozen.pdbqt", tools=None,
+                          workdir=None):
+    """Full pipeline: load -> porality analysis -> freeze rule -> MGLTools
+    typing -> topology rewrite. Returns (model, meta_dict) and writes
+    ``<out_basename>.meta.json`` next to the output."""
+    out_pdbqt = os.path.abspath(out_pdbqt)
+    mol, _ = load_mol(input_path=input_path, smiles=smiles)
+    model = build_peptide_model(mol)
+    flexible, backbone = classify_flexible_bonds(model)
+
+    workdir = workdir or tempfile.mkdtemp(prefix="pep_pdbqt_")
+    typed_path = os.path.join(workdir, "ligand_typed.pdbqt")
+    generate_typed_pdbqt(model.mol, typed_path, tools=tools, workdir=workdir)
+    records = read_typed_atoms(typed_path)
+    heavy_by_mol, h_records = map_typed_to_mol(model.mol, records)
+    write_frozen_pdbqt(model.mol, flexible, heavy_by_mol, h_records,
+                       out_pdbqt, model)
+
+    meta = {
+        "n_heavy_atoms": model.mol.GetNumAtoms(),
+        "n_residues": model.n_residues,
+        "sequence": model.sequence,
+        "is_cyclic": model.is_cyclic,
+        "ring_mode": model.ring_mode,
+        "n_backbone_atoms": len(backbone),
+        "n_backbone_ring_atoms": len(model.backbone_ring_atoms),
+        "n_macrocycle_ring_atoms": len(model.macrocycle_ring_atoms),
+        "n_flexible_bonds": len(flexible),
+        "flexible_bonds": [[int(a), int(b)] for (a, b) in flexible],
+    }
+    meta_path = os.path.splitext(out_pdbqt)[0] + ".meta.json"
+    with open(meta_path, "w") as f:
+        json.dump(meta, f, indent=2)
+    return model, meta

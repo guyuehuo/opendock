@@ -28,7 +28,8 @@ pytest.importorskip("porality")
 
 from opendock.protocol.cyclo_peptide_docking import (  # noqa: E402
     AtomRecord, PeptideModel, _element_of_ad4, build_peptide_model,
-    classify_flexible_bonds, load_mol, write_frozen_pdbqt)
+    classify_flexible_bonds, find_mgltools, load_mol,
+    prepare_peptide_pdbqt, write_frozen_pdbqt)
 
 
 def test_module_import_does_not_load_heavy_deps():
@@ -130,3 +131,56 @@ def test_write_frozen_pdbqt_keeps_all_hydrogens():
     os.remove(out)
     assert len(coords) == 6
     assert len(set(coords)) == 6, f"hydrogens duplicated/dropped: {coords}"
+
+
+# --------------------------------------------------------------------------- #
+# full pipeline incl. MGLTools typing + OpenDock re-parse
+# --------------------------------------------------------------------------- #
+def _mgltools_available():
+    try:
+        find_mgltools()
+        return True
+    except RuntimeError:
+        return False
+
+
+NEED_MGLTOOLS = pytest.mark.skipif(not _mgltools_available(),
+                                   reason="MGLTools not found")
+
+
+def test_prepare_relative_out_with_workdir(tmp_path, monkeypatch):
+    if not _mgltools_available():
+        pytest.skip("MGLTools not found")
+    monkeypatch.chdir(tmp_path)
+    os.makedirs("work", exist_ok=True)
+    model, meta = prepare_peptide_pdbqt(
+        smiles=CYCLIC, out_pdbqt="pep.pdbqt", workdir="work")
+    assert os.path.exists("pep.pdbqt")
+    assert os.path.exists("pep.meta.json")
+    assert meta["is_cyclic"] is True
+    with open("pep.meta.json") as f:
+        assert json.load(f)["n_heavy_atoms"] == meta["n_heavy_atoms"]
+
+
+@NEED_MGLTOOLS
+@pytest.mark.parametrize("name,smi,cyclic", FIXTURES)
+def test_prepare_pdbqt_parse(tmp_path, name, smi, cyclic):
+    from opendock.core.conformation import LigandConformation
+    out = os.path.join(str(tmp_path), f"{name}.pdbqt")
+    model, meta = prepare_peptide_pdbqt(
+        smiles=smi, out_pdbqt=out, workdir=str(tmp_path / "work"))
+    assert meta["n_flexible_bonds"] == len(meta["flexible_bonds"])
+    assert meta["is_cyclic"] == cyclic
+    serials, heavy = [], 0
+    with open(out) as f:
+        for line in f:
+            if not line.startswith(("ATOM", "HETATM")):
+                continue
+            serials.append(int(line[6:11]))
+            if line[77:79].strip() not in ("H", "HD"):
+                heavy += 1
+    assert serials == list(range(1, len(serials) + 1))
+    assert heavy == meta["n_heavy_atoms"]
+    lig = LigandConformation(out)
+    assert lig.number_of_frames == meta["n_flexible_bonds"]
+    assert lig.number_of_heavy_atoms == meta["n_heavy_atoms"]
