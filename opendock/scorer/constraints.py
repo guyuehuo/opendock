@@ -54,10 +54,11 @@ def wall(x, lower_bound=0.5,upper_bound=1.0,  k=1.0, exponent=1.0):
         y: array, vector or float, the returned values
     """
 
-    if x.detach().numpy().ravel()[0] >= upper_bound:
+    value = x.detach().numpy().ravel()[0]
+    if value >= upper_bound:
 
         return torch.pow((x - upper_bound), exponent) * k
-    elif x <= lower_bound:
+    elif value <= lower_bound:
 
         return torch.pow((lower_bound - x), exponent) * k
     else:
@@ -70,13 +71,17 @@ def harmonic(x, reference=5.0, k=1.0, exponent=2.0):
 
 
 def rmsd_to_reference(x, reference, k=1.0):
+    """Root-mean-square deviation between two heavy-atom coordinate sets.
 
-    x = x.reshape((3, -1))
-    ref = reference.reshape((3, -1))
+    Both inputs are flattened to ``(N, 3)``; the RMSD is taken over the N
+    heavy atoms and scaled by the force constant ``k``.
+    """
 
-    _rmsd = torch.sum(torch.sqrt(torch.sum(torch.pow((x - ref), 2), 0))) / x.shape[0]
-    _rmsd = _rmsd.reshape((1, 1))
-    print("RMSD shape", _rmsd, _rmsd.shape)
+    x = x.reshape((-1, 3))
+    ref = reference.reshape((-1, 3))
+
+    _rmsd = torch.sqrt(torch.mean(torch.sum(torch.pow((x - ref), 2), dim=1)))
+    _rmsd = (_rmsd * k).reshape((1, 1))
 
     return _rmsd
 
@@ -92,7 +97,28 @@ class ConstraintSF(BaseScoringFunction):
     def _distance(self, x, y):
 
         return torch.sqrt(torch.sum(torch.pow((x - y), 2)))
-    
+
+    def _coords_for(self, mol_name):
+        """Heavy-atom coordinates for a group molecule name.
+
+        Accepts 'receptor'/'protein' or 'ligand'/'molecule'; anything else is
+        a configuration error and raises ValueError (rather than leaving the
+        caller with an unbound local).
+        """
+        name = (mol_name or "").lower()
+        if name in ['receptor', 'protein']:
+            return self.receptor.rec_heavy_atoms_xyz
+        if name in ['ligand', 'molecule']:
+            return self.ligand.pose_heavy_atoms_coords[0]
+        raise ValueError(
+            f"unknown group molecule {mol_name!r}; expected 'receptor' or "
+            f"'ligand'")
+
+    def _pairwise_distance_matrix(self, group_a_xyz, group_b_xyz):
+        """Differentiable (N, M) heavy-atom distance matrix."""
+        diff = group_a_xyz[:, None, :] - group_b_xyz[None, :, :]
+        return torch.sqrt(torch.sum(torch.pow(diff, 2), dim=-1))
+
     def _angle(self, x, y, z):
         # Calculate the two vectors
         vec1 = x - y
@@ -168,24 +194,10 @@ class AngleConstraintSF(ConstraintSF):
 
     def scoring(self):
 
-        if self.grpA_mol_.lower() in ['receptor', 'protein']:
-            _grpA_xyz = self.receptor.rec_heavy_atoms_xyz
-        elif self.grpA_mol_.lower() in ['ligand', 'molecule']:
-            _grpA_xyz = self.ligand.pose_heavy_atoms_coords[0]
-        
-        #print("_grpA_xyz ", _grpA_xyz.shape)
+        _grpA_xyz = self._coords_for(self.grpA_mol_)
+        _grpB_xyz = self._coords_for(self.grpB_mol_)
+        _grpC_xyz = self._coords_for(self.grpC_mol_)
 
-        if self.grpB_mol_.lower() in ['receptor', 'protein']:
-            _grpB_xyz = self.receptor.rec_heavy_atoms_xyz
-        elif self.grpB_mol_.lower() in ['ligand', 'molecule']:
-            _grpB_xyz = self.ligand.pose_heavy_atoms_coords[0]
-
-        if self.grpC_mol_.lower() in ['receptor', 'protein']:
-            _grpC_xyz = self.receptor.rec_heavy_atoms_xyz
-        elif self.grpC_mol_.lower() in ['ligand', 'molecule']:
-            _grpC_xyz = self.ligand.pose_heavy_atoms_coords[0]
-        #print("_grpB_xyz ",_grpB_xyz, _grpB_xyz.shape)
-        
         pairs = list(zip(self.grpA_idx_, self.grpB_idx_,self.grpC_idx_))
         #print("pairs",pairs)
         self._angle_paired_ = []
@@ -227,19 +239,9 @@ class DistanceConstraintSF(ConstraintSF):
 
     def scoring(self):
 
-        if self.grpA_mol_.lower() in ['receptor', 'protein']:
-            _grpA_xyz = self.receptor.rec_heavy_atoms_xyz
-        elif self.grpA_mol_.lower() in ['ligand', 'molecule']:
-            _grpA_xyz = self.ligand.pose_heavy_atoms_coords[0]
-        
-        #print("_grpA_xyz ", _grpA_xyz.shape)
+        _grpA_xyz = self._coords_for(self.grpA_mol_)
+        _grpB_xyz = self._coords_for(self.grpB_mol_)
 
-        if self.grpB_mol_.lower() in ['receptor', 'protein']:
-            _grpB_xyz = self.receptor.rec_heavy_atoms_xyz
-        elif self.grpB_mol_.lower() in ['ligand', 'molecule']:
-            _grpB_xyz = self.ligand.pose_heavy_atoms_coords[0]
-        #print("_grpB_xyz ",_grpB_xyz, _grpB_xyz.shape)
-        
         pairs = list(itertools.product(self.grpA_idx_, self.grpB_idx_))
         #print("pairs",pairs)
         self.distances_paired_ = []
@@ -269,7 +271,12 @@ class OutOfBoxConstraint(ConstraintSF):
         self.constraint_type_ = kwargs.pop('constraint', 'upper_wall')
         self.force_constant_ = kwargs.pop('force', 1.0)
         # distance boundary, unit is angstrom
-        self.bounds_ = kwargs.pop('bounds', [self.box_size[0] / 2.0, ])
+        default_bounds = [self.box_size[0] / 2.0, ] if self.box_size else None
+        self.bounds_ = kwargs.pop('bounds', default_bounds)
+        if self.bounds_ is None:
+            raise ValueError("OutOfBoxConstraint requires box_size or bounds")
+        if self.box_center is None:
+            raise ValueError("OutOfBoxConstraint requires box_center")
 
     def scoring(self):
         # ligand coordinates center 
@@ -304,7 +311,7 @@ class DistanceMatrixConstraintSF(ConstraintSF):
         # self.constraint_reference_ = kwargs.pop('reference', None)
         # distance boundary, unit is angstrom
         self.bounds_ = kwargs.pop('bounds', [3.0, 8.0])
-        self.distances_matrix=kwargs.pop('distances_matrix',[0])
+        self.distances_matrix=kwargs.pop('distances_matrix', None)
         self.all_distance_sum=kwargs.pop('all_distance_sum',0)
         self.all_distance_mean = kwargs.pop('all_distance_mean', 0)
 
@@ -315,76 +322,39 @@ class DistanceMatrixConstraintSF(ConstraintSF):
 
     def get_distance_matrix(self):
 
-        if self.grpA_mol_.lower() in ['receptor', 'protein']:
-            _grpA_xyz = self.receptor.rec_heavy_atoms_xyz
-        elif self.grpA_mol_.lower() in ['ligand', 'molecule']:
-            _grpA_xyz = self.ligand.pose_heavy_atoms_coords[0]
+        _grpA_xyz = self._coords_for(self.grpA_mol_)
+        _grpB_xyz = self._coords_for(self.grpB_mol_)
 
-        #print("_grpA_xyz ", _grpA_xyz.shape)
-
-        if self.grpB_mol_.lower() in ['receptor', 'protein']:
-            _grpB_xyz = self.receptor.rec_heavy_atoms_xyz
-        elif self.grpB_mol_.lower() in ['ligand', 'molecule']:
-            _grpB_xyz = self.ligand.pose_heavy_atoms_coords[0]
-        #print("_grpB_xyz ",_grpB_xyz, _grpB_xyz.shape)
         self.all_grpA_idx = list(range(len(_grpA_xyz)))
         self.all_grpB_idx = list(range(len(_grpB_xyz)))
-        #print("self.all_grpA_idx",self.all_grpA_idx)
-        #print("self.all_grpB_idx",self.all_grpB_idx)
 
-        self.distances_matrix = np.zeros((len(_grpA_xyz), len(_grpB_xyz)))
-        # print("pairs",pairs)
-        for i in range(len(_grpA_xyz)):
-            for j in range(len(_grpB_xyz)):
-                self.distances_matrix[i, j] = self._distance(_grpA_xyz[i], _grpB_xyz[j])
+        # Differentiable: keep the autograd graph intact (no numpy round-trip).
+        self.distances_matrix = self._pairwise_distance_matrix(_grpA_xyz,
+                                                               _grpB_xyz)
 
-        # Convert distances_matrix to a torch tensor
-        self.distances_matrix = torch.tensor(self.distances_matrix)
-        #self.distances_matrix = torch.stack(self.distances_matrix)
-        # Print distances matrix shape and its values
-        #print("Distance Matrix shape:", self.distances_matrix.shape)
-        #print("Distance Matrix:", self.distances_matrix)
-
-
-        # Calculate the sum of all distances in the matrix
         self.all_distance_mean = torch.mean(self.distances_matrix)
-        #print("Total Sum of Distances:", self.all_distance_sum)
 
-
-        return self.all_distance_mean,self.distances_matrix
+        return self.all_distance_mean, self.distances_matrix
 
     def scoring(self):
 
-        if self.grpA_mol_.lower() in ['receptor', 'protein']:
-            _grpA_xyz = self.receptor.rec_heavy_atoms_xyz
-        elif self.grpA_mol_.lower() in ['ligand', 'molecule']:
-            _grpA_xyz = self.ligand.pose_heavy_atoms_coords[0]
+        if self.distances_matrix is None:
+            raise ValueError(
+                "DistanceMatrixConstraintSF requires a reference distance "
+                "matrix: call get_distance_matrix() and assign the result to "
+                ".distances_matrix before scoring()")
 
-        # print("_grpA_xyz ", _grpA_xyz.shape)
+        reference = self.distances_matrix
+        if not torch.is_tensor(reference):
+            reference = torch.as_tensor(reference)
 
-        if self.grpB_mol_.lower() in ['receptor', 'protein']:
-            _grpB_xyz = self.receptor.rec_heavy_atoms_xyz
-        elif self.grpB_mol_.lower() in ['ligand', 'molecule']:
-            _grpB_xyz = self.ligand.pose_heavy_atoms_coords[0]
-        # print("_grpB_xyz ",_grpB_xyz, _grpB_xyz.shape)
+        _grpA_xyz = self._coords_for(self.grpA_mol_)
+        _grpB_xyz = self._coords_for(self.grpB_mol_)
 
-        # self.all_grpA_idx = list(range(len(_grpA_xyz)))
-        # self.all_grpB_idx = list(range(len(_grpB_xyz)))
+        distances_matrix = self._pairwise_distance_matrix(_grpA_xyz, _grpB_xyz)
 
-        distances_matrix = np.zeros((len(_grpA_xyz), len(_grpB_xyz)))
-
-        for i in range(len(_grpA_xyz)):
-            for j in range(len(_grpB_xyz)):
-                distances_matrix[i, j] = self._distance(_grpA_xyz[i], _grpB_xyz[j])
-
-        # Convert distances_matrix to a torch tensor
-        distances_matrix = torch.tensor(distances_matrix)
-
-        # Calculate the sum of all distances in the matrix
-        all_distance_mean = torch.mean(torch.abs(self.distances_matrix-distances_matrix))
-
-
-        #print("all_distance_mean", all_distance_mean)
+        all_distance_mean = torch.mean(
+            torch.abs(reference.to(distances_matrix.dtype) - distances_matrix))
 
         score = self._apply_constraint(all_distance_mean)
 
