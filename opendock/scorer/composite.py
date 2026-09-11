@@ -207,6 +207,14 @@ class CompositeSF(BaseScoringFunction):
                 # no epitope residues selected -> no contacts -> ratio 0
                 return torch.full((n_poses,),
                                   float(p.get("target_ratio", 1.0)))
+            if "ligand_residues" in p:
+                lig_groups = _residue_groups(self.ligand.dataframe_ha_,
+                                             p["ligand_residues"])
+                lig_idx = sorted({i for _, idxs in lig_groups for i in idxs})
+                if not lig_idx:
+                    return torch.full((n_poses,),
+                                      float(p.get("target_ratio", 1.0)))
+                lig = lig[:, lig_idx, :]
             cutoff = float(p.get("cutoff", 4.5))
             temp = float(p.get("temperature", 0.5))
             rec = self._rec_coords()

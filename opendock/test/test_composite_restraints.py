@@ -147,6 +147,17 @@ def test_contact_ratio_target_ratio_half(mols):
     assert torch.allclose(comp.scoring().reshape(-1), torch.full((1,), 1.0))
 
 
+def test_contact_ratio_ligand_residues_filter(mols):
+    lig, rec = mols
+    r = _first_residue(rec.dataframe_ha_)
+    # a ligand selection that matches nothing -> no contacts -> full shortfall
+    comp = CompositeSF(rec, lig, differentiable=False, components=[
+        {"type": "contact_ratio", "weight": 1.0,
+         "params": {"residues": [r], "ligand_residues": ["Z:9999"],
+                    "cutoff": 1e6, "target_ratio": 1.0}}])
+    assert torch.allclose(comp.scoring().reshape(-1), torch.ones(1))
+
+
 from opendock.scorer.composite import _apply_potential
 
 
