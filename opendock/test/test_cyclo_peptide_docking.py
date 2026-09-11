@@ -184,3 +184,22 @@ def test_prepare_pdbqt_parse(tmp_path, name, smi, cyclic):
     lig = LigandConformation(out)
     assert lig.number_of_frames == meta["n_flexible_bonds"]
     assert lig.number_of_heavy_atoms == meta["n_heavy_atoms"]
+
+
+@NEED_MGLTOOLS
+def test_dock_peptide_smoke(tmp_path):
+    from opendock.protocol.cyclo_peptide_docking import dock_peptide
+    lig = os.path.join(str(tmp_path), "pep.pdbqt")
+    prepare_peptide_pdbqt(smiles=CYCLIC, out_pdbqt=lig,
+                          workdir=str(tmp_path / "work"))
+    rec = os.path.join(REPO, "benchmarks", "peptide_docking", "example",
+                       "receptor.pdbqt")
+    if not os.path.exists(rec):
+        pytest.skip("example receptor not present")
+    out = os.path.join(str(tmp_path), "poses.pdbqt")
+    scores, cnfrs = dock_peptide(
+        lig, rec, center=[0.45, 9.06, -7.12], size=[12, 12, 12],
+        cfg="mc-nomin", steps_per_ha=3, steps_scale=0.2, num_modes=1,
+        seed=1, out_pdbqt=out)
+    assert os.path.exists(out)
+    assert scores and cnfrs and len(scores) == len(cnfrs)

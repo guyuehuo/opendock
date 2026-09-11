@@ -668,3 +668,115 @@ def prepare_peptide_pdbqt(input_path=None, smiles=None,
     with open(meta_path, "w") as f:
         json.dump(meta, f, indent=2)
     return model, meta
+
+
+# --------------------------------------------------------------------------- #
+# public docking driver
+# --------------------------------------------------------------------------- #
+SAMPLERS = {"mc": "MonteCarloSampler", "ga": "GeneticAlgorithmSampler",
+            "pso": "ParticleSwarmOptimizer"}
+
+
+def parse_cfg(text):
+    """cfg like mc-lbfgs | ga-nomin | pso-adam -> (sampler, minimizer, kwargs)"""
+    sampler, _, minimizer = text.partition("-")
+    if sampler not in SAMPLERS:
+        raise ValueError(f"unknown sampler in {text!r}")
+    if minimizer == "nomin":
+        minimizer = "none"
+    kwargs = {}
+    if sampler == "ga":
+        kwargs["n_pop"] = 100
+    return sampler, minimizer, kwargs
+
+
+def no_minimizer(x, target_function, **kwargs):
+    return x
+
+
+def dock_peptide(ligand_pdbqt, receptor_pdbqt, center, size, cfg="mc-lbfgs",
+                 steps_scale=1.0, steps_per_ha=8.0, clip_cutoff=20.0,
+                 num_modes=10, cluster_cutoff=2.0, seed=2026, threads=1,
+                 out_pdbqt="peptide_poses.pdbqt"):
+    """Dock a backbone-frozen peptide PDBQT with OpenDock.
+
+    ``center`` and ``size`` are 3-sequences; ``size`` is the box half-extent
+    (OpenDock convention).  Returns ``(scores, cnfrs)`` for the clustered and
+    rescored poses, best first.
+    """
+    import random
+    import torch
+    from opendock.core.clustering import BaseCluster
+    from opendock.core.conformation import (
+        LigandConformation, ReceptorConformation)
+    from opendock.core.io import write_ligand_traj
+    from opendock.sampler.ga import GeneticAlgorithmSampler
+    from opendock.sampler.minimizer import (
+        adam_minimizer, lbfgs_minimizer, sgd_minimizer)
+    from opendock.sampler.monte_carlo import MonteCarloSampler
+    from opendock.sampler.particle_swarm import ParticleSwarmOptimizer
+    from opendock.scorer.vina import VinaSF
+
+    sampler_map = {"mc": MonteCarloSampler, "ga": GeneticAlgorithmSampler,
+                   "pso": ParticleSwarmOptimizer}
+    minimizer_map = {"lbfgs": lbfgs_minimizer, "adam": adam_minimizer,
+                     "sgd": sgd_minimizer, "none": no_minimizer}
+
+    torch.set_num_threads(threads)
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+
+    sampler_name, minimizer_name, sampler_kwargs = parse_cfg(cfg)
+    minimizer = minimizer_map.get(minimizer_name)
+    center = [float(x) for x in center]
+    half = [float(x) for x in size]
+
+    ligand = LigandConformation(ligand_pdbqt)
+    receptor = ReceptorConformation(
+        receptor_pdbqt, torch.Tensor(center).reshape((1, 3)),
+        init_lig_heavy_atoms_xyz=ligand.init_lig_heavy_atoms_xyz,
+        clip_cutoff=clip_cutoff)
+    # rotation axis at the docking-box centre (OpenDock convention)
+    ligand.ligand_center[0][0] = center[0]
+    ligand.ligand_center[0][1] = center[1]
+    ligand.ligand_center[0][2] = center[2]
+
+    sf = VinaSF(receptor=receptor, ligand=ligand)
+    sampler_cls = sampler_map[sampler_name]
+    kwargs = dict(box_center=center, box_size=half, minimizer=minimizer)
+    kwargs.update(sampler_kwargs)
+    n_steps = int(steps_per_ha * ligand.number_of_heavy_atoms * steps_scale)
+    log(f"{ligand_pdbqt}: heavy={ligand.number_of_heavy_atoms} "
+        f"torsions={ligand.number_of_frames} steps={n_steps} cfg={cfg}")
+
+    init_lig_cnfrs = [torch.Tensor(ligand.init_cnfrs.detach().numpy())]
+    random_sampler = sampler_cls(ligand, receptor, sf, **dict(kwargs))
+    ligand.cnfrs_, receptor.cnfrs_ = random_sampler._random_move(
+        init_lig_cnfrs, receptor.init_cnfrs)
+    sampler = sampler_cls(ligand, receptor, sf, **kwargs)
+    sampler.sampling(n_steps)
+
+    pairs = sorted(zip(sampler.ligand_scores_history_,
+                       sampler.ligand_cnfrs_history_), key=lambda x: x[0])
+    if not pairs:
+        raise RuntimeError("no poses sampled")
+    scores = [s for s, _ in pairs]
+    cnfrs = [c for _, c in pairs]
+
+    cluster = BaseCluster(cnfrs, None, scores, ligand, cutoff=cluster_cutoff)
+    _, cluster_cnfrs, _ = cluster.clustering(num_modes=num_modes,
+                                             energy_cutoff=1e3)
+    rescored = []
+    for _cnfr in cluster_cnfrs:
+        _cnfr = torch.tensor(_cnfr.detach().numpy() * 1.0)
+        ligand.cnfrs_, receptor.cnfrs_ = [_cnfr], None
+        ligand.cnfr2xyz([_cnfr])
+        _s = float(sf.scoring().detach().numpy().ravel()[0])
+        rescored.append([_s, _cnfr])
+    rescored.sort(key=lambda x: x[0])
+    final_scores = [s for s, _ in rescored]
+    final_cnfrs = [c for _, c in rescored]
+    write_ligand_traj(final_cnfrs, ligand, out_pdbqt,
+                      information={"VinaScore": final_scores})
+    return final_scores, final_cnfrs
