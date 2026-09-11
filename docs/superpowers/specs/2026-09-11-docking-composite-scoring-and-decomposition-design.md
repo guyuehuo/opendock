@@ -184,9 +184,10 @@ convention). If `pairs` is absent, the existing single
 ### 7. `sidechain_com_dist` component
 
 New type, identical to `com_dist` but the center of mass is taken over
-sidechain atoms only: atoms whose name is not in `("N", "CA", "C", "O")`,
-applied on both the target-residue and ligand-residue sides. Supports the same
-`dmin`/`exponent`/`pairs` params.
+sidechain atoms only on the **target-residue side**: atoms whose name is not in
+`("N", "CA", "C", "O")` are dropped from the target residue. The ligand/peptide
+fragment uses its selected atoms as-is (the caller selects which ligand atoms
+participate). Supports the same `dmin`/`exponent`/`pairs` params.
 
 ### 8. Contact ratio target
 

@@ -107,11 +107,11 @@ Add these methods to `CompositeSF` (after `_lig_groups`):
         if not tgt_idx or not lig_idx:
             return torch.zeros(n_poses)
         if comp_type == "sidechain_com_dist":
+            # Sidechain filtering applies to the target (receptor) residue
+            # only; the ligand/peptide fragment uses its selected atoms as-is.
             tgt_idx = self._sidechain_indices(self.receptor.dataframe_ha_,
                                               tgt_idx)
-            lig_idx = self._sidechain_indices(self.ligand.dataframe_ha_,
-                                              lig_idx)
-            if not tgt_idx or not lig_idx:
+            if not tgt_idx:
                 return torch.zeros(n_poses)
         lig = self._lig_coords()
         rec = self._rec_coords()[tgt_idx, :]
@@ -193,9 +193,10 @@ def _first_residue(df):
 def test_min_dist_dmin_zero_above(mols):
     lig, rec = mols
     r = _first_residue(rec.dataframe_ha_)
+    lr = _first_residue(lig.dataframe_ha_)
     comp = CompositeSF(rec, lig, components=[
         {"type": "min_dist", "weight": 1.0,
-         "params": {"target_residues": [r], "ligand_residues": []}}])
+         "params": {"target_residues": [r], "ligand_residues": [lr]}}])
     val = comp.scoring().reshape(-1)
     assert (val > 0).all()
 
@@ -203,9 +204,10 @@ def test_min_dist_dmin_zero_above(mols):
 def test_min_dist_huge_dmin_is_zero(mols):
     lig, rec = mols
     r = _first_residue(rec.dataframe_ha_)
+    lr = _first_residue(lig.dataframe_ha_)
     comp = CompositeSF(rec, lig, components=[
         {"type": "min_dist", "weight": 1.0,
-         "params": {"target_residues": [r], "ligand_residues": [],
+         "params": {"target_residues": [r], "ligand_residues": [lr],
                     "dmin": 1e6, "exponent": 2.0}}])
     assert torch.allclose(comp.scoring().reshape(-1), torch.zeros(1))
 
@@ -213,9 +215,10 @@ def test_min_dist_huge_dmin_is_zero(mols):
 def test_com_dist_matches_manual(mols):
     lig, rec = mols
     r = _first_residue(rec.dataframe_ha_)
+    lr = _first_residue(lig.dataframe_ha_)
     comp = CompositeSF(rec, lig, components=[
         {"type": "com_dist", "weight": 1.0,
-         "params": {"target_residues": [r], "ligand_residues": []}}])
+         "params": {"target_residues": [r], "ligand_residues": [lr]}}])
     got = float(comp.scoring().reshape(-1)[0])
     assert got > 0.0
 
@@ -223,27 +226,29 @@ def test_com_dist_matches_manual(mols):
 def test_sidechain_com_excludes_backbone(mols):
     lig, rec = mols
     r = _first_residue(rec.dataframe_ha_)
+    lr = _first_residue(lig.dataframe_ha_)
     full = CompositeSF(rec, lig, components=[
         {"type": "com_dist", "weight": 1.0,
-         "params": {"target_residues": [r], "ligand_residues": []}}])
+         "params": {"target_residues": [r], "ligand_residues": [lr]}}])
     side = CompositeSF(rec, lig, components=[
         {"type": "sidechain_com_dist", "weight": 1.0,
-         "params": {"target_residues": [r], "ligand_residues": []}}])
+         "params": {"target_residues": [r], "ligand_residues": [lr]}}])
     assert not torch.allclose(full.scoring(), side.scoring())
 
 
 def test_pairs_sum(mols):
     lig, rec = mols
     r = _first_residue(rec.dataframe_ha_)
+    lr = _first_residue(lig.dataframe_ha_)
     one = CompositeSF(rec, lig, components=[
         {"type": "min_dist", "weight": 1.0,
-         "params": {"target_residues": [r], "ligand_residues": [],
+         "params": {"target_residues": [r], "ligand_residues": [lr],
                     "dmin": 0.0, "exponent": 2.0}}])
     two = CompositeSF(rec, lig, components=[
         {"type": "min_dist", "weight": 1.0, "params": {"pairs": [
-            {"target_residues": [r], "ligand_residues": [],
+            {"target_residues": [r], "ligand_residues": [lr],
              "dmin": 0.0, "exponent": 2.0},
-            {"target_residues": [r], "ligand_residues": [],
+            {"target_residues": [r], "ligand_residues": [lr],
              "dmin": 0.0, "exponent": 2.0}]}}])
     assert torch.allclose(two.scoring(), 2.0 * one.scoring(), atol=1e-5)
 ```
