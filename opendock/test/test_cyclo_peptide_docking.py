@@ -205,6 +205,129 @@ def test_dock_peptide_smoke(tmp_path):
     assert scores and cnfrs and len(scores) == len(cnfrs)
 
 
+def test_vina_interaction_decomposition():
+    pytest.importorskip("torch")
+    from opendock.core.conformation import (LigandConformation,
+                                            ReceptorConformation)
+    from opendock.scorer.vina import VinaSF
+
+    rec = os.path.join(REPO, "benchmarks", "peptide_docking", "example",
+                       "receptor.pdbqt")
+    lig = os.path.join(REPO, "benchmarks", "peptide_docking", "example",
+                       "out_cyclic", "cyclic_frozen.pdbqt")
+    if not (os.path.exists(rec) and os.path.exists(lig)):
+        pytest.skip("example fixtures not present")
+
+    import torch
+    center = [0.45, 9.06, -7.12]
+    ligand = LigandConformation(lig)
+    receptor = ReceptorConformation(
+        rec, torch.Tensor(center).reshape((1, 3)),
+        init_lig_heavy_atoms_xyz=ligand.init_lig_heavy_atoms_xyz,
+        clip_cutoff=20.0)
+    for i in range(3):
+        ligand.ligand_center[0][i] = center[i]
+
+    sf = VinaSF(receptor=receptor, ligand=ligand)
+    sf.scoring()
+    inter = sf.vina_inter_energy.detach().numpy().ravel().tolist()
+
+    decomp = sf.interaction_decomposition(cutoff=8.0)
+    assert len(decomp["inter_total"]) == len(inter)
+    for got, want in zip(decomp["inter_total"], inter):
+        assert abs(got - want) < 1e-2
+
+    for p, tmap in enumerate(decomp["target_residues"]):
+        assert tmap, "no target residues decomposed"
+        assert abs(sum(tmap.values()) - decomp["inter_total"][p]) < 1e-2
+    for p, lmap in enumerate(decomp["ligand_residues"]):
+        assert lmap, "no ligand residues decomposed"
+        assert abs(sum(lmap.values()) - decomp["inter_total"][p]) < 1e-2
+
+
+def _load_example():
+    pytest.importorskip("torch")
+    from opendock.core.conformation import (LigandConformation,
+                                            ReceptorConformation)
+    rec = os.path.join(REPO, "benchmarks", "peptide_docking", "example",
+                       "receptor.pdbqt")
+    lig = os.path.join(REPO, "benchmarks", "peptide_docking", "example",
+                       "out_cyclic", "cyclic_frozen.pdbqt")
+    if not (os.path.exists(rec) and os.path.exists(lig)):
+        pytest.skip("example fixtures not present")
+    import torch
+    center = [0.45, 9.06, -7.12]
+    ligand = LigandConformation(lig)
+    receptor = ReceptorConformation(
+        rec, torch.Tensor(center).reshape((1, 3)),
+        init_lig_heavy_atoms_xyz=ligand.init_lig_heavy_atoms_xyz,
+        clip_cutoff=20.0)
+    for i in range(3):
+        ligand.ligand_center[0][i] = center[i]
+    return ligand, receptor
+
+
+def test_composite_vina_matches_vina_sf():
+    import torch
+    from opendock.scorer.composite import CompositeSF
+    from opendock.scorer.vina import VinaSF
+
+    ligand, receptor = _load_example()
+    v = VinaSF(receptor=receptor, ligand=ligand).scoring().reshape(-1)
+    c = CompositeSF(receptor=receptor, ligand=ligand,
+                    components=[{"type": "vina"}]).scoring().reshape(-1)
+    assert torch.allclose(v, c, atol=1e-3)
+
+
+def test_composite_contact_ratio_weights():
+    import torch
+    from opendock.scorer.composite import CompositeSF
+
+    ligand, receptor = _load_example()
+    n = ligand.pose_heavy_atoms_coords.shape[0]
+
+    # a residue that does not exist contacts nothing -> value == weight
+    comp = CompositeSF(receptor=receptor, ligand=ligand, components=[
+        {"type": "contact_ratio", "weight": 3.0,
+         "params": {"residues": ["Z:9999"], "cutoff": 4.5}}])
+    assert torch.allclose(comp.scoring().reshape(-1), torch.full((n,), 3.0))
+
+    # a real epitope residue yields 0 <= weight*(1-ratio) <= weight
+    df = receptor.dataframe_ha_
+    seq = str(df["resSeq"].iloc[0])
+    chain = str(df["chain"].iloc[0])
+    comp2 = CompositeSF(receptor=receptor, ligand=ligand, components=[
+        {"type": "contact_ratio", "weight": 2.0,
+         "params": {"residues": [f"{chain}:{seq}"], "cutoff": 4.5}}])
+    val = comp2.scoring().reshape(-1)
+    assert ((val >= 0) & (val <= 2.0)).all()
+
+
+def _mgltools_dir():
+    for d in (os.environ.get("MGLTOOLS_HOME"),
+              os.path.expanduser("~/Documents/apps/mgltools/bin"),
+              os.path.expanduser("~/mgltools/bin")):
+        if d and os.path.exists(os.path.join(d, "prepare_receptor4.py")):
+            return d
+    return None
+
+
+def test_prepare_receptor_pdbqt(tmp_path, monkeypatch):
+    d = _mgltools_dir()
+    if not d:
+        pytest.skip("MGLTools not available")
+    monkeypatch.setenv("MGLTOOLS_HOME", d)
+    from opendock.protocol.cyclo_peptide_docking import prepare_receptor_pdbqt
+    pdb = os.path.join(REPO, "example", "4tmn", "4tmn_448.pdb")
+    if not os.path.exists(pdb):
+        pytest.skip("receptor pdb fixture missing")
+    out = str(tmp_path / "rec.pdbqt")
+    prepare_receptor_pdbqt(pdb, out)
+    assert os.path.exists(out)
+    with open(out) as f:
+        assert any(line.startswith(("ATOM", "HETATM")) for line in f)
+
+
 def test_cli_parsing():
     from opendock.protocol.cyclo_peptide_docking import build_parser
     p = build_parser()

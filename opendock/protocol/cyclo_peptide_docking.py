@@ -335,32 +335,60 @@ def _components_after_removing(n_atoms, bonds, banned):
 # typed PDBQT handling
 # --------------------------------------------------------------------------- #
 def find_mgltools(mgltools_home=None):
-    """Locate MGLTools (pythonsh + prepare_ligand4.py).
+    """Locate MGLTools (pythonsh + prepare_ligand4.py + prepare_receptor4.py).
 
     Search order: PATH, an explicit ``mgltools_home`` argument, then the
     ``MGLTOOLS_HOME`` environment variable.  ``mgltools_home`` points at the
     MGLTools ``bin`` directory.
     """
-    pythonsh = find_program("pythonsh")
-    lig = find_program("prepare_ligand4.py")
-    if pythonsh is None or lig is None:
+    def _find(script):
+        found = find_program(script)
+        if found is not None:
+            return found
         for bdir in (mgltools_home, os.environ.get("MGLTOOLS_HOME")):
             if not bdir:
                 continue
-            pythonsh = pythonsh or (
-                os.path.join(bdir, "pythonsh")
-                if os.path.exists(os.path.join(bdir, "pythonsh")) else None)
-            lig = lig or (
-                os.path.join(bdir, "prepare_ligand4.py")
-                if os.path.exists(os.path.join(bdir, "prepare_ligand4.py"))
-                else None)
-    missing = [k for k, v in (("pythonsh", pythonsh),
-                              ("prepare_ligand4", lig)) if not v]
+            cand = os.path.join(bdir, script)
+            if os.path.exists(cand):
+                return cand
+        return None
+
+    tools = {
+        "pythonsh": _find("pythonsh"),
+        "prepare_ligand4": _find("prepare_ligand4.py"),
+        "prepare_receptor4": _find("prepare_receptor4.py"),
+    }
+    missing = [k for k, v in tools.items() if not v]
     if missing:
         raise RuntimeError(
             "MGLTools tools not found: %s. Install AutoDockTools/mgltools or "
             "set MGLTOOLS_HOME (or pass --mgltools DIR)." % ", ".join(missing))
-    return {"pythonsh": pythonsh, "prepare_ligand4": lig}
+    return tools
+
+
+def prepare_receptor_pdbqt(protein_pdb, out_pdbqt, tools=None):
+    """AD4-typed receptor PDBQT via MGLTools ``prepare_receptor4.py``.
+
+    ``protein_pdb`` is a raw PDB; ``out_pdbqt`` is the written receptor PDBQT.
+    Runs ``pythonsh prepare_receptor4.py -r <pdb> -o <out> -A hydrogens
+    -U nphs_lps_waters``.
+    """
+    tools = tools or find_mgltools()
+    out_pdbqt = os.path.abspath(out_pdbqt)
+    os.makedirs(os.path.dirname(out_pdbqt) or ".", exist_ok=True)
+    cmd = [tools["pythonsh"], tools["prepare_receptor4"],
+           "-r", os.path.abspath(protein_pdb), "-o", out_pdbqt,
+           "-A", "hydrogens", "-U", "nphs_lps_waters"]
+    log(" ".join(cmd))
+    try:
+        subprocess.run(cmd, check=True, stdout=subprocess.PIPE,
+                       stderr=subprocess.STDOUT, timeout=900)
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError("prepare_receptor4 failed:\n" +
+                           (e.output or b"").decode(errors="replace")) from e
+    if not os.path.exists(out_pdbqt):
+        raise RuntimeError(f"prepare_receptor4 produced no output {out_pdbqt}")
+    return out_pdbqt
 
 
 @dataclass
@@ -627,7 +655,16 @@ def write_frozen_pdbqt(mol, flexible_pairs, heavy_by_mol, h_records,
                 fh.write("ENDBRANCH\n")
 
         emit_children(root_cid, f)
-    return
+    # Heavy-atom order in the written file, and each heavy atom's frame
+    # (0 = ROOT, else the DFS branch index) — used to map PDBQT indices back to
+    # the peptide residues/frames for energy decomposition.
+    heavy_order = [mi for (kind, mi, _rec) in flat if kind == "atom"]
+    frame_of = {}
+    for fidx, cid in enumerate(comp_order):
+        for (kind, mi, _rec) in comp_tokens[cid]:
+            if kind == "atom":
+                frame_of[mi] = fidx
+    return {"heavy_order": heavy_order, "frame_of": frame_of}
 
 
 # --------------------------------------------------------------------------- #
@@ -649,10 +686,26 @@ def prepare_peptide_pdbqt(input_path=None, smiles=None,
     generate_typed_pdbqt(model.mol, typed_path, tools=tools, workdir=workdir)
     records = read_typed_atoms(typed_path)
     heavy_by_mol, h_records = map_typed_to_mol(model.mol, records)
-    write_frozen_pdbqt(model.mol, flexible, heavy_by_mol, h_records,
-                       out_pdbqt, model)
+    topo = write_frozen_pdbqt(model.mol, flexible, heavy_by_mol, h_records,
+                              out_pdbqt, model)
+
+    # Map each PDBQT heavy-atom index back to its peptide heavy-atom index,
+    # residue and flexible frame, so Vina energies can be decomposed per
+    # ligand residue/frame (independent of MGLTools' residue labels).
+    mol_to_res = {}
+    for rname, idxs in model.residues:
+        for ai in idxs:
+            mol_to_res[int(ai)] = rname
+    heavy_order = (topo or {}).get("heavy_order", [])
+    frame_of = (topo or {}).get("frame_of", {})
+    atom_map = [
+        {"pdbqt_index": i, "mol_index": int(mi),
+         "residue": mol_to_res.get(int(mi), ""), "frame": int(frame_of.get(mi, 0))}
+        for i, mi in enumerate(heavy_order)
+    ]
 
     meta = {
+        "atom_map": atom_map,
         "n_heavy_atoms": model.mol.GetNumAtoms(),
         "n_residues": model.n_residues,
         "sequence": model.sequence,
@@ -697,7 +750,8 @@ def no_minimizer(x, target_function, **kwargs):
 def dock_peptide(ligand_pdbqt, receptor_pdbqt, center, size, cfg="mc-lbfgs",
                  steps_scale=1.0, steps_per_ha=8.0, clip_cutoff=20.0,
                  num_modes=10, cluster_cutoff=2.0, seed=2026, threads=1,
-                 out_pdbqt="peptide_poses.pdbqt"):
+                 out_pdbqt="peptide_poses.pdbqt",
+                 scorer=None, scorer_components=None, components_out=None):
     """Dock a backbone-frozen peptide PDBQT with OpenDock.
 
     ``center`` and ``size`` are 3-sequences; ``size`` is the box half-extent
@@ -742,7 +796,14 @@ def dock_peptide(ligand_pdbqt, receptor_pdbqt, center, size, cfg="mc-lbfgs",
     ligand.ligand_center[0][1] = center[1]
     ligand.ligand_center[0][2] = center[2]
 
-    sf = VinaSF(receptor=receptor, ligand=ligand)
+    if scorer is None:
+        if scorer_components:
+            from opendock.scorer.composite import CompositeSF
+            scorer = CompositeSF(receptor=receptor, ligand=ligand,
+                                 components=scorer_components)
+        else:
+            scorer = VinaSF(receptor=receptor, ligand=ligand)
+    sf = scorer
     sampler_cls = sampler_map[sampler_name]
     kwargs = dict(box_center=center, box_size=half, minimizer=minimizer)
     kwargs.update(sampler_kwargs)
@@ -773,10 +834,19 @@ def dock_peptide(ligand_pdbqt, receptor_pdbqt, center, size, cfg="mc-lbfgs",
         ligand.cnfrs_, receptor.cnfrs_ = [_cnfr], None
         ligand.cnfr2xyz([_cnfr])
         _s = float(sf.scoring().detach().numpy().ravel()[0])
-        rescored.append([_s, _cnfr])
+        _comps = {}
+        if hasattr(sf, "component_scores"):
+            try:
+                _comps = {k: float(v.detach().numpy().ravel()[0])
+                          for k, v in sf.component_scores().items()}
+            except Exception:  # noqa: BLE001 - components are best-effort
+                _comps = {}
+        rescored.append([_s, _cnfr, _comps])
     rescored.sort(key=lambda x: x[0])
-    final_scores = [s for s, _ in rescored]
-    final_cnfrs = [c for _, c in rescored]
+    final_scores = [s for s, _c, _m in rescored]
+    final_cnfrs = [c for _s, c, _m in rescored]
+    if components_out is not None:
+        components_out.extend([m for _s, _c, m in rescored])
     write_ligand_traj(final_cnfrs, ligand, out_pdbqt,
                       information={"VinaScore": final_scores})
     return final_scores, final_cnfrs

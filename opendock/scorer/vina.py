@@ -290,7 +290,7 @@ class VinaSF(BaseScoringFunction):
         new_vector = torch.cat((vector, _vec), axis=0)
         return new_vector
 
-    def _prepare_data(self):
+    def _prepare_data(self, cutoff=8.0):
         lig_type=list(set(self.updated_lig_heavy_atoms_xs_types))
         rec_type = list(set(self.rec_heavy_atoms_xs_types))
         # print('updated_lig_heavy_atoms_xs_types',len(self.updated_lig_heavy_atoms_xs_types))
@@ -306,7 +306,7 @@ class VinaSF(BaseScoringFunction):
 
         _Max_dim = 0
         for each_dist in self.dist:
-            each_rec_atom_indices, each_lig_atom_indices = torch.where(each_dist <= 8)
+            each_rec_atom_indices, each_lig_atom_indices = torch.where(each_dist <= cutoff)
             rec_atom_indices_list.append(each_rec_atom_indices.numpy().tolist())
             lig_atom_indices_list.append(each_lig_atom_indices.numpy().tolist())
             all_selected_rec_atom_indices += each_rec_atom_indices.numpy().tolist()
@@ -322,6 +322,12 @@ class VinaSF(BaseScoringFunction):
         # print('all_selected_rec_atom_indices',all_selected_rec_atom_indices)
         # print('all_selected_lig_atom_indices',all_selected_lig_atom_indices)
         # exit()
+
+        # Persist the per-pose (receptor_atom, ligand_atom) pair indices so the
+        # inter-term can be decomposed per residue (see interaction_decomposition).
+        self.rec_atom_indices_list = rec_atom_indices_list
+        self.lig_atom_indices_list = lig_atom_indices_list
+        self._max_dim = _Max_dim
 
         # Update the xs atom type of heavy atoms for receptor.
         # t1 = time.time()
@@ -425,7 +431,7 @@ class VinaSF(BaseScoringFunction):
         vina_dist_list = []
 
         for _num, dist in enumerate(self.dist):
-            dist = dist * ((dist <= 8) * 1.)
+            dist = dist * ((dist <= cutoff) * 1.)
             l = len(dist[dist != 0])
             vina_dist_list.append(self._pad(dist[dist != 0], _Max_dim).reshape(1, -1))
 
@@ -705,11 +711,74 @@ class VinaSF(BaseScoringFunction):
         # print("cost time in calcuate  old  intra:", t88-t77)
         #print("score",(self.vina_inter_energy + vina_intra_term))
         return (self.vina_inter_energy + vina_intra_term)/ ( 1 + 0.05846 * (self.ligand.active_torsion + 0.5 * self.ligand.inactive_torsion))
-       
+
+    # ── energy decomposition ─────────────────────────────────────────────
+    def _residue_labels(self, mol_obj):
+        """Heavy-atom-index -> 'chain:RESNAME:resSeq' label list (best effort)."""
+        df = getattr(mol_obj, "dataframe_ha_", None)
+        labels = []
+        if df is not None:
+            for _, row in df.iterrows():
+                try:
+                    labels.append(
+                        f"{row.get('chain', '')}:{row.get('resname', '')}:"
+                        f"{row.get('resSeq', '')}")
+                except Exception:  # noqa: BLE001
+                    labels.append("")
+        return labels
+
+    def interaction_decomposition(self, cutoff: float = 8.0,
+                                  ligand_residue_labels=None,
+                                  receptor_residue_labels=None) -> dict:
+        """Decompose the Vina inter-term by receptor and ligand residue.
+
+        Uses the current ligand coordinates.  Returns per-pose maps of
+        ``{residue_label: energy}`` for the target (receptor) residues and the
+        ligand residues, plus the summed inter total per pose (which equals the
+        un-normalized inter term).  ``cutoff`` controls which heavy-atom pairs
+        contribute (default 8 Å).
+        """
+        self.generate_pldist_mtrx()
+        self._prepare_data(cutoff=cutoff)
+        terms = VinaScoreCore(self.vina_dist, self.rec_lig_is_hydrophobic,
+                              self.rec_lig_is_hbond,
+                              self.rec_lig_atom_vdw_sum).score_terms()
+        total = terms["total"]
+        n_poses = total.shape[0]
+        rec_labels = (list(receptor_residue_labels)
+                      if receptor_residue_labels is not None
+                      else self._residue_labels(self.receptor))
+        lig_labels = (list(ligand_residue_labels)
+                      if ligand_residue_labels is not None
+                      else self._residue_labels(self.ligand))
+        target = [dict() for _ in range(n_poses)]
+        ligand = [dict() for _ in range(n_poses)]
+        inter_total = [0.0] * n_poses
+        for p in range(n_poses):
+            rec_idx_list = self.rec_atom_indices_list[p]
+            lig_idx_list = self.lig_atom_indices_list[p]
+            for m, (ri, li) in enumerate(zip(rec_idx_list, lig_idx_list)):
+                val = float(total[p][m])
+                if val == 0.0:
+                    continue
+                rlab = rec_labels[ri] if ri < len(rec_labels) else f"rec:{ri}"
+                llab = lig_labels[li] if li < len(lig_labels) else f"lig:{li}"
+                target[p][rlab] = target[p].get(rlab, 0.0) + val
+                ligand[p][llab] = ligand[p].get(llab, 0.0) + val
+                inter_total[p] += val
+        return {
+            "cutoff": float(cutoff),
+            "inter_total": [round(v, 4) for v in inter_total],
+            "target_residues": [{k: round(v, 4) for k, v in sorted(t.items())}
+                                for t in target],
+            "ligand_residues": [{k: round(v, 4) for k, v in sorted(l.items())}
+                                for l in ligand],
+        }
+
+
 
 
 class VinaScoreCore(object):
-
     def __init__(self, dist_matrix, rec_lig_is_hydrophobic, rec_lig_is_hbond, rec_lig_atom_vdw_sum):
         """
         Args:
@@ -727,37 +796,35 @@ class VinaScoreCore(object):
         self.rec_lig_is_hb = rec_lig_is_hbond
         self.rec_lig_atom_vdw_sum = rec_lig_atom_vdw_sum
 
+    def score_terms(self):
+        """Per-pair Vina terms and their weighted total.
+
+        Returns a dict of tensors shaped ``[N_poses, M_pairs]``:
+        ``gauss1``, ``gauss2``, ``repulsion``, ``hydrophobic``, ``hbond`` and
+        the weighted ``total``.  Summing ``total`` over the pair axis reproduces
+        :meth:`score_function`.
+        """
+        d_ij = self.dist_matrix - self.rec_lig_atom_vdw_sum
+        gauss_1 = torch.exp(- torch.pow(d_ij / 0.5, 2)) - (d_ij == 0) * 1.
+        gauss_2 = torch.exp(- torch.pow((d_ij - 3) / 2, 2)) - \
+            (d_ij == 0) * 1. * torch.exp(torch.tensor(-1 * 9 / 4))
+        repulsion = torch.pow(((d_ij < 0) * d_ij), 2)
+        hydro_1 = self.rec_lig_is_hydro * (d_ij <= 0.5) * 1.
+        hydro_2_condition = self.rec_lig_is_hydro * (d_ij > 0.5) * (d_ij < 1.5) * 1.
+        hydro_2 = 1.5 * hydro_2_condition - hydro_2_condition * d_ij
+        hydrophobic = hydro_1 + hydro_2
+        hbond = self.rec_lig_is_hb * (d_ij <= -0.7) * 1. + \
+            self.rec_lig_is_hb * (d_ij < 0) * (d_ij > -0.7) * 1.0 * (- d_ij) / 0.7
+        total = - 0.035579 * gauss_1 - 0.005156 * gauss_2 + \
+            0.840245 * repulsion - 0.035069 * hydrophobic - 0.587439 * hbond
+        return {"gauss1": gauss_1, "gauss2": gauss_2, "repulsion": repulsion,
+                "hydrophobic": hydrophobic, "hbond": hbond, "total": total}
+
     def score_function(self):
         # t = time.time()
         #print("dist_matrix:", self.dist_matrix.shape)
         #print("rec_lig_atom_vdw_sum:", self.rec_lig_atom_vdw_sum.shape)
-        d_ij = self.dist_matrix - self.rec_lig_atom_vdw_sum
-        # print("d_ij:", d_ij.shape)
-        Gauss_1 = torch.sum(torch.exp(- torch.pow(d_ij / 0.5, 2)), axis=1) - torch.sum((d_ij == 0) * 1., axis=1)
-        Gauss_2 = torch.sum(torch.exp(- torch.pow((d_ij - 3) / 2, 2)), axis=1) - \
-                  torch.sum((d_ij == 0) * 1. * torch.exp(torch.tensor(-1 * 9 / 4)), axis=1)
-
-        # Repulsion
-        Repulsion = torch.sum(torch.pow(((d_ij < 0) * d_ij), 2), axis=1)
-        # print("Repulsion:", Repulsion)
-
-        # Hydrophobic
-        Hydro_1 = self.rec_lig_is_hydro * (d_ij <= 0.5) * 1.
-
-        Hydro_2_condition = self.rec_lig_is_hydro * (d_ij > 0.5) * (d_ij < 1.5) * 1.
-        Hydro_2 = 1.5 * Hydro_2_condition - Hydro_2_condition * d_ij
-
-        Hydrophobic = torch.sum(Hydro_1 + Hydro_2, axis=1)
-        # print("Hydro:", Hydrophobic)
-
-        # HBonding
-        hbond_1 = self.rec_lig_is_hb * (d_ij <= -0.7) * 1.
-        hbond_2 = self.rec_lig_is_hb * (d_ij < 0) * (d_ij > -0.7) * 1.0 * (- d_ij) / 0.7
-        HBonding = torch.sum(hbond_1 + hbond_2, axis=1)
-        # print("HB:", HBonding)
-
-        inter_energy = - 0.035579 * Gauss_1 - \
-                       0.005156 * Gauss_2 + 0.840245 * Repulsion - 0.035069 * Hydrophobic - 0.587439 * HBonding
+        inter_energy = torch.sum(self.score_terms()["total"], axis=1)
         # print("cost time in calculate energy:", time.time() - t)
         return inter_energy
 
