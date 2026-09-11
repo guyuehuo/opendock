@@ -135,6 +135,105 @@ dependence on MGLTools residue labels.
 
 ## Risks / notes
 
-- MGLTools must be installed (it is, at `~/Documents/apps/mgltools/bin`).
+- MGLTools must be installed (it is, at `~/Documents/apps/MGLtools/bin`).
 - The receptor is clipped; residue identities come from the clipped PDBQT.
 - Decomposition relies on the atom map; without it, fall back to PDBQT labels.
+
+---
+
+## Phase 1: flat-bottom restraints, sidechain COM & angle components
+
+> Added 2026-09-11. Folds the cyclic-peptide distance/contact constraint work
+> into `CompositeSF` instead of adding parallel `ConstraintSF` subclasses.
+
+### 6. Flat-bottom distance restraints
+
+`min_dist` and `com_dist` gain two params:
+
+- `dmin` (default `0.0`): flat-bottom minimum distance.
+- `exponent` (default `1.0`): potential exponent.
+
+The component value (minimized) becomes
+
+```
+d <= dmin  ->  0
+d >  dmin  ->  (d - dmin) ** exponent
+```
+
+so with `weight = k` and `exponent = 2` the weighted contribution is exactly
+`k * (d - dmin)^2`, and with the defaults it is the raw distance
+(backward compatible). Implemented as `torch.clamp(d - dmin, min=0) ** exponent`
+to stay differentiable.
+
+A component also accepts per-pair specs instead of a single target/ligand pair:
+
+```python
+{"type": "min_dist", "weight": 1.0, "params": {
+    "pairs": [
+        {"target_residues": ["A:78"], "ligand_residues": ["L:6"],
+         "dmin": 4.0, "exponent": 2.0},
+        {"target_residues": ["A:5"], "ligand_residues": ["L:3"],
+         "dmin": 8.0, "exponent": 2.0},
+    ]}}
+```
+
+Per-pair values are summed (each pair already in the "smaller is better"
+convention). If `pairs` is absent, the existing single
+`target_residues`/`ligand_residues`/`dmin`/`exponent` params are used.
+
+### 7. `sidechain_com_dist` component
+
+New type, identical to `com_dist` but the center of mass is taken over
+sidechain atoms only: atoms whose name is not in `("N", "CA", "C", "O")`,
+applied on both the target-residue and ligand-residue sides. Supports the same
+`dmin`/`exponent`/`pairs` params.
+
+### 8. Contact ratio target
+
+`contact_ratio` gains `target_ratio` (default `1.0`). The component value
+(minimized) becomes `max(0, target_ratio - ratio)`. At the default this equals
+the previous `1 - ratio` for `ratio <= 1`, so behavior is unchanged.
+
+### 9. `angle` component
+
+New type. Params:
+
+- `A`, `B`, `C`: three selections (`"A:11"`, `{chain, resSeq}`), the angle
+  vertex at `B`.
+- `constraint`: `wall` (default) | `harmonic` | `upper` | `lower`.
+- `bounds`: `[lo, hi]` for `wall`, `[reference]` otherwise.
+- `force`: force constant.
+
+The angle is computed between the group centers of `A`, `B`, `C`, vectorized
+over poses. The potential is a vectorized equivalent of
+`constraints.py`'s `wall`/`harmonic`/`upper_wall`/`lower_wall` (those helpers
+are scalar-only, so the vectorized form lives in `composite.py`). Angle values
+are in radians; a `wall` keeps the angle inside `bounds`.
+
+### 10. Per-component reporting
+
+`CompositeSF._last` (exposed via `component_scores()`) keys components by
+`name or type`; duplicate keys are suffixed `#1`, `#2`, ... so many
+constraints are all visible.
+
+### 11. Builder
+
+`build_cyclo_peptide_components(receptor, ligand, distance_pairs=None,
+epitope=None, peptide=None, angles=None) -> list[dict]` in
+`opendock/protocol/cyclo_peptide_docking.py` returns component dicts ready for
+`CompositeSF(components=...)` / `dock_peptide(scorer_components=...)`. It is
+the composite equivalent of the earlier `build_cyclo_peptide_constraints`.
+
+### Phase 1 tests
+
+- `min_dist`/`com_dist`/`sidechain_com_dist` values with `dmin`/`exponent`
+  on hand-built tensors (flat below `dmin`, `(d-dmin)^2` above).
+- `pairs` summing and per-pair breakdown.
+- `sidechain_com_dist` excludes backbone atoms.
+- `contact_ratio` `target_ratio` shortfall (full contact -> 0; no contact ->
+  `target_ratio`).
+- `angle` component: 180 deg for collinear A-B-C, potential zero inside a
+  `wall`.
+- `component_scores()` disambiguates duplicate types.
+- `build_cyclo_peptide_components` returns the expected component types.
+
