@@ -766,26 +766,22 @@ def write_frozen_pdbqt(mol, flexible_pairs, heavy_by_mol, h_records,
 # --------------------------------------------------------------------------- #
 # public pipeline
 # --------------------------------------------------------------------------- #
-def prepare_peptide_pdbqt(input_path=None, smiles=None,
-                          out_pdbqt="peptide_frozen.pdbqt", tools=None,
-                          workdir=None):
-    """Full pipeline: load -> porality analysis -> freeze rule -> MGLTools
-    typing -> topology rewrite. Returns (model, meta_dict) and writes
-    ``<out_basename>.meta.json`` next to the output."""
-    out_pdbqt = os.path.abspath(out_pdbqt)
-    mol, _ = load_mol(input_path=input_path, smiles=smiles)
-    model = build_peptide_model(mol)
-    flexible, backbone = classify_flexible_bonds(model)
+def _freeze_and_write(mol, model, flexible, backbone, out_pdbqt, tools=None,
+                      workdir=None):
+    """Type ``mol`` with MGLTools, write the backbone-frozen PDBQT, return meta.
 
+    ``mol`` must carry the conformation to write; ``model`` supplies the
+    backbone/residue metadata (same topology as ``mol``).
+    """
     created_workdir = None
     if not workdir:
         workdir = tempfile.mkdtemp(prefix="pep_pdbqt_")
         created_workdir = workdir
     typed_path = os.path.join(workdir, "ligand_typed.pdbqt")
-    generate_typed_pdbqt(model.mol, typed_path, tools=tools, workdir=workdir)
+    generate_typed_pdbqt(mol, typed_path, tools=tools, workdir=workdir)
     records = read_typed_atoms(typed_path)
-    heavy_by_mol, h_records = map_typed_to_mol(model.mol, records)
-    topo = write_frozen_pdbqt(model.mol, flexible, heavy_by_mol, h_records,
+    heavy_by_mol, h_records = map_typed_to_mol(mol, records)
+    topo = write_frozen_pdbqt(mol, flexible, heavy_by_mol, h_records,
                               out_pdbqt, model)
 
     # Map each PDBQT heavy-atom index back to its peptide heavy-atom index,
@@ -808,7 +804,7 @@ def prepare_peptide_pdbqt(input_path=None, smiles=None,
 
     meta = {
         "atom_map": atom_map,
-        "n_heavy_atoms": model.mol.GetNumAtoms(),
+        "n_heavy_atoms": mol.GetNumAtoms(),
         "n_residues": model.n_residues,
         "sequence": model.sequence,
         "is_cyclic": model.is_cyclic,
@@ -819,11 +815,26 @@ def prepare_peptide_pdbqt(input_path=None, smiles=None,
         "n_flexible_bonds": len(flexible),
         "flexible_bonds": [[int(a), int(b)] for (a, b) in flexible],
     }
+    if created_workdir:
+        shutil.rmtree(created_workdir, ignore_errors=True)
+    return meta
+
+
+def prepare_peptide_pdbqt(input_path=None, smiles=None,
+                          out_pdbqt="peptide_frozen.pdbqt", tools=None,
+                          workdir=None):
+    """Full pipeline: load -> porality analysis -> freeze rule -> MGLTools
+    typing -> topology rewrite. Returns (model, meta_dict) and writes
+    ``<out_basename>.meta.json`` next to the output."""
+    out_pdbqt = os.path.abspath(out_pdbqt)
+    mol, _ = load_mol(input_path=input_path, smiles=smiles)
+    model = build_peptide_model(mol)
+    flexible, backbone = classify_flexible_bonds(model)
+    meta = _freeze_and_write(model.mol, model, flexible, backbone, out_pdbqt,
+                             tools=tools, workdir=workdir)
     meta_path = os.path.splitext(out_pdbqt)[0] + ".meta.json"
     with open(meta_path, "w") as f:
         json.dump(meta, f, indent=2)
-    if created_workdir:
-        shutil.rmtree(created_workdir, ignore_errors=True)
     return model, meta
 
 
