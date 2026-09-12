@@ -1233,6 +1233,124 @@ def prepare_peptide_ensemble(input_path=None, smiles=None,
 
 
 # --------------------------------------------------------------------------- #
+# ensemble docking + pose selection
+# --------------------------------------------------------------------------- #
+def _read_pose_models(path):
+    """Parse a multi-MODEL pose file into ``score``/``xyz``/``remarks`` dicts."""
+    models = []
+    cur = None
+    with open(path) as f:
+        for line in f:
+            if line.startswith("MODEL"):
+                cur = {"score": None, "remarks": [], "xyz": []}
+            elif line.startswith("ENDMDL"):
+                if cur is not None:
+                    cur["xyz"] = (np.asarray(cur["xyz"], dtype=float)
+                                  if cur["xyz"] else np.zeros((0, 3)))
+                    models.append(cur)
+                    cur = None
+            elif cur is not None and line.startswith("REMARK"):
+                if line.startswith("REMARK VinaScore"):
+                    try:
+                        cur["score"] = float(line.split()[-1])
+                    except ValueError:
+                        pass
+                else:
+                    cur["remarks"].append(line.rstrip("\n"))
+            elif cur is not None and line.startswith(("ATOM", "HETATM")):
+                try:
+                    cur["xyz"].append([float(line[30:38]), float(line[38:46]),
+                                       float(line[46:54])])
+                except ValueError:
+                    pass
+    return models
+
+
+def _rmsd_no_align(P, Q):
+    """RMSD over the shared atoms, no superposition (receptor-frame poses)."""
+    n = min(len(P), len(Q))
+    if n == 0:
+        return float("inf")
+    diff = np.asarray(P[:n], dtype=float) - np.asarray(Q[:n], dtype=float)
+    return float(np.sqrt((diff ** 2).sum() / n))
+
+
+def _greedy_rmsd_select(poses, keep, cutoff):
+    """Keep the best-scoring poses that are > cutoff RMSD from all kept ones."""
+    kept = []
+    for p in sorted(poses, key=lambda x: x["score"]):
+        if kept and min(_rmsd_no_align(p["xyz"], q["xyz"]) for q in kept) <= cutoff:
+            continue
+        kept.append(p)
+        if len(kept) >= keep:
+            break
+    return kept
+
+
+def dock_ensemble(ensemble, receptor_pdbqt, center, size,
+                  out_pdbqt="ensemble_poses.pdbqt", keep=20,
+                  rmsd_cutoff=2.0, num_modes=10, cfg="mc-lbfgs",
+                  steps_scale=1.0, steps_per_ha=8.0, clip_cutoff=20.0,
+                  cluster_cutoff=2.0, seed=2026, threads=1,
+                  scorer=None, scorer_components=None, components_out=None):
+    """Dock every conformer in an ensemble and keep diverse poses.
+
+    ``ensemble`` is an ``ensemble.json`` path or the ensemble directory.  Each
+    conformer is docked with :func:`dock_peptide`; the pooled poses are greedily
+    filtered by receptor-frame heavy-atom RMSD.  Writes ``out_pdbqt`` (with a
+    ``REMARK Conformer <n>`` per pose) and returns ``(scores, poses)``.
+    """
+    from opendock.core.conformation import LigandConformation
+    if os.path.isdir(ensemble):
+        manifest_path = os.path.join(ensemble, "ensemble.json")
+    else:
+        manifest_path = ensemble
+    ens_dir = os.path.dirname(os.path.abspath(manifest_path))
+    with open(manifest_path) as f:
+        manifest = json.load(f)
+    conformers = manifest.get("conformers", [])
+    if not conformers:
+        raise ValueError(f"no conformers in {manifest_path}")
+
+    work = tempfile.mkdtemp(prefix="dock_ensemble_")
+    pooled = []
+    try:
+        for i, c in enumerate(conformers):
+            lig_path = os.path.join(ens_dir, c["file"])
+            pose_path = os.path.join(work, f"conf_{i:02d}.pdbqt")
+            comps = []
+            dock_peptide(lig_path, receptor_pdbqt, center, size, cfg=cfg,
+                         steps_scale=steps_scale, steps_per_ha=steps_per_ha,
+                         clip_cutoff=clip_cutoff, num_modes=num_modes,
+                         cluster_cutoff=cluster_cutoff, seed=seed + i,
+                         threads=threads, out_pdbqt=pose_path,
+                         scorer=scorer, scorer_components=scorer_components,
+                         components_out=comps, energy_remarks=True)
+            for j, m in enumerate(_read_pose_models(pose_path)):
+                m["conformer"] = i
+                m["components"] = comps[j] if j < len(comps) else {}
+                pooled.append(m)
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+    kept = _greedy_rmsd_select(pooled, keep, rmsd_cutoff)
+    if not kept:
+        return [], []
+    ref = LigandConformation(
+        os.path.join(ens_dir, conformers[kept[0]["conformer"]]["file"]))
+    scores = [p["score"] for p in kept]
+    remarks = [[f"REMARK Conformer {p['conformer']}"] + p["remarks"]
+               for p in kept]
+    write_ligand_traj([None] * len(kept), ref, out_pdbqt,
+                      information={"VinaScore": scores},
+                      pose_remarks=remarks,
+                      xyz_list=[p["xyz"] for p in kept])
+    if components_out is not None:
+        components_out.extend([p["components"] for p in kept])
+    return scores, kept
+
+
+# --------------------------------------------------------------------------- #
 # CLI
 # --------------------------------------------------------------------------- #
 def _add_prep_args(p, out_default="peptide_frozen.pdbqt"):
