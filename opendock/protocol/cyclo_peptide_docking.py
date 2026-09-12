@@ -688,7 +688,10 @@ def prepare_peptide_pdbqt(input_path=None, smiles=None,
     model = build_peptide_model(mol)
     flexible, backbone = classify_flexible_bonds(model)
 
-    workdir = workdir or tempfile.mkdtemp(prefix="pep_pdbqt_")
+    created_workdir = None
+    if not workdir:
+        workdir = tempfile.mkdtemp(prefix="pep_pdbqt_")
+        created_workdir = workdir
     typed_path = os.path.join(workdir, "ligand_typed.pdbqt")
     generate_typed_pdbqt(model.mol, typed_path, tools=tools, workdir=workdir)
     records = read_typed_atoms(typed_path)
@@ -730,6 +733,8 @@ def prepare_peptide_pdbqt(input_path=None, smiles=None,
     meta_path = os.path.splitext(out_pdbqt)[0] + ".meta.json"
     with open(meta_path, "w") as f:
         json.dump(meta, f, indent=2)
+    if created_workdir:
+        shutil.rmtree(created_workdir, ignore_errors=True)
     return model, meta
 
 
