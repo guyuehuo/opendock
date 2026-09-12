@@ -157,6 +157,95 @@ def _embed(mol, seed=2026, tries=8):
 
 
 # --------------------------------------------------------------------------- #
+# conformer ensemble generation
+# --------------------------------------------------------------------------- #
+def _kabsch_rmsd(P, Q):
+    """RMSD between two corresponding coordinate sets after optimal fit."""
+    P = np.asarray(P, dtype=float)
+    Q = np.asarray(Q, dtype=float)
+    Pc = P - P.mean(0)
+    Qc = Q - Q.mean(0)
+    U, _, Vt = np.linalg.svd(Pc.T @ Qc)
+    d = np.sign(np.linalg.det(Vt.T @ U.T))
+    R = Vt.T @ np.diag([1.0, 1.0, d]) @ U.T
+    diff = Pc @ R.T - Qc
+    return float(np.sqrt((diff ** 2).sum() / len(P)))
+
+
+def generate_conformers(mol, n_conformers=100, seed=2026, prune_rms=0.5,
+                        optimize="mmff"):
+    """Generate/optimize macrocycle-aware 3D conformers.
+
+    Returns ``(molH, records)`` where ``molH`` is the H-added molecule carrying
+    the conformers and ``records`` is a list of
+    ``{'conf_id', 'energy', 'optimizer'}`` for the conformers that survived.
+    """
+    Chem, AllChem, _ = _require_rdkit()
+    from rdkit.Chem import rdDistGeom
+    molH = Chem.AddHs(Chem.Mol(mol))
+    params = rdDistGeom.ETKDGv3()
+    params.randomSeed = seed
+    params.pruneRmsThresh = prune_rms
+    params.useMacrocycleTorsions = True
+    params.useSmallRingTorsions = True
+    conf_ids = list(AllChem.EmbedMultipleConfs(molH, numConfs=n_conformers,
+                                               params=params))
+    if not conf_ids:
+        raise ValueError("RDKit produced no 3D conformers")
+    if optimize == "mmff" and AllChem.MMFFHasAllMoleculeParams(molH):
+        results = AllChem.MMFFOptimizeMoleculeConfs(molH)
+        optimizer = "MMFF94"
+    else:
+        results = AllChem.UFFOptimizeMoleculeConfs(molH)
+        optimizer = "UFF"
+    records = []
+    for conf_id, (_status, energy) in zip(conf_ids, results):
+        energy = float(energy)
+        if not np.isfinite(energy):
+            continue
+        records.append({"conf_id": int(conf_id), "energy": energy,
+                        "optimizer": optimizer})
+    if not records:
+        raise ValueError("no conformer survived optimization")
+    return molH, records
+
+
+def cluster_by_backbone_rmsd(mol, conf_ids, backbone_indices, n_clusters):
+    """Cluster conformers by backbone RMSD; return one medoid per cluster."""
+    from scipy.cluster.hierarchy import fcluster, linkage
+    ids = list(conf_ids)
+    if n_clusters >= len(ids):
+        return ids
+    idx = np.asarray(sorted(int(a) for a in backbone_indices), dtype=int)
+    coords = {cid: mol.GetConformer(cid).GetPositions()[idx] for cid in ids}
+    n = len(ids)
+    dist = np.zeros((n, n), dtype=float)
+    for i in range(n):
+        for j in range(i + 1, n):
+            d = _kabsch_rmsd(coords[ids[i]], coords[ids[j]])
+            dist[i, j] = dist[j, i] = d
+    condensed = [dist[i, j] for i in range(n) for j in range(i + 1, n)]
+    Z = linkage(np.asarray(condensed, dtype=float), method="average")
+    labels = fcluster(Z, t=n_clusters, criterion="maxclust")
+    clusters = {}
+    for pos, lab in enumerate(labels):
+        clusters.setdefault(lab, []).append(pos)
+    medoids = []
+    for lab in sorted(clusters):
+        members = clusters[lab]
+        if len(members) == 1:
+            medoids.append(ids[members[0]])
+            continue
+        best, best_sum = members[0], None
+        for a in members:
+            s = sum(dist[a, b] for b in members if b != a)
+            if best_sum is None or s < best_sum:
+                best, best_sum = a, s
+        medoids.append(ids[best])
+    return medoids
+
+
+# --------------------------------------------------------------------------- #
 # porality-based residue / backbone analysis
 # --------------------------------------------------------------------------- #
 @dataclass
