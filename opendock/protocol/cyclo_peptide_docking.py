@@ -1152,7 +1152,8 @@ def prepare_peptide_ensemble(input_path=None, smiles=None,
                              out_dir="peptide_ensemble",
                              n_conformers=100, n_clusters=20, seed=2026,
                              prune_rms=0.5, optimize="mmff",
-                             tools=None, workdir=None):
+                             tools=None, workdir=None,
+                             progress_callback=None):
     """Generate/cluster peptide conformers and write backbone-frozen PDBQTs.
 
     SMILES input is embedded with macrocycle-aware ETKDG and clustered by
@@ -1160,7 +1161,14 @@ def prepare_peptide_ensemble(input_path=None, smiles=None,
     as-is (multi-model SDF = one conformer per model).  Writes
     ``conformer_XX.pdbqt`` (+ ``.meta.json``) and ``ensemble.json`` into
     ``out_dir`` and returns ``(models, manifest)``.
+
+    ``progress_callback(completed, total, label)`` is called around the
+    generation/clustering/writing phases when provided.
     """
+    def _progress(done, total, label):
+        if progress_callback is not None:
+            progress_callback(done, total, label)
+
     os.makedirs(out_dir, exist_ok=True)
     ext = os.path.splitext(input_path)[1].lower() if input_path else ""
     smiles_source = smiles is not None or ext in (".smi", ".smiles")
@@ -1170,6 +1178,7 @@ def prepare_peptide_ensemble(input_path=None, smiles=None,
         mol, _ = load_mol(input_path=input_path, smiles=smiles)
         model0 = build_peptide_model(mol)
         backbone_ref = sorted(model0.backbone_atoms)
+        _progress(0, 2, "generating conformers")
         molH, records = generate_conformers(
             mol, n_conformers=n_conformers, seed=seed, prune_rms=prune_rms,
             optimize=optimize)
@@ -1200,6 +1209,7 @@ def prepare_peptide_ensemble(input_path=None, smiles=None,
 
     models = []
     conformers = []
+    _progress(1, 2, "writing conformers")
     for i, e in enumerate(entries):
         model = build_peptide_model(e["mol"])
         flexible, backbone = classify_flexible_bonds(model)
@@ -1229,6 +1239,7 @@ def prepare_peptide_ensemble(input_path=None, smiles=None,
     }
     with open(os.path.join(out_dir, "ensemble.json"), "w") as f:
         json.dump(manifest, f, indent=2)
+    _progress(2, 2, "prepared")
     return models, manifest
 
 
@@ -1292,7 +1303,8 @@ def dock_ensemble(ensemble, receptor_pdbqt, center, size,
                   rmsd_cutoff=2.0, num_modes=10, cfg="mc-lbfgs",
                   steps_scale=1.0, steps_per_ha=8.0, clip_cutoff=20.0,
                   cluster_cutoff=2.0, seed=2026, threads=1,
-                  scorer=None, scorer_components=None, components_out=None):
+                  scorer=None, scorer_components=None, components_out=None,
+                  progress_callback=None):
     """Dock every conformer in an ensemble and keep diverse poses.
 
     ``ensemble`` is an ``ensemble.json`` path or the ensemble directory.  Each
@@ -1315,8 +1327,11 @@ def dock_ensemble(ensemble, receptor_pdbqt, center, size,
 
     work = tempfile.mkdtemp(prefix="dock_ensemble_")
     pooled = []
+    n_conf = len(conformers)
     try:
         for i, c in enumerate(conformers):
+            if progress_callback is not None:
+                progress_callback(i, n_conf, f"conformer {i + 1}/{n_conf}")
             lig_path = os.path.join(ens_dir, c["file"])
             pose_path = os.path.join(work, f"conf_{i:02d}.pdbqt")
             comps = []
@@ -1334,6 +1349,8 @@ def dock_ensemble(ensemble, receptor_pdbqt, center, size,
     finally:
         shutil.rmtree(work, ignore_errors=True)
 
+    if progress_callback is not None:
+        progress_callback(n_conf, n_conf, "selecting poses")
     kept = _greedy_rmsd_select(pooled, keep, rmsd_cutoff)
     if not kept:
         return [], []

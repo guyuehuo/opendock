@@ -83,12 +83,16 @@ def test_dock_ensemble_uses_multiple_conformers(tmp_path):
     if not os.path.exists(rec):
         pytest.skip("example receptor not present")
     out = str(tmp_path / "ensemble_poses.pdbqt")
+    calls = []
     scores, poses = dock_ensemble(ens, rec, center=[0.45, 9.06, -7.12],
                                   size=[12, 12, 12], keep=10,
                                   rmsd_cutoff=2.0, num_modes=2,
                                   cfg="mc-nomin", steps_per_ha=3,
-                                  steps_scale=0.2, seed=1, out_pdbqt=out)
+                                  steps_scale=0.2, seed=1, out_pdbqt=out,
+                                  progress_callback=lambda c, t, label:
+                                  calls.append((c, t, label)))
     assert scores and poses
+    assert calls and calls[-1][0] == calls[-1][1]
     text = open(out).read()
     assert "REMARK VinaScore" in text
     assert "REMARK Conformer" in text
