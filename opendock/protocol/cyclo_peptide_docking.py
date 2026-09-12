@@ -876,7 +876,7 @@ def _freeze_and_write(mol, model, flexible, backbone, out_pdbqt, tools=None,
     for res_i, (rname, idxs) in enumerate(model.residues):
         # Residue names repeat (e.g. several ALA); suffix the sequence position
         # so the per-residue decomposition keeps them distinct.
-        label = f"{rname}{res_i + 1}"
+        label = f"{rname}:{res_i + 1}"
         for ai in idxs:
             mol_to_res[int(ai)] = label
     heavy_order = (topo or {}).get("heavy_order", [])

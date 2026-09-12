@@ -322,13 +322,13 @@ def test_residue_groups_match_fragment_labels():
 
     df = pd.DataFrame({"chain": ["", "", "", ""],
                        "resSeq": ["1", "1", "2", "2"]})
-    labels = ["ALA1", "ALA1", "PHE2", "PHE2"]
-    # fragment labels select the right atoms ...
-    assert _residue_groups(df, ["ALA1"], labels) == [("*:ALA1", [0, 1])]
+    labels = ["ALA:1", "ALA:1", "PHE:2", "PHE:2"]
+    # a full fragment label selects the right atoms ...
+    assert _residue_groups(df, ["ALA:1"], labels) == [("ALA:1", [0, 1])]
     # ... numeric resSeq still works ...
     assert _residue_groups(df, ["2"], labels) == [("*:2", [2, 3])]
     # ... and without labels a fragment label does not match.
-    assert _residue_groups(df, ["ALA1"]) == []
+    assert _residue_groups(df, ["ALA:1"]) == []
 
 
 def _mgltools_dir():

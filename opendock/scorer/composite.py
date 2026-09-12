@@ -95,6 +95,7 @@ def _residue_groups(df, specs: Sequence, labels: Optional[Sequence] = None) -> L
     groups: List[Tuple[str, List[int]]] = []
     seen = set()
     for spec in specs or []:
+        spec_str = None if isinstance(spec, dict) else str(spec)
         if isinstance(spec, dict):
             chain = str(spec.get("chain", "") or "")
             seq = str(spec.get("resSeq", spec.get("seq", "")) or "")
@@ -103,6 +104,12 @@ def _residue_groups(df, specs: Sequence, labels: Optional[Sequence] = None) -> L
             chain, seq = (parts[0], parts[1]) if len(parts) > 1 else ("", parts[0])
         idxs = []
         for i in range(len(seqs)):
+            # Full-label match takes priority so colon-form fragment labels
+            # (e.g. "ALA:1") resolve even though "ALA" is not a real chain.
+            if (spec_str is not None and label_list is not None
+                    and i < len(label_list) and label_list[i] == spec_str):
+                idxs.append(i)
+                continue
             if chain and chains[i] != chain:
                 continue
             if label_list is not None and i < len(label_list) and label_list[i] == seq:
