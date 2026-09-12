@@ -76,7 +76,16 @@ class BaseScoringFunction(object):
         dist += torch.sum(self.ligand.pose_heavy_atoms_coords ** 2, -1).view(-1, 1, M)
 
         dist = (dist >= 0) * dist
-        self.dist = torch.sqrt(dist)
+        dist = torch.sqrt(dist)
+
+        # Non-finite ligand/receptor coordinates (e.g. a diverged minimizer)
+        # produce NaN distances.  Record which poses are affected and replace
+        # them with a large finite value so downstream cutoff masking stays
+        # consistent (NaN fails `<= cutoff` but passes `!= 0`, which otherwise
+        # breaks the padding in VinaSF._prepare_data).
+        self.nonfinite_poses = ~torch.isfinite(dist).all(dim=(1, 2))
+        dist = torch.nan_to_num(dist, nan=1e6, posinf=1e6, neginf=1e6)
+        self.dist = dist
 
         #print("Distance matrix shape ", self.dist, self.dist.shape)
         return self.dist

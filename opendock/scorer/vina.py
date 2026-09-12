@@ -306,7 +306,8 @@ class VinaSF(BaseScoringFunction):
 
         _Max_dim = 0
         for each_dist in self.dist:
-            each_rec_atom_indices, each_lig_atom_indices = torch.where(each_dist <= cutoff)
+            each_mask = torch.isfinite(each_dist) & (each_dist <= cutoff)
+            each_rec_atom_indices, each_lig_atom_indices = torch.where(each_mask)
             rec_atom_indices_list.append(each_rec_atom_indices.numpy().tolist())
             lig_atom_indices_list.append(each_lig_atom_indices.numpy().tolist())
             all_selected_rec_atom_indices += each_rec_atom_indices.numpy().tolist()
@@ -431,9 +432,8 @@ class VinaSF(BaseScoringFunction):
         vina_dist_list = []
 
         for _num, dist in enumerate(self.dist):
-            dist = dist * ((dist <= cutoff) * 1.)
-            l = len(dist[dist != 0])
-            vina_dist_list.append(self._pad(dist[dist != 0], _Max_dim).reshape(1, -1))
+            mask = torch.isfinite(dist) & (dist <= cutoff)
+            vina_dist_list.append(self._pad(dist[mask], _Max_dim).reshape(1, -1))
 
         self.vina_dist = torch.cat(vina_dist_list, axis=0)
         t3 = time.time()
@@ -631,6 +631,12 @@ class VinaSF(BaseScoringFunction):
             self.vina_inter_energy = vina_inter_term
 
             self.vina_inter_energy = self.vina_inter_energy.reshape(-1, 1)
+            # Poses with non-finite coordinates (NaN distances) are invalid;
+            # give them a large penalty instead of a spurious good score.
+            bad = getattr(self, "nonfinite_poses", None)
+            if bad is not None and bool(bad.any()):
+                self.vina_inter_energy = self.vina_inter_energy.clone()
+                self.vina_inter_energy[bad] = 99.99
             #print('vina_inter_term', self.vina_inter_energy)
         except:
             self.vina_inter_energy = torch.tensor([[99.99]], requires_grad=True)
