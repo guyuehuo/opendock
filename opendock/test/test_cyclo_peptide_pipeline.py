@@ -84,3 +84,17 @@ def test_build_components_accepts_string_selections():
                                            peptide="L:1")
     assert comps[0]["params"]["residues"] == ["A:78"]
     assert comps[0]["params"]["ligand_residues"] == ["L:1"]
+
+
+def test_relabel_atom_line_uses_model_labels():
+    from opendock.protocol.cyclo_peptide_docking import _relabel_atom_line
+    line = ("ATOM      1  CB  UNL d   1       0.000   0.000   0.000"
+            "  0.00  0.00     0.042 C \n")
+    out = _relabel_atom_line(line, "THR", 3)
+    assert out[12:16].strip() == "CB"
+    assert out[17:20].strip() == "THR"
+    assert out[21].strip() == "d"
+    assert out[22:26].strip() == "3"
+    assert out[30:38].strip() == "0.000"
+    assert out[77:79].strip() == "C"
+    assert _relabel_atom_line(line, None, None) == line

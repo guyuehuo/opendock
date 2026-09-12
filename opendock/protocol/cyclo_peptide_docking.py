@@ -655,6 +655,19 @@ def _h_lines_for(h_records, mi):
     return sorted((h for h in h_records if h.mol_idx == mi), key=lambda r: r.xyz)
 
 
+def _relabel_atom_line(line, resname, resseq):
+    """Replace resName/resSeq columns with the peptide model's labels.
+
+    MGLTools labels residues it does not recognise as ``UNL``; the porality
+    model knows the real per-fragment names/sequence positions.
+    """
+    if not resname or len(line) < 26:
+        return line
+    rn = str(resname)[:3].ljust(3)
+    rs = str(resseq)[:4].rjust(4)
+    return line[:17] + rn + line[20:22] + rs + line[26:]
+
+
 def write_frozen_pdbqt(mol, flexible_pairs, heavy_by_mol, h_records,
                        out_pdbqt, model):
     """Serialize the backbone-frozen PDBQT (see module docstring).
@@ -727,11 +740,21 @@ def write_frozen_pdbqt(mol, flexible_pairs, heavy_by_mol, h_records,
 
     cursor = {"i": 0}
 
+    # Peptide-model residue labels (name, 1-based position) per heavy atom, so
+    # the frozen PDBQT (and the poses written from it) show the real fragments
+    # instead of MGLTools' generic UNL.
+    mol_to_res = {}
+    for res_i, (rname, idxs) in enumerate(model.residues):
+        for ai in idxs:
+            mol_to_res[int(ai)] = (rname, res_i + 1)
+
     def token_line(tok):
         ser = serials[cursor["i"]]
         cursor["i"] += 1
         rec = tok[2]
-        return _with_serial(rec.line, ser)
+        label = mol_to_res.get(tok[1])
+        line = _relabel_atom_line(rec.line, *label) if label else rec.line
+        return _with_serial(line, ser)
 
     with open(out_pdbqt, "w") as f:
         f.write("ROOT\n")

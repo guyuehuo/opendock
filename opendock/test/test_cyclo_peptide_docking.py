@@ -403,3 +403,24 @@ def test_dock_peptide_pose_labels_and_remarks(tmp_path):
     assert "REMARK VinaScore" in text
     assert "REMARK LigandResidue" in text
     assert "REMARK TargetResidue" in text
+
+
+def test_write_frozen_pdbqt_relabels_from_model(tmp_path):
+    from rdkit import Chem
+    mol = Chem.MolFromSmiles("CC")
+    heavy = {
+        0: AtomRecord(_atom_line(0, "C1", "C", 0.0, 0.0, 0.0), "C",
+                      (0.0, 0.0, 0.0), 0),
+        1: AtomRecord(_atom_line(0, "C2", "C", 1.5, 0.0, 0.0), "C",
+                      (1.5, 0.0, 0.0), 1),
+    }
+    model = PeptideModel(mol=mol, backbone_atoms={0},
+                         residues=[("THR", [0]), ("LEU", [1])])
+    out = str(tmp_path / "frozen.pdbqt")
+    write_frozen_pdbqt(mol, [], heavy, [], out, model)
+    lines = [l for l in open(out).read().splitlines() if l.startswith("ATOM")]
+    assert lines[0][17:20].strip() == "THR"
+    assert lines[0][22:26].strip() == "1"
+    assert lines[1][17:20].strip() == "LEU"
+    assert lines[1][22:26].strip() == "2"
+
