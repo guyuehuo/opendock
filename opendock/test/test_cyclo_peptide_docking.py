@@ -382,3 +382,24 @@ def test_cli_parsing():
                       "--center", "0", "0", "0", "--size", "10", "10", "10",
                       "--out-dir", "out"])
     assert c.command == "run" and c.out_dir == "out"
+
+
+@NEED_MGLTOOLS
+def test_dock_peptide_pose_labels_and_remarks(tmp_path):
+    from opendock.protocol.cyclo_peptide_docking import dock_peptide
+    lig = os.path.join(str(tmp_path), "pep.pdbqt")
+    prepare_peptide_pdbqt(smiles=CYCLIC, out_pdbqt=lig,
+                          workdir=str(tmp_path / "work"))
+    rec = os.path.join(REPO, "benchmarks", "peptide_docking", "example",
+                       "receptor.pdbqt")
+    if not os.path.exists(rec):
+        pytest.skip("example receptor not present")
+    out = os.path.join(str(tmp_path), "poses.pdbqt")
+    dock_peptide(lig, rec, center=[0.45, 9.06, -7.12], size=[12, 12, 12],
+                 cfg="mc-nomin", steps_per_ha=3, steps_scale=0.2,
+                 num_modes=1, seed=1, out_pdbqt=out)
+    text = open(out).read()
+    assert "ALA" in text                      # peptide residue name kept
+    assert "REMARK VinaScore" in text
+    assert "REMARK LigandResidue" in text
+    assert "REMARK TargetResidue" in text

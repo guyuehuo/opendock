@@ -771,13 +771,31 @@ def no_minimizer(x, target_function, **kwargs):
     return x
 
 
+def _energy_remark_lines(decomp):
+    """Per-pose REMARK strings from an ``interaction_decomposition`` result."""
+    totals = decomp.get("inter_total", [])
+    n = len(totals)
+    targets = decomp.get("target_residues", [{}] * n)
+    ligands = decomp.get("ligand_residues", [{}] * n)
+    lines = []
+    for p in range(n):
+        pose_lines = [f"REMARK InterTotal {totals[p]:.3f}"]
+        for label, energy in sorted(targets[p].items()):
+            pose_lines.append(f"REMARK TargetResidue {label} {energy:.3f}")
+        for label, energy in sorted(ligands[p].items()):
+            pose_lines.append(f"REMARK LigandResidue {label} {energy:.3f}")
+        lines.append(pose_lines)
+    return lines
+
+
 def dock_peptide(ligand_pdbqt, receptor_pdbqt, center, size, cfg="mc-lbfgs",
                  steps_scale=1.0, steps_per_ha=8.0, clip_cutoff=20.0,
                  num_modes=10, cluster_cutoff=2.0, seed=2026, threads=1,
                  out_pdbqt="peptide_poses.pdbqt",
                  scorer=None, scorer_components=None, components_out=None,
                  decomposition_out=None, ligand_residue_labels=None,
-                 decomposition_cutoff=8.0, decomposition_cutoffs=None):
+                 decomposition_cutoff=8.0, decomposition_cutoffs=None,
+                 energy_remarks=True):
     """Dock a backbone-frozen peptide PDBQT with OpenDock.
 
     ``center`` and ``size`` are 3-sequences; ``size`` is the box half-extent
@@ -874,13 +892,12 @@ def dock_peptide(ligand_pdbqt, receptor_pdbqt, center, size, cfg="mc-lbfgs",
     final_cnfrs = [c for _s, c, _m in rescored]
     if components_out is not None:
         components_out.extend([m for _s, _c, m in rescored])
-    write_ligand_traj(final_cnfrs, ligand, out_pdbqt,
-                      information={"VinaScore": final_scores})
-
     # Per-residue Vina energy decomposition of the final poses.  This is done
     # here (not by re-parsing out_pdbqt) because the docking trajectory is not
-    # a valid AutoDock PDBQT (no ROOT/BRANCH records).
-    if decomposition_out is not None:
+    # a valid AutoDock PDBQT (no ROOT/BRANCH records).  The same result feeds
+    # the per-residue REMARK lines written into the pose file.
+    pose_remarks = None
+    if energy_remarks or decomposition_out is not None or decomposition_cutoffs:
         try:
             vina_sf = sf._vina_sf() if hasattr(sf, "_vina_sf") else sf
             ligand.cnfrs_, receptor.cnfrs_ = final_cnfrs, None
@@ -893,16 +910,26 @@ def dock_peptide(ligand_pdbqt, receptor_pdbqt, center, size, cfg="mc-lbfgs",
                     by_cutoff[str(float(cut))] = vina_sf.interaction_decomposition(
                         cutoff=float(cut),
                         ligand_residue_labels=ligand_residue_labels)
-                decomposition_out["by_cutoff"] = by_cutoff
-                decomposition_out.update(
-                    by_cutoff.get(str(float(decomposition_cutoff)),
-                                  next(iter(by_cutoff.values()))))
+                decomp = by_cutoff.get(str(float(decomposition_cutoff)),
+                                       next(iter(by_cutoff.values())))
+                if decomposition_out is not None:
+                    decomposition_out["by_cutoff"] = by_cutoff
+                    decomposition_out.update(decomp)
             else:
-                decomposition_out.update(vina_sf.interaction_decomposition(
+                decomp = vina_sf.interaction_decomposition(
                     cutoff=decomposition_cutoff,
-                    ligand_residue_labels=ligand_residue_labels))
+                    ligand_residue_labels=ligand_residue_labels)
+                if decomposition_out is not None:
+                    decomposition_out.update(decomp)
+            if energy_remarks:
+                pose_remarks = _energy_remark_lines(decomp)
         except Exception as exc:  # noqa: BLE001 - decomposition is best-effort
-            decomposition_out["error"] = str(exc)
+            if decomposition_out is not None:
+                decomposition_out["error"] = str(exc)
+
+    write_ligand_traj(final_cnfrs, ligand, out_pdbqt,
+                      information={"VinaScore": final_scores},
+                      pose_remarks=pose_remarks)
 
     return final_scores, final_cnfrs
 
