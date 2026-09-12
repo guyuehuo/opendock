@@ -23,9 +23,15 @@ class VinaSF(BaseScoringFunction):
     def __init__(self,
                  receptor=None,
                  ligand=None,
+                 device=None,
                  ):
         # inheritant from base class
-        super(VinaSF, self).__init__(receptor=receptor, ligand=ligand)
+        super(VinaSF, self).__init__(receptor=receptor, ligand=ligand,
+                                     device=device)
+
+        # static per-atom attributes (refined xs types, hydrophobic/hbond/vdw
+        # vectors) are built lazily on the first scoring call.
+        self._static_ready = False
 
         # variable of the protein-ligand interaction
         self.dist = torch.tensor([])
@@ -600,123 +606,149 @@ class VinaSF(BaseScoringFunction):
 
         return self
 
+    def _ensure_static(self):
+        """Build (once) the per-atom static attributes needed by scoring.
+
+        These only depend on atom types, so they are independent of the ligand
+        pose and are cached to avoid recomputation on every scoring call.
+        """
+        if self._static_ready:
+            return
+
+        # Refine the receptor heavy-atom xs types (hydrophobic / hb-donor).
+        for i in range(self.num_of_rec_ha):
+            self.receptor.update_rec_xs(self.rec_heavy_atoms_xs_types[i], i,
+                                        self.rec_index_to_series_dict[i],
+                                        self.heavy_atoms_residues_indices[i])
+        rec_types = self.receptor.rec_heavy_atoms_xs_types
+        lig_types = self.updated_lig_heavy_atoms_xs_types
+
+        hydro = {"C_H", "F_H", "Cl_H", "Br_H", "I_H"}
+        donor = {"N_D", "N_DA", "O_DA", "Met_D"}
+        accept = {"N_A", "N_DA", "O_A", "O_DA"}
+
+        def _vec(types, names):
+            return torch.tensor([1.0 if t in names else 0.0 for t in types],
+                                dtype=torch.float32, device=self.device)
+
+        self._rec_hydro = _vec(rec_types, hydro)
+        self._lig_hydro = _vec(lig_types, hydro)
+        self._rec_donor = _vec(rec_types, donor)
+        self._lig_donor = _vec(lig_types, donor)
+        self._rec_accept = _vec(rec_types, accept)
+        self._lig_accept = _vec(lig_types, accept)
+        self._rec_vdw = torch.tensor(
+            [self.vdw_radii_dict[t] for t in rec_types],
+            dtype=torch.float32, device=self.device)
+        self._lig_vdw = torch.tensor(
+            [self.vdw_radii_dict[t] for t in lig_types],
+            dtype=torch.float32, device=self.device)
+
+        # Intra (ligand-ligand) static attributes per interacting pair.
+        pairs = self.lig_intra_interacting_pairs
+        if pairs:
+            intra_vdw, intra_hydro, intra_hb = [], [], []
+            for (i, j) in pairs:
+                intra_vdw.append(self.vdw_radii_dict[lig_types[i]]
+                                 + self.vdw_radii_dict[lig_types[j]])
+                intra_hydro.append(
+                    1.0 if (lig_types[i] in hydro and lig_types[j] in hydro)
+                    else 0.0)
+                is_hb = ((lig_types[i] in donor and lig_types[j] in accept)
+                         or (lig_types[j] in donor and lig_types[i] in accept))
+                intra_hb.append(1.0 if is_hb else 0.0)
+            self._intra_vdw = torch.tensor(intra_vdw, dtype=torch.float32,
+                                           device=self.device)
+            self._intra_hydro = torch.tensor(intra_hydro, dtype=torch.float32,
+                                             device=self.device)
+            self._intra_hb = torch.tensor(intra_hb, dtype=torch.float32,
+                                          device=self.device)
+        else:
+            self._intra_vdw = torch.zeros(0, dtype=torch.float32,
+                                          device=self.device)
+            self._intra_hydro = torch.zeros(0, dtype=torch.float32,
+                                            device=self.device)
+            self._intra_hb = torch.zeros(0, dtype=torch.float32,
+                                         device=self.device)
+
+        self._static_ready = True
+
+    def _inter_dense(self, cutoff=8.0):
+        """Dense (unpadded) inter-molecular Vina terms.
+
+        Returns the per-pair weighted total on a dense [n_poses, N, M] grid
+        (masked to ``dist <= cutoff``) together with the boolean mask.
+        """
+        dist = self.dist  # [n, N, M]
+        n, N, M = dist.shape
+        mask = torch.isfinite(dist) & (dist <= cutoff)
+
+        is_hydro = self._rec_hydro.view(1, N, 1) * self._lig_hydro.view(1, 1, M)
+        is_hb = ((self._rec_donor.view(1, N, 1) * self._lig_accept.view(1, 1, M)
+                  + self._rec_accept.view(1, N, 1)
+                  * self._lig_donor.view(1, 1, M)) > 0).to(torch.float32)
+        vdw = self._rec_vdw.view(1, N, 1) + self._lig_vdw.view(1, 1, M)
+
+        core = VinaScoreCore(dist.reshape(n, -1),
+                             is_hydro.expand(n, N, M).reshape(n, -1),
+                             is_hb.expand(n, N, M).reshape(n, -1),
+                             vdw.expand(n, N, M).reshape(n, -1))
+        total = core.score_terms()["total"].reshape(n, N, M)
+        total = total * mask.to(total.dtype)
+        return total, mask
+
+    def _intra_dense(self):
+        """Intra-molecular Vina term summed over interacting pairs."""
+        dist = torch.nan_to_num(self.intra_dist, nan=1e6, posinf=1e6,
+                                neginf=1e6)
+        n, P = dist.shape
+        if P == 0:
+            return torch.zeros(n, 1, device=self.device)
+
+        mask = (dist <= 8.0) & (dist > 0.0)
+
+        core = VinaScoreCore(dist,
+                             self._intra_hydro.view(1, P).expand(n, P),
+                             self._intra_hb.view(1, P).expand(n, P),
+                             self._intra_vdw.view(1, P).expand(n, P))
+        total = core.score_terms()["total"] * mask.to(dist.dtype)
+        return total.sum(dim=1).reshape(-1, 1)
+
     def scoring(self):
-        '''# update heavy atom coordinates
-        if self.ligand.cnfrs_ is not None:
-            self.ligand.cnfr2xyz(self.ligand.cnfrs_)
+        self._ensure_static()
 
-        if self.receptor.cnfrs_ is not None:
-            self.receptor.cnfrs2xyz(self.receptor.cnfrs_)'''
-        
-
-        t1 = time.time()
         # make distance matrix
         self.generate_pldist_mtrx()
-        #t2 = time.time()
-        #  prepare data after distance matrix is defined
-        self._prepare_data()
-        #t3 = time.time()
-        vina = VinaScoreCore(self.vina_dist,
-                             self.rec_lig_is_hydrophobic,
-                             self.rec_lig_is_hbond,
-                             self.rec_lig_atom_vdw_sum)
 
-
+        # inter-molecular term (vectorized, device-aware)
         try:
-            vina_inter_term = vina.process()
+            inter_total, _ = self._inter_dense(cutoff=8.0)
+            vina_inter_term = inter_total.sum(dim=(1, 2)).reshape(-1, 1)
 
-            # self.vina_inter_energy = vina_inter_term / (
-            #         1 + 0.05846 * (self.ligand.active_torsion \
-            #                        + 0.5 * self.ligand.inactive_torsion))
             self.vina_inter_energy = vina_inter_term
-
-            self.vina_inter_energy = self.vina_inter_energy.reshape(-1, 1)
             # Poses with non-finite coordinates (NaN distances) are invalid;
             # give them a large penalty instead of a spurious good score.
             bad = getattr(self, "nonfinite_poses", None)
             if bad is not None and bool(bad.any()):
                 self.vina_inter_energy = self.vina_inter_energy.clone()
                 self.vina_inter_energy[bad] = 99.99
-            #print('vina_inter_term', self.vina_inter_energy)
-        except:
-            self.vina_inter_energy = torch.tensor([[99.99]], requires_grad=True)
+        except Exception:
+            self.vina_inter_energy = torch.tensor([[99.99]],
+                                                  device=self.device,
+                                                  requires_grad=True)
 
-            #self.vina_inter_energy = torch.Tensor([[99.99, ]]).requires_grad()
-        #t77 = time.time()
-        #vina_intra_term2 = self.cal_intra_repulsion()
-        #t88 = time.time()
-        #print("00 time",t8-t7)
-        #print("00 vina_intra_term:", vina_intra_term2)
-
-
-        #t4 = time.time()
-        #vina_intra_term=torch.tensor([[99.99]], requires_grad=True)
+        # intra-molecular term (vectorized, device-aware)
         try:
+            self.generate_intra_mtrx()
+            vina_intra_term = self._intra_dense().reshape(-1, 1)
+        except Exception:
+            vina_intra_term = torch.tensor([[1.0]],
+                                           device=self.device,
+                                           requires_grad=True)
 
-         self.generate_intra_mtrx()
-         #t8 = time.time()
-         # #flag=0
-         # #try:
-         self._prepare_data_intra()
-         #t9 = time.time()
-         # # except:
-         # #   flag=1
-         # # if flag==0:
-         vina_intra = VinaScoreCore(self.intra_vina_dist,
-                             self.intra_rec_lig_is_hydrophobic,
-                             self.intra_rec_lig_is_hbond,
-                             self.intra_rec_lig_atom_vdw_sum)
-         #
-         vina_intra_term = vina_intra.process()
-         #
-         vina_intra_term = vina_intra_term.reshape(-1, 1)
-         #print("11 intra",vina_intra_term)
-        except:
-            vina_intra_term = torch.tensor([[1.0]], requires_grad=True)
-            #vina_intra_term = self.cal_intra_repulsion().reshape(-1, 1)
-        # #print("11 self.vina_intra_energy",vina_intra_term)
-        # #else:
-        #vina_intra_term = self.cal_intra_repulsion().reshape(-1, 1)
-        # print("22 intra", vina_intra_term2)
-        #vina_intra_term = self.cal_intra_repulsion()
-
-        #vina_intra_term = self.cal_intra_repulsion()
-        #t5=time.time()
-        # print("11 time:", t5 - t4)
-        # print("intra_mtrx time:", t8 - t4)
-        # print("prepare time:", t9 - t8)
-        # print("11 vina_intra_term",vina_intra_term)
-
-        # if self.flag<12:
-        #vina_intra_term = self.cal_intra_repulsion().reshape(-1, 1)
-        #   self.flag+=1
-        # t5 = time.time()
-        # print("22 vina_intra_term", vina_intra_term)
-        #print("11 time:", t5 - t4)
-        #t6 = time.time()
-
-
-
-
-        #vina_intra_term = self.cal_intra_repulsion()
-        #t7 = time.time()
-        #print("22 time:", t7-t6)
-        #exit()
-        # print("vina_intra_term ",vina_intra_term )
-        #print("self.vina_inter_energy ", self.vina_inter_energy )
-        #print('vina_intra_term', vina_intra_term)
-        # except:
-        #     vina_intra_term = torch.Tensor([[0.0, ]])
-        # print("inter and intra", self.vina_inter_energy, vina_intra_term)
-        # t5 = time.time()
-        #a=self.vina_inter_energy + vina_intra_term
-        #print("cost time in make distance matrix:", t2-t1)
-        #print("cost time in prepare data:", t3 - t2)
-        # print("cost time in calcuate inter energy:", t77 - t1)
-        # print("cost time in calcuate intra energy:", t5 - t4)
-        # print("cost time in calcuate  old  intra:", t88-t77)
-        #print("score",(self.vina_inter_energy + vina_intra_term))
-        return (self.vina_inter_energy + vina_intra_term)/ ( 1 + 0.05846 * (self.ligand.active_torsion + 0.5 * self.ligand.inactive_torsion))
+        return (self.vina_inter_energy + vina_intra_term) / (
+            1 + 0.05846 * (self.ligand.active_torsion
+                           + 0.5 * self.ligand.inactive_torsion))
 
     # ── energy decomposition ─────────────────────────────────────────────
     def _residue_labels(self, mol_obj):
@@ -744,12 +776,9 @@ class VinaSF(BaseScoringFunction):
         un-normalized inter term).  ``cutoff`` controls which heavy-atom pairs
         contribute (default 8 Å).
         """
+        self._ensure_static()
         self.generate_pldist_mtrx()
-        self._prepare_data(cutoff=cutoff)
-        terms = VinaScoreCore(self.vina_dist, self.rec_lig_is_hydrophobic,
-                              self.rec_lig_is_hbond,
-                              self.rec_lig_atom_vdw_sum).score_terms()
-        total = terms["total"]
+        total, mask = self._inter_dense(cutoff=cutoff)
         n_poses = total.shape[0]
         rec_labels = (list(receptor_residue_labels)
                       if receptor_residue_labels is not None
@@ -760,11 +789,12 @@ class VinaSF(BaseScoringFunction):
         target = [dict() for _ in range(n_poses)]
         ligand = [dict() for _ in range(n_poses)]
         inter_total = [0.0] * n_poses
+        total_cpu = total.detach().cpu()
+        mask_cpu = mask.detach().cpu()
         for p in range(n_poses):
-            rec_idx_list = self.rec_atom_indices_list[p]
-            lig_idx_list = self.lig_atom_indices_list[p]
-            for m, (ri, li) in enumerate(zip(rec_idx_list, lig_idx_list)):
-                val = float(total[p][m])
+            rec_idx, lig_idx = torch.where(mask_cpu[p])
+            for ri, li in zip(rec_idx.tolist(), lig_idx.tolist()):
+                val = float(total_cpu[p, ri, li])
                 if val == 0.0:
                     continue
                 rlab = rec_labels[ri] if ri < len(rec_labels) else f"rec:{ri}"
@@ -813,7 +843,8 @@ class VinaScoreCore(object):
         d_ij = self.dist_matrix - self.rec_lig_atom_vdw_sum
         gauss_1 = torch.exp(- torch.pow(d_ij / 0.5, 2)) - (d_ij == 0) * 1.
         gauss_2 = torch.exp(- torch.pow((d_ij - 3) / 2, 2)) - \
-            (d_ij == 0) * 1. * torch.exp(torch.tensor(-1 * 9 / 4))
+            (d_ij == 0) * 1. * torch.exp(torch.tensor(
+                -9 / 4, device=d_ij.device, dtype=d_ij.dtype))
         repulsion = torch.pow(((d_ij < 0) * d_ij), 2)
         hydro_1 = self.rec_lig_is_hydro * (d_ij <= 0.5) * 1.
         hydro_2_condition = self.rec_lig_is_hydro * (d_ij > 0.5) * (d_ij < 1.5) * 1.
