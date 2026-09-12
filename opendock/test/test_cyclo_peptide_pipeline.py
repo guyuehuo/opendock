@@ -98,3 +98,13 @@ def test_relabel_atom_line_uses_model_labels():
     assert out[30:38].strip() == "0.000"
     assert out[77:79].strip() == "C"
     assert _relabel_atom_line(line, None, None) == line
+    out2 = _relabel_atom_line(line, None, None, "C2")
+    assert out2[12:16].strip() == "C2"
+
+
+def test_unique_atom_names():
+    from opendock.protocol.cyclo_peptide_docking import _unique_atom_names
+    assert _unique_atom_names(["N", "CA", "C", "O"]) == ["N", "CA", "C", "O"]
+    assert _unique_atom_names(["C", "C", "C"]) == ["C", "C2", "C3"]
+    assert _unique_atom_names(["C", "C", "C2"]) == ["C", "C3", "C2"]
+    assert _unique_atom_names(["CD1", "CD1"]) == ["CD1", "CD12"]

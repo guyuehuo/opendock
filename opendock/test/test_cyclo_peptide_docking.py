@@ -424,3 +424,22 @@ def test_write_frozen_pdbqt_relabels_from_model(tmp_path):
     assert lines[1][17:20].strip() == "LEU"
     assert lines[1][22:26].strip() == "2"
 
+
+def test_write_frozen_pdbqt_unique_atom_names(tmp_path):
+    from rdkit import Chem
+    mol = Chem.MolFromSmiles("CC")
+    heavy = {
+        0: AtomRecord(_atom_line(0, "C", "C", 0.0, 0.0, 0.0), "C",
+                      (0.0, 0.0, 0.0), 0),
+        1: AtomRecord(_atom_line(0, "C", "C", 1.5, 0.0, 0.0), "C",
+                      (1.5, 0.0, 0.0), 1),
+    }
+    model = PeptideModel(mol=mol, backbone_atoms={0},
+                         residues=[("ALA", [0, 1])])
+    out = str(tmp_path / "frozen.pdbqt")
+    write_frozen_pdbqt(mol, [], heavy, [], out, model)
+    names = [l[12:16].strip() for l in open(out).read().splitlines()
+             if l.startswith("ATOM")]
+    assert len(names) == 2
+    assert len(set(names)) == 2
+

@@ -655,17 +655,49 @@ def _h_lines_for(h_records, mi):
     return sorted((h for h in h_records if h.mol_idx == mi), key=lambda r: r.xyz)
 
 
-def _relabel_atom_line(line, resname, resseq):
-    """Replace resName/resSeq columns with the peptide model's labels.
+def _unique_atom_names(names):
+    """Make names unique within a fragment.
+
+    Names that already occur once are kept; duplicated names get a numeric
+    suffix (``C`` -> ``C``, ``C2``, ``C3``, ...), capped at the 4-character PDB
+    atom-name field.
+    """
+    from collections import Counter
+    counts = Counter(names)
+    used = {n for n, c in counts.items() if c == 1}
+    seen = {}
+    out = []
+    for name in names:
+        if counts[name] == 1:
+            out.append(name)
+            continue
+        seen[name] = seen.get(name, 0) + 1
+        k = seen[name]
+        cand = (name if k == 1 else f"{name}{k}")[:4]
+        while cand in used:
+            k += 1
+            cand = f"{name}{k}"[:4]
+        used.add(cand)
+        out.append(cand)
+    return out
+
+
+def _relabel_atom_line(line, resname, resseq, atomname=None):
+    """Replace resName/resSeq (and optionally atom name) columns.
 
     MGLTools labels residues it does not recognise as ``UNL``; the porality
-    model knows the real per-fragment names/sequence positions.
+    model knows the real per-fragment names/sequence positions.  ``atomname``
+    is only applied when it differs from the existing atom name.
     """
-    if not resname or len(line) < 26:
+    if len(line) < 26:
         return line
-    rn = str(resname)[:3].ljust(3)
-    rs = str(resseq)[:4].rjust(4)
-    return line[:17] + rn + line[20:22] + rs + line[26:]
+    if resname:
+        rn = str(resname)[:3].ljust(3)
+        rs = str(resseq)[:4].rjust(4)
+        line = line[:17] + rn + line[20:22] + rs + line[26:]
+    if atomname and atomname != line[12:16].strip():
+        line = line[:12] + str(atomname)[:4].ljust(4) + line[16:]
+    return line
 
 
 def write_frozen_pdbqt(mol, flexible_pairs, heavy_by_mol, h_records,
@@ -744,16 +776,46 @@ def write_frozen_pdbqt(mol, flexible_pairs, heavy_by_mol, h_records,
     # the frozen PDBQT (and the poses written from it) show the real fragments
     # instead of MGLTools' generic UNL.
     mol_to_res = {}
+    res_of_mol = {}
     for res_i, (rname, idxs) in enumerate(model.residues):
         for ai in idxs:
             mol_to_res[int(ai)] = (rname, res_i + 1)
+            res_of_mol[int(ai)] = res_i
+
+    # Per-fragment unique atom names (keep MGLTools names where unique, suffix
+    # duplicates) so atom selection / visualization is unambiguous; poses
+    # written from this PDBQT inherit the names.  Atoms not assigned to a
+    # porality residue (e.g. capping groups) are grouped by their original
+    # MGLTools residue label.
+    def _group_key(mi, rec):
+        ri = res_of_mol.get(int(mi))
+        if ri is not None:
+            return ("model", ri)
+        return ("mgl", rec.line[17:20].strip(), rec.line[22:26].strip())
+
+    res_records = {}
+    for mi, rec in heavy_by_mol.items():
+        res_records.setdefault(_group_key(mi, rec), []).append(rec)
+    for h in h_records:
+        parent = heavy_by_mol.get(int(h.mol_idx))
+        if parent is not None:
+            key = _group_key(h.mol_idx, parent)
+        else:
+            key = ("mgl", h.line[17:20].strip(), h.line[22:26].strip())
+        res_records.setdefault(key, []).append(h)
+    name_of = {}
+    for recs in res_records.values():
+        names = [r.line[12:16].strip() for r in recs]
+        for r, nm in zip(recs, _unique_atom_names(names)):
+            name_of[id(r)] = nm
 
     def token_line(tok):
         ser = serials[cursor["i"]]
         cursor["i"] += 1
         rec = tok[2]
         label = mol_to_res.get(tok[1])
-        line = _relabel_atom_line(rec.line, *label) if label else rec.line
+        rname, rseq = label if label else (None, None)
+        line = _relabel_atom_line(rec.line, rname, rseq, name_of.get(id(rec)))
         return _with_serial(line, ser)
 
     with open(out_pdbqt, "w") as f:
