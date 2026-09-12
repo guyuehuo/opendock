@@ -1394,6 +1394,24 @@ def _add_ensemble_args(p):
     p.add_argument("--workdir", default=None)
 
 
+def _add_dock_ensemble_args(p):
+    p.add_argument("--ensemble", required=True)
+    p.add_argument("--receptor", required=True)
+    p.add_argument("--center", nargs=3, type=float, required=True)
+    p.add_argument("--size", nargs=3, type=float, required=True)
+    p.add_argument("--keep", type=int, default=20)
+    p.add_argument("--rmsd-cutoff", type=float, default=2.0)
+    p.add_argument("--num-modes", type=int, default=10)
+    p.add_argument("--cfg", default="mc-lbfgs")
+    p.add_argument("--steps-scale", type=float, default=1.0)
+    p.add_argument("--steps-per-ha", type=float, default=8.0)
+    p.add_argument("--clip-cutoff", type=float, default=20.0)
+    p.add_argument("--cluster-cutoff", type=float, default=2.0)
+    p.add_argument("--seed", type=int, default=2026)
+    p.add_argument("--threads", type=int, default=1)
+    p.add_argument("--out", default="ensemble_poses.pdbqt")
+
+
 def build_parser():
     parser = argparse.ArgumentParser(prog="cyclo_peptide_docking",
                                      description=__doc__)
@@ -1404,6 +1422,8 @@ def build_parser():
     _add_dock_args(p_dock)
     p_ens = sub.add_parser("prep-ensemble")
     _add_ensemble_args(p_ens)
+    p_dens = sub.add_parser("dock-ensemble")
+    _add_dock_ensemble_args(p_dens)
     p_run = sub.add_parser("run")
     _add_prep_args(p_run, out_default=None)
     p_run.add_argument("--receptor", required=True)
@@ -1468,6 +1488,18 @@ def _do_prep_ensemble(args):
     return models, manifest
 
 
+def _do_dock_ensemble(args):
+    scores, _ = dock_ensemble(
+        args.ensemble, args.receptor, args.center, args.size,
+        out_pdbqt=args.out, keep=args.keep, rmsd_cutoff=args.rmsd_cutoff,
+        num_modes=args.num_modes, cfg=args.cfg,
+        steps_scale=args.steps_scale, steps_per_ha=args.steps_per_ha,
+        clip_cutoff=args.clip_cutoff, cluster_cutoff=args.cluster_cutoff,
+        seed=args.seed, threads=args.threads)
+    log(f"wrote {len(scores)} poses to {args.out}")
+    return scores
+
+
 def main(argv=None):
     args = build_parser().parse_args(argv)
     if args.command == "prep":
@@ -1476,6 +1508,8 @@ def main(argv=None):
         _do_prep_ensemble(args)
     elif args.command == "dock":
         _do_dock(args, args.out)
+    elif args.command == "dock-ensemble":
+        _do_dock_ensemble(args)
     elif args.command == "run":
         os.makedirs(args.out_dir, exist_ok=True)
         frozen_path = args.out or os.path.join(args.out_dir,

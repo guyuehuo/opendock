@@ -94,3 +94,13 @@ def test_dock_ensemble_uses_multiple_conformers(tmp_path):
     assert "REMARK Conformer" in text
     assert len({p["conformer"] for p in poses}) >= 1
 
+
+def test_dock_ensemble_cli_parsing():
+    from opendock.protocol.cyclo_peptide_docking import build_parser
+    p = build_parser()
+    a = p.parse_args(["dock-ensemble", "--ensemble", "ens",
+                      "--receptor", "r.pdbqt", "--center", "0", "0", "0",
+                      "--size", "10", "10", "10", "--keep", "5"])
+    assert a.command == "dock-ensemble"
+    assert a.ensemble == "ens" and a.keep == 5
+
