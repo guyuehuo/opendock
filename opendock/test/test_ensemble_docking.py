@@ -69,3 +69,28 @@ def test_read_pose_models(tmp_path):
     assert "REMARK LigandResidue d:ALA:1 -0.5" in models[0]["remarks"]
     assert np.allclose(models[0]["xyz"], [[1.0, 2.0, 3.0]])
     assert np.allclose(models[1]["xyz"], [[4.0, 5.0, 6.0]])
+
+
+@NEED_MGLTOOLS
+def test_dock_ensemble_uses_multiple_conformers(tmp_path):
+    from opendock.protocol.cyclo_peptide_docking import (
+        dock_ensemble, prepare_peptide_ensemble)
+    ens = str(tmp_path / "ens")
+    prepare_peptide_ensemble(smiles=CYCLIC, out_dir=ens, n_conformers=8,
+                             n_clusters=2, seed=1, prune_rms=0.3, tools=None)
+    rec = os.path.join(REPO, "benchmarks", "peptide_docking", "example",
+                       "receptor.pdbqt")
+    if not os.path.exists(rec):
+        pytest.skip("example receptor not present")
+    out = str(tmp_path / "ensemble_poses.pdbqt")
+    scores, poses = dock_ensemble(ens, rec, center=[0.45, 9.06, -7.12],
+                                  size=[12, 12, 12], keep=10,
+                                  rmsd_cutoff=2.0, num_modes=2,
+                                  cfg="mc-nomin", steps_per_ha=3,
+                                  steps_scale=0.2, seed=1, out_pdbqt=out)
+    assert scores and poses
+    text = open(out).read()
+    assert "REMARK VinaScore" in text
+    assert "REMARK Conformer" in text
+    assert len({p["conformer"] for p in poses}) >= 1
+

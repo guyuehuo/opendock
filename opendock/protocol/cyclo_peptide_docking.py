@@ -1301,6 +1301,7 @@ def dock_ensemble(ensemble, receptor_pdbqt, center, size,
     ``REMARK Conformer <n>`` per pose) and returns ``(scores, poses)``.
     """
     from opendock.core.conformation import LigandConformation
+    from opendock.core.io import write_ligand_traj
     if os.path.isdir(ensemble):
         manifest_path = os.path.join(ensemble, "ensemble.json")
     else:
