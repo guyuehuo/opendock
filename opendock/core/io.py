@@ -51,25 +51,42 @@ def generate_new_configs(config_inp_fpath: str,
     return configs
 
 
+def _pdb_element(atom_name):
+    """Best-effort element symbol from a PDB atom name."""
+    name = (atom_name or "").strip()
+    if name[:2].upper() == "CL":
+        return "Cl"
+    if name[:2].upper() == "BR":
+        return "Br"
+    return name[0] if name else "C"
+
+
 def write_ligand_traj(cnfrs: list, 
                       ligand: None, 
                       output: str, 
-                      information: dict = None):
+                      information: dict = None,
+                      pose_remarks: list = None):
     """
     Write lignad trajectory.
+
+    Heavy-atom lines keep the input ligand's residue name, chain, seqid and
+    atom name (only serial and coordinates are rewritten) so the pose displays
+    correctly in a 3D viewer / PyMOL.
 
     Args:
     -----
     ligand: LigandConformation, 
     output: str, the trajectory file path.
     information: dict, the information for output if any.
+    pose_remarks: list, optional per-pose list of REMARK strings written
+        after the ``information`` lines for that pose.
     """
 
     origin_heavy_atoms_lines = ligand.origin_heavy_atoms_lines
     #print(cnfrs)
     lines = []
     for _idx, cnfr in enumerate(cnfrs):
-        # convert cnfr to xyz, coords shape (1, N, 3)
+        # convert cnfr to xyz, coords shape (N, 3)
         coord = ligand.cnfr2xyz([cnfr, ])[0]
         lines.append('MODEL%9s' % str(_idx + 1))
 
@@ -80,23 +97,26 @@ def write_ligand_traj(cnfrs: list,
                 except:
                     lines.append(f"REMARK {key} {information[key][0]:.3f}")
 
-        # make output atom lines
+        if pose_remarks is not None and _idx < len(pose_remarks):
+            for remark in (pose_remarks[_idx] or []):
+                lines.append(str(remark))
+
+        # make output atom lines, preserving the input residue/chain/seqid/atom
         for num, line in enumerate(origin_heavy_atoms_lines):
             x = coord[num][0].detach().numpy()
             y = coord[num][1].detach().numpy()
             z = coord[num][2].detach().numpy()
 
-            atom_type = line.split()[2]
-            pre_element = line.split()[2]
-            if pre_element[:2] == "CL":
-                element = "Cl"
-            elif pre_element[:2] == "BR":
-                element = "Br"
-            else:
-                element = pre_element[0]
+            atom_name = line[12:16].strip()
+            res_name = line[17:20].strip() or "LIG"
+            chain = line[21] if len(line) > 21 else " "
+            res_seq = line[22:26].strip() or "1"
+            element = _pdb_element(atom_name)
 
-            line = "ATOM%7s%5s%4s%2s%4s%12s%8s%8s%6s%6s%12s" % (
-                str(num + 1), atom_type, "LIG", "A", "1", "%.3f" % x, "%.3f" % y, "%.3f" % z, "1.00", "0.00", element)
+            line = ("ATOM  %5d %-4s %3s %1s%4s    "
+                    "%8.3f%8.3f%8.3f  1.00  0.00          %2s") % (
+                num + 1, atom_name, res_name, chain, res_seq,
+                x, y, z, element)
             lines.append(line)
         
         lines.append("TER\nENDMDL")
