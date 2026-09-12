@@ -54,3 +54,44 @@ def test_cluster_by_backbone_rmsd_reduces_and_medoids_member():
     assert set(meds) <= set(ids)
     assert len(cluster_by_backbone_rmsd(molH, ids, sorted(model.backbone_atoms),
                                         len(ids) + 5)) == len(ids)
+
+
+@NEED_MGLTOOLS
+def test_prepare_peptide_ensemble_smiles(tmp_path):
+    from opendock.protocol.cyclo_peptide_docking import (
+        prepare_peptide_ensemble)
+    out_dir = str(tmp_path / "ens")
+    models, manifest = prepare_peptide_ensemble(
+        smiles=CYCLIC, out_dir=out_dir, n_conformers=12, n_clusters=3,
+        seed=4, prune_rms=0.3, tools=None)
+    assert manifest["source"] == "smiles"
+    assert 1 <= len(manifest["conformers"]) <= 3
+    assert all(c["cluster"] is not None for c in manifest["conformers"])
+    for c in manifest["conformers"]:
+        assert os.path.exists(os.path.join(out_dir, c["file"]))
+        assert os.path.exists(os.path.join(out_dir, c["meta"]))
+    assert os.path.exists(os.path.join(out_dir, "ensemble.json"))
+
+
+@NEED_MGLTOOLS
+def test_prepare_peptide_ensemble_provided_single(tmp_path):
+    from rdkit import Chem
+    from rdkit.Chem import AllChem
+    from opendock.protocol.cyclo_peptide_docking import (
+        prepare_peptide_ensemble)
+    mol, _ = load_mol(smiles=CYCLIC)
+    molH = Chem.AddHs(mol)
+    AllChem.EmbedMolecule(molH, randomSeed=3)
+    sdf = str(tmp_path / "one.sdf")
+    w = Chem.SDWriter(sdf)
+    w.write(Chem.RemoveHs(molH))
+    w.close()
+    out_dir = str(tmp_path / "ens")
+    models, manifest = prepare_peptide_ensemble(
+        input_path=sdf, out_dir=out_dir, tools=None)
+    assert manifest["source"] == "input"
+    assert len(manifest["conformers"]) == 1
+    assert manifest["conformers"][0]["cluster"] is None
+    assert os.path.exists(os.path.join(out_dir, "conformer_00.pdbqt"))
+    assert os.path.exists(os.path.join(out_dir, "ensemble.json"))
+

@@ -1083,6 +1083,133 @@ def build_cyclo_peptide_components(receptor, ligand, distance_pairs=None,
 
 
 # --------------------------------------------------------------------------- #
+# conformer ensemble preparation
+# --------------------------------------------------------------------------- #
+def _heavy_conformer(molH, conf_id):
+    """A heavy-atom copy of ``molH`` carrying only conformer ``conf_id``."""
+    Chem, _, _ = _require_rdkit()
+    heavy = Chem.RemoveHs(Chem.Mol(molH))
+    conf = Chem.Conformer(heavy.GetConformer(conf_id))
+    heavy.RemoveAllConformers()
+    heavy.AddConformer(conf, assignId=True)
+    return heavy
+
+
+def _load_provided_conformers(input_path):
+    """All 3D models from a provided file (multi-model SDF or one structure)."""
+    Chem, _, _ = _require_rdkit()
+    ext = os.path.splitext(input_path)[1].lower()
+    if ext == ".sdf":
+        mols = [m for m in Chem.SDMolSupplier(input_path, removeHs=True,
+                                              sanitize=True) if m is not None]
+        if not mols:
+            raise ValueError(f"no readable molecule in {input_path}")
+        return mols
+    mol, _ = load_mol(input_path=input_path)
+    return [mol]
+
+
+def _assign_to_medoids(mol, conf_ids, backbone_indices, medoids):
+    """Map each conformer to its nearest medoid (backbone RMSD)."""
+    idx = np.asarray(sorted(int(a) for a in backbone_indices), dtype=int)
+    coords = {cid: mol.GetConformer(cid).GetPositions()[idx]
+              for cid in conf_ids}
+    assign = {}
+    for cid in conf_ids:
+        best, best_d = None, None
+        for med in medoids:
+            d = _kabsch_rmsd(coords[cid], coords[med])
+            if best_d is None or d < best_d:
+                best, best_d = med, d
+        assign[cid] = best
+    return assign
+
+
+def prepare_peptide_ensemble(input_path=None, smiles=None,
+                             out_dir="peptide_ensemble",
+                             n_conformers=100, n_clusters=20, seed=2026,
+                             prune_rms=0.5, optimize="mmff",
+                             tools=None, workdir=None):
+    """Generate/cluster peptide conformers and write backbone-frozen PDBQTs.
+
+    SMILES input is embedded with macrocycle-aware ETKDG and clustered by
+    backbone RMSD into ``n_clusters`` medoids.  A provided 3D file is used
+    as-is (multi-model SDF = one conformer per model).  Writes
+    ``conformer_XX.pdbqt`` (+ ``.meta.json``) and ``ensemble.json`` into
+    ``out_dir`` and returns ``(models, manifest)``.
+    """
+    os.makedirs(out_dir, exist_ok=True)
+    ext = os.path.splitext(input_path)[1].lower() if input_path else ""
+    smiles_source = smiles is not None or ext in (".smi", ".smiles")
+
+    entries = []
+    if smiles_source:
+        mol, _ = load_mol(input_path=input_path, smiles=smiles)
+        model0 = build_peptide_model(mol)
+        backbone_ref = sorted(model0.backbone_atoms)
+        molH, records = generate_conformers(
+            mol, n_conformers=n_conformers, seed=seed, prune_rms=prune_rms,
+            optimize=optimize)
+        ids = [r["conf_id"] for r in records]
+        medoids = cluster_by_backbone_rmsd(molH, ids, backbone_ref, n_clusters)
+        if len(medoids) < n_clusters:
+            log(f"warning: only {len(medoids)} clusters (requested "
+                f"{n_clusters})")
+        assign = _assign_to_medoids(molH, ids, backbone_ref, medoids)
+        by_id = {r["conf_id"]: r for r in records}
+        for pos, cid in enumerate(medoids):
+            rec = by_id[cid]
+            size = sum(1 for x in ids if assign[x] == cid)
+            entries.append({"mol": _heavy_conformer(molH, cid),
+                            "energy": rec["energy"],
+                            "optimizer": rec["optimizer"],
+                            "cluster": pos, "cluster_size": size,
+                            "rmsd": 0.0})
+        source = "smiles"
+        n_generated = len(records)
+    else:
+        mols = _load_provided_conformers(input_path)
+        for m in mols:
+            entries.append({"mol": m, "energy": None, "optimizer": "none",
+                            "cluster": None, "cluster_size": 1, "rmsd": None})
+        source = "input"
+        n_generated = len(mols)
+
+    models = []
+    conformers = []
+    for i, e in enumerate(entries):
+        model = build_peptide_model(e["mol"])
+        flexible, backbone = classify_flexible_bonds(model)
+        out_pdbqt = os.path.join(out_dir, f"conformer_{i:02d}.pdbqt")
+        sub = os.path.join(workdir, f"conformer_{i:02d}") if workdir else None
+        meta = _freeze_and_write(e["mol"], model, flexible, backbone,
+                                 out_pdbqt, tools=tools, workdir=sub)
+        meta_path = os.path.splitext(out_pdbqt)[0] + ".meta.json"
+        with open(meta_path, "w") as f:
+            json.dump(meta, f, indent=2)
+        models.append(model)
+        conformers.append({
+            "index": i, "file": os.path.basename(out_pdbqt),
+            "meta": os.path.basename(meta_path), "energy": e["energy"],
+            "optimizer": e["optimizer"], "cluster": e["cluster"],
+            "cluster_size": e["cluster_size"],
+            "backbone_rmsd_to_medoid": e["rmsd"]})
+
+    manifest = {
+        "source": source,
+        "n_generated": n_generated,
+        "n_clusters": n_clusters if source == "smiles" else None,
+        "optimizer": entries[0]["optimizer"] if entries else "none",
+        "backbone_atoms": sorted(int(a) for a in models[0].backbone_atoms)
+        if models else [],
+        "conformers": conformers,
+    }
+    with open(os.path.join(out_dir, "ensemble.json"), "w") as f:
+        json.dump(manifest, f, indent=2)
+    return models, manifest
+
+
+# --------------------------------------------------------------------------- #
 # CLI
 # --------------------------------------------------------------------------- #
 def _add_prep_args(p, out_default="peptide_frozen.pdbqt"):
