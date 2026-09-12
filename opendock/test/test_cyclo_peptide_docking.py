@@ -201,7 +201,7 @@ def test_dock_peptide_smoke(tmp_path):
     decomp = {}
     scores, cnfrs = dock_peptide(
         lig, rec, center=[0.45, 9.06, -7.12], size=[12, 12, 12],
-        cfg="mc-nomin", steps_per_ha=3, steps_scale=0.2, num_modes=1,
+        cfg="mc-nomin", steps_per_ha=3, steps_scale=0.2, num_modes=3,
         seed=1, out_pdbqt=out,
         scorer_components=[{"type": "vina"}, {"type": "contact_ratio"}],
         components_out=comps, decomposition_out=decomp,
@@ -210,8 +210,12 @@ def test_dock_peptide_smoke(tmp_path):
     assert scores and cnfrs and len(scores) == len(cnfrs)
     assert comps and "vina" in comps[0] and "contact_ratio" in comps[0]
     assert decomp.get("target_residues"), "no decomposition"
+    # Every clustered pose must be decomposed, not just the best one.
     assert len(decomp["target_residues"]) == len(scores)
+    assert len(decomp["ligand_residues"]) == len(scores)
     assert set(decomp["by_cutoff"]) == {"4.0", "8.0"}
+    for cut in decomp["by_cutoff"].values():
+        assert len(cut["target_residues"]) == len(scores)
 
 
 def test_vina_interaction_decomposition():
@@ -335,6 +339,20 @@ def test_prepare_receptor_pdbqt(tmp_path, monkeypatch):
     assert os.path.exists(out)
     with open(out) as f:
         assert any(line.startswith(("ATOM", "HETATM")) for line in f)
+
+
+def test_atom_map_residue_labels_unique(tmp_path):
+    d = _mgltools_dir()
+    if not d:
+        pytest.skip("MGLTools not available")
+    tools = find_mgltools(d)
+    smi = "C[C@H](N)C(=O)N[C@@H](C)C(=O)N[C@@H](C)C(=O)O"  # tri-alanine
+    out = os.path.join(str(tmp_path), "ala3.pdbqt")
+    _, meta = prepare_peptide_pdbqt(smiles=smi, out_pdbqt=out, tools=tools,
+                                    workdir=str(tmp_path / "work"))
+    labels = [a["residue"] for a in meta["atom_map"]]
+    assert meta["n_residues"] == 3
+    assert len(set(labels)) == 3, labels
 
 
 def test_cli_parsing():

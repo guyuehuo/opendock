@@ -700,9 +700,12 @@ def prepare_peptide_pdbqt(input_path=None, smiles=None,
     # residue and flexible frame, so Vina energies can be decomposed per
     # ligand residue/frame (independent of MGLTools' residue labels).
     mol_to_res = {}
-    for rname, idxs in model.residues:
+    for res_i, (rname, idxs) in enumerate(model.residues):
+        # Residue names repeat (e.g. several ALA); suffix the sequence position
+        # so the per-residue decomposition keeps them distinct.
+        label = f"{rname}{res_i + 1}"
         for ai in idxs:
-            mol_to_res[int(ai)] = rname
+            mol_to_res[int(ai)] = label
     heavy_order = (topo or {}).get("heavy_order", [])
     frame_of = (topo or {}).get("frame_of", {})
     atom_map = [
@@ -875,7 +878,9 @@ def dock_peptide(ligand_pdbqt, receptor_pdbqt, center, size, cfg="mc-lbfgs",
         try:
             vina_sf = sf._vina_sf() if hasattr(sf, "_vina_sf") else sf
             ligand.cnfrs_, receptor.cnfrs_ = final_cnfrs, None
-            ligand.cnfr2xyz(final_cnfrs)
+            # cnfr2xyz decodes cnfr_tensor[0] as an [N, 6+k] block, so stack
+            # the per-pose tensors into one block to decompose every pose.
+            ligand.cnfr2xyz([torch.cat(final_cnfrs, dim=0)])
             if decomposition_cutoffs:
                 by_cutoff = {}
                 for cut in decomposition_cutoffs:
