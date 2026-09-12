@@ -95,3 +95,14 @@ def test_prepare_peptide_ensemble_provided_single(tmp_path):
     assert os.path.exists(os.path.join(out_dir, "conformer_00.pdbqt"))
     assert os.path.exists(os.path.join(out_dir, "ensemble.json"))
 
+
+def test_prep_ensemble_cli_parsing():
+    from opendock.protocol.cyclo_peptide_docking import build_parser
+    p = build_parser()
+    a = p.parse_args(["prep-ensemble", "--smiles", CYCLIC,
+                      "--out-dir", "ens", "--n-conformers", "50",
+                      "--n-clusters", "10", "--optimize", "uff"])
+    assert a.command == "prep-ensemble"
+    assert a.out_dir == "ens" and a.n_conformers == 50
+    assert a.n_clusters == 10 and a.optimize == "uff"
+

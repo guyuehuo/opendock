@@ -1238,6 +1238,20 @@ def _add_dock_args(p):
     p.add_argument("--out", default="peptide_poses.pdbqt")
 
 
+def _add_ensemble_args(p):
+    p.add_argument("--input", default=None)
+    p.add_argument("--smiles", default=None)
+    p.add_argument("--smiles-file", default=None)
+    p.add_argument("--out-dir", default="peptide_ensemble")
+    p.add_argument("--n-conformers", type=int, default=100)
+    p.add_argument("--n-clusters", type=int, default=20)
+    p.add_argument("--seed", type=int, default=2026)
+    p.add_argument("--prune-rms", type=float, default=0.5)
+    p.add_argument("--optimize", choices=("mmff", "uff"), default="mmff")
+    p.add_argument("--mgltools", default=None)
+    p.add_argument("--workdir", default=None)
+
+
 def build_parser():
     parser = argparse.ArgumentParser(prog="cyclo_peptide_docking",
                                      description=__doc__)
@@ -1246,6 +1260,8 @@ def build_parser():
     _add_prep_args(p_prep)
     p_dock = sub.add_parser("dock")
     _add_dock_args(p_dock)
+    p_ens = sub.add_parser("prep-ensemble")
+    _add_ensemble_args(p_ens)
     p_run = sub.add_parser("run")
     _add_prep_args(p_run, out_default=None)
     p_run.add_argument("--receptor", required=True)
@@ -1297,10 +1313,25 @@ def _do_dock(args, out_pdbqt):
     return scores
 
 
+def _do_prep_ensemble(args):
+    _resolve_smiles(args)
+    tools = find_mgltools(getattr(args, "mgltools", None))
+    models, manifest = prepare_peptide_ensemble(
+        input_path=args.input, smiles=args.smiles, out_dir=args.out_dir,
+        n_conformers=args.n_conformers, n_clusters=args.n_clusters,
+        seed=args.seed, prune_rms=args.prune_rms, optimize=args.optimize,
+        tools=tools, workdir=args.workdir)
+    log(f"wrote {len(models)} conformers to {args.out_dir}")
+    log(f"source={manifest['source']} generated={manifest['n_generated']}")
+    return models, manifest
+
+
 def main(argv=None):
     args = build_parser().parse_args(argv)
     if args.command == "prep":
         _do_prep(args, args.out)
+    elif args.command == "prep-ensemble":
+        _do_prep_ensemble(args)
     elif args.command == "dock":
         _do_dock(args, args.out)
     elif args.command == "run":
