@@ -316,6 +316,21 @@ def test_composite_contact_ratio_weights():
     assert ((val >= 0) & (val <= 2.0)).all()
 
 
+def test_residue_groups_match_fragment_labels():
+    import pandas as pd
+    from opendock.scorer.composite import _residue_groups
+
+    df = pd.DataFrame({"chain": ["", "", "", ""],
+                       "resSeq": ["1", "1", "2", "2"]})
+    labels = ["ALA1", "ALA1", "PHE2", "PHE2"]
+    # fragment labels select the right atoms ...
+    assert _residue_groups(df, ["ALA1"], labels) == [("*:ALA1", [0, 1])]
+    # ... numeric resSeq still works ...
+    assert _residue_groups(df, ["2"], labels) == [("*:2", [2, 3])]
+    # ... and without labels a fragment label does not match.
+    assert _residue_groups(df, ["ALA1"]) == []
+
+
 def _mgltools_dir():
     for d in (os.environ.get("MGLTOOLS_HOME"),
               os.path.expanduser("~/Documents/apps/mgltools/bin"),

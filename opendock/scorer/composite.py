@@ -74,11 +74,16 @@ def _apply_potential(x, constraint="wall", bounds=(0.0, 3.141592653589793),
     raise ValueError(f"unknown constraint type {constraint!r}")
 
 
-def _residue_groups(df, specs: Sequence) -> List[Tuple[str, List[int]]]:
+def _residue_groups(df, specs: Sequence, labels: Optional[Sequence] = None) -> List[Tuple[str, List[int]]]:
     """Resolve ``["A:11", "12", {chain,resSeq}]`` to (label, atom indices).
 
     A bare string or dict is treated as a single spec (not iterated
     character-/key-wise).
+
+    When ``labels`` is given (one per row, e.g. ligand fragment labels such as
+    ``ALA1``), a spec may also match a label directly.  This lets the ligand
+    side select the same per-fragment labels the energy decomposition reports,
+    instead of only MGLTools' numeric ``resSeq``.
     """
     if isinstance(specs, (str, dict)):
         specs = [specs]
@@ -86,6 +91,7 @@ def _residue_groups(df, specs: Sequence) -> List[Tuple[str, List[int]]]:
         return []
     chains = [str(c) for c in df["chain"]] if "chain" in df.columns else [""] * len(df)
     seqs = [str(s) for s in df["resSeq"]] if "resSeq" in df.columns else [""] * len(df)
+    label_list = [str(x) for x in labels] if labels is not None else None
     groups: List[Tuple[str, List[int]]] = []
     seen = set()
     for spec in specs or []:
@@ -95,8 +101,14 @@ def _residue_groups(df, specs: Sequence) -> List[Tuple[str, List[int]]]:
         else:
             parts = str(spec).split(":")
             chain, seq = (parts[0], parts[1]) if len(parts) > 1 else ("", parts[0])
-        idxs = [i for i in range(len(seqs))
-                if seqs[i] == seq and (not chain or chains[i] == chain)]
+        idxs = []
+        for i in range(len(seqs)):
+            if chain and chains[i] != chain:
+                continue
+            if label_list is not None and i < len(label_list) and label_list[i] == seq:
+                idxs.append(i)
+            elif seqs[i] == seq:
+                idxs.append(i)
         label = f"{chain or '*'}:{seq}"
         if idxs and label not in seen:
             seen.add(label)
@@ -109,13 +121,19 @@ class CompositeSF(BaseScoringFunction):
 
     def __init__(self, receptor=None, ligand=None,
                  components: Optional[Sequence] = None,
-                 differentiable: bool = True):
+                 differentiable: bool = True,
+                 ligand_residue_labels: Optional[Sequence] = None):
         super().__init__(receptor=receptor, ligand=ligand)
         self.components = [
             c if isinstance(c, ScoreComponent) else ScoreComponent.from_dict(c)
             for c in (components or [{"type": "vina"}])
         ]
         self.differentiable = differentiable
+        # Per-atom ligand fragment labels (e.g. ALA1, PHE2); when given, ligand
+        # residue selections may use them in addition to chain/resSeq.
+        self.ligand_residue_labels = (
+            list(ligand_residue_labels) if ligand_residue_labels is not None
+            else None)
         self._vina = None
         self._last: Dict[str, torch.Tensor] = {}
 
@@ -133,8 +151,8 @@ class CompositeSF(BaseScoringFunction):
     def _rec_coords(self) -> torch.Tensor:
         return self.receptor.rec_heavy_atoms_xyz.reshape(-1, 3)
 
-    def _group_indices(self, df, specs):
-        groups = _residue_groups(df, specs)
+    def _group_indices(self, df, specs, labels=None):
+        groups = _residue_groups(df, specs, labels)
         return sorted({i for _, idxs in groups for i in idxs})
 
     def _sidechain_indices(self, df, indices):
@@ -148,7 +166,8 @@ class CompositeSF(BaseScoringFunction):
         tgt_idx = self._group_indices(self.receptor.dataframe_ha_,
                                       spec.get("target_residues", []))
         lig_idx = self._group_indices(self.ligand.dataframe_ha_,
-                                      spec.get("ligand_residues", []))
+                                      spec.get("ligand_residues", []),
+                                      self.ligand_residue_labels)
         if not tgt_idx or not lig_idx:
             return torch.zeros(n_poses, device=coords.device,
                                dtype=coords.dtype)
@@ -172,9 +191,12 @@ class CompositeSF(BaseScoringFunction):
 
     def _selection_indices(self, sel):
         mol = (sel or {}).get("mol", "receptor")
-        df = (self.receptor.dataframe_ha_ if mol == "receptor"
-              else self.ligand.dataframe_ha_)
-        return self._group_indices(df, (sel or {}).get("residues", []))
+        if mol == "receptor":
+            return self._group_indices(self.receptor.dataframe_ha_,
+                                       (sel or {}).get("residues", []))
+        return self._group_indices(self.ligand.dataframe_ha_,
+                                   (sel or {}).get("residues", []),
+                                   self.ligand_residue_labels)
 
     def _selection_com(self, sel, n_poses):
         idx = self._selection_indices(sel)
@@ -221,7 +243,8 @@ class CompositeSF(BaseScoringFunction):
                                   device=lig.device, dtype=lig.dtype)
             if "ligand_residues" in p:
                 lig_groups = _residue_groups(self.ligand.dataframe_ha_,
-                                             p["ligand_residues"])
+                                             p["ligand_residues"],
+                                             self.ligand_residue_labels)
                 lig_idx = sorted({i for _, idxs in lig_groups for i in idxs})
                 if not lig_idx:
                     return torch.full((n_poses,),

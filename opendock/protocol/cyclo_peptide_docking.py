@@ -826,7 +826,8 @@ def dock_peptide(ligand_pdbqt, receptor_pdbqt, center, size, cfg="mc-lbfgs",
         if scorer_components:
             from opendock.scorer.composite import CompositeSF
             scorer = CompositeSF(receptor=receptor, ligand=ligand,
-                                 components=scorer_components)
+                                 components=scorer_components,
+                                 ligand_residue_labels=ligand_residue_labels)
         else:
             scorer = VinaSF(receptor=receptor, ligand=ligand)
     sf = scorer
