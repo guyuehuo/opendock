@@ -54,3 +54,16 @@ def test_write_ligand_traj_blank_chain_preserved(tmp_path):
     assert line[17:20].strip() == "UNL"
     assert line[21] == " "
     assert line[22:26].strip() == "1"
+
+
+def test_write_ligand_traj_xyz_list(tmp_path):
+    import numpy as np
+    out = str(tmp_path / "poses.pdb")
+    lig = _StubLigand()
+    xyz = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+    write_ligand_traj([None], lig, out, xyz_list=[xyz])
+    line = [l for l in open(out).read().splitlines()
+            if l.startswith("ATOM")][0]
+    assert line[30:38].strip() == "1.000"
+    assert line[38:46].strip() == "2.000"
+    assert line[46:54].strip() == "3.000"

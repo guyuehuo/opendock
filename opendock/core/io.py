@@ -1,5 +1,7 @@
 import os
 
+import numpy as np
+
 
 ALLOWED_CONFIGS_TERMS = ['receptor', 'ligand', 'out',
                          'center_x', 'center_y', 'center_z',
@@ -65,7 +67,8 @@ def write_ligand_traj(cnfrs: list,
                       ligand: None, 
                       output: str, 
                       information: dict = None,
-                      pose_remarks: list = None):
+                      pose_remarks: list = None,
+                      xyz_list: list = None):
     """
     Write lignad trajectory.
 
@@ -80,6 +83,9 @@ def write_ligand_traj(cnfrs: list,
     information: dict, the information for output if any.
     pose_remarks: list, optional per-pose list of REMARK strings written
         after the ``information`` lines for that pose.
+    xyz_list: list, optional per-pose ``(N, 3)`` coordinate arrays.  When
+        given, coordinates are taken from here instead of decoding ``cnfrs``
+        (used to write poses pooled from different ligand conformers).
     """
 
     origin_heavy_atoms_lines = ligand.origin_heavy_atoms_lines
@@ -87,7 +93,10 @@ def write_ligand_traj(cnfrs: list,
     lines = []
     for _idx, cnfr in enumerate(cnfrs):
         # convert cnfr to xyz, coords shape (N, 3)
-        coord = ligand.cnfr2xyz([cnfr, ])[0]
+        if xyz_list is not None:
+            coord = np.asarray(xyz_list[_idx], dtype=float)
+        else:
+            coord = ligand.cnfr2xyz([cnfr, ])[0].detach().numpy()
         lines.append('MODEL%9s' % str(_idx + 1))
 
         if information is not None:
@@ -103,9 +112,9 @@ def write_ligand_traj(cnfrs: list,
 
         # make output atom lines, preserving the input residue/chain/seqid/atom
         for num, line in enumerate(origin_heavy_atoms_lines):
-            x = coord[num][0].detach().numpy()
-            y = coord[num][1].detach().numpy()
-            z = coord[num][2].detach().numpy()
+            x = coord[num][0]
+            y = coord[num][1]
+            z = coord[num][2]
 
             atom_name = line[12:16].strip()
             res_name = line[17:20].strip() or "LIG"
