@@ -1360,19 +1360,101 @@ def _greedy_rmsd_select(poses, keep, cutoff):
     return kept
 
 
+def _pose_decomposition_slice(conf_decomp, j):
+    """Per-pose slice of a ``dock_peptide`` decomposition, or ``None``.
+
+    ``conf_decomp`` is a per-conformer ``decomposition_out`` dict whose arrays
+    hold one entry per clustered pose, in pose-file MODEL order.
+    """
+    if not isinstance(conf_decomp, dict) or not conf_decomp:
+        return None
+    totals = conf_decomp.get("inter_total")
+    targets = conf_decomp.get("target_residues")
+    ligands = conf_decomp.get("ligand_residues")
+    if not (isinstance(totals, list) and isinstance(targets, list)
+            and isinstance(ligands, list)):
+        return None
+    if j >= len(totals) or j >= len(targets) or j >= len(ligands):
+        return None
+    out = {
+        "cutoff": conf_decomp.get("cutoff"),
+        "inter_total": totals[j],
+        "target_residues": targets[j],
+        "ligand_residues": ligands[j],
+    }
+    by_cutoff = conf_decomp.get("by_cutoff")
+    if isinstance(by_cutoff, dict):
+        cuts = {}
+        for cut, d in by_cutoff.items():
+            if not isinstance(d, dict):
+                continue
+            dt = d.get("inter_total")
+            dtr = d.get("target_residues")
+            dlr = d.get("ligand_residues")
+            if not (isinstance(dt, list) and isinstance(dtr, list)
+                    and isinstance(dlr, list)):
+                continue
+            if j >= len(dt) or j >= len(dtr) or j >= len(dlr):
+                continue
+            cuts[cut] = {
+                "cutoff": d.get("cutoff"),
+                "inter_total": dt[j],
+                "target_residues": dtr[j],
+                "ligand_residues": dlr[j],
+            }
+        if cuts:
+            out["by_cutoff"] = cuts
+    return out
+
+
+def _assemble_ensemble_decomposition(decomposition_out, kept):
+    """Assemble kept-pose decomposition slices into ``dock_peptide``'s shape.
+
+    The per-pose arrays must stay aligned with the pose list (the UI indexes
+    them by pose), so a single pose without a decomposition drops the whole
+    result rather than shifting the arrays.
+    """
+    slices = [p.get("decomposition") for p in kept]
+    if not slices or any(s is None for s in slices):
+        return
+    decomposition_out["cutoff"] = slices[0].get("cutoff")
+    decomposition_out["inter_total"] = [s["inter_total"] for s in slices]
+    decomposition_out["target_residues"] = [s["target_residues"] for s in slices]
+    decomposition_out["ligand_residues"] = [s["ligand_residues"] for s in slices]
+    if all("by_cutoff" in s for s in slices):
+        cuts = list(slices[0]["by_cutoff"].keys())
+        if all(set(s["by_cutoff"].keys()) == set(cuts) for s in slices):
+            decomposition_out["by_cutoff"] = {
+                cut: {
+                    "cutoff": slices[0]["by_cutoff"][cut].get("cutoff"),
+                    "inter_total": [s["by_cutoff"][cut]["inter_total"]
+                                    for s in slices],
+                    "target_residues": [s["by_cutoff"][cut]["target_residues"]
+                                        for s in slices],
+                    "ligand_residues": [s["by_cutoff"][cut]["ligand_residues"]
+                                        for s in slices],
+                }
+                for cut in cuts
+            }
+
+
 def dock_ensemble(ensemble, receptor_pdbqt, center, size,
                   out_pdbqt="ensemble_poses.pdbqt", keep=20,
                   rmsd_cutoff=2.0, num_modes=10, cfg="mc-lbfgs",
                   steps_scale=1.0, steps_per_ha=8.0, clip_cutoff=20.0,
                   cluster_cutoff=2.0, seed=2026, threads=1,
                   scorer=None, scorer_components=None, components_out=None,
-                  progress_callback=None):
+                  progress_callback=None, decomposition_out=None,
+                  ligand_residue_labels=None, decomposition_cutoff=8.0,
+                  decomposition_cutoffs=None):
     """Dock every conformer in an ensemble and keep diverse poses.
 
     ``ensemble`` is an ``ensemble.json`` path or the ensemble directory.  Each
     conformer is docked with :func:`dock_peptide`; the pooled poses are greedily
     filtered by receptor-frame heavy-atom RMSD.  Writes ``out_pdbqt`` (with a
-    ``REMARK Conformer <n>`` per pose) and returns ``(scores, poses)``.
+    ``REMARK Conformer <n>`` per pose) and returns ``(scores, poses)``.  When
+    ``decomposition_out`` is given, it is filled with the per-residue energy
+    decomposition of the kept poses (same shape as :func:`dock_peptide`).
     """
     from opendock.core.conformation import LigandConformation
     from opendock.core.io import write_ligand_traj
@@ -1397,16 +1479,22 @@ def dock_ensemble(ensemble, receptor_pdbqt, center, size,
             lig_path = os.path.join(ens_dir, c["file"])
             pose_path = os.path.join(work, f"conf_{i:02d}.pdbqt")
             comps = []
+            conf_decomp = {}
             dock_peptide(lig_path, receptor_pdbqt, center, size, cfg=cfg,
                          steps_scale=steps_scale, steps_per_ha=steps_per_ha,
                          clip_cutoff=clip_cutoff, num_modes=num_modes,
                          cluster_cutoff=cluster_cutoff, seed=seed + i,
                          threads=threads, out_pdbqt=pose_path,
                          scorer=scorer, scorer_components=scorer_components,
-                         components_out=comps, energy_remarks=True)
+                         components_out=comps, energy_remarks=True,
+                         decomposition_out=conf_decomp,
+                         ligand_residue_labels=ligand_residue_labels,
+                         decomposition_cutoff=decomposition_cutoff,
+                         decomposition_cutoffs=decomposition_cutoffs)
             for j, m in enumerate(_read_pose_models(pose_path)):
                 m["conformer"] = i
                 m["components"] = comps[j] if j < len(comps) else {}
+                m["decomposition"] = _pose_decomposition_slice(conf_decomp, j)
                 pooled.append(m)
     finally:
         shutil.rmtree(work, ignore_errors=True)
@@ -1427,6 +1515,8 @@ def dock_ensemble(ensemble, receptor_pdbqt, center, size,
                       xyz_list=[p["xyz"] for p in kept])
     if components_out is not None:
         components_out.extend([p["components"] for p in kept])
+    if decomposition_out is not None:
+        _assemble_ensemble_decomposition(decomposition_out, kept)
     return scores, kept
 
 

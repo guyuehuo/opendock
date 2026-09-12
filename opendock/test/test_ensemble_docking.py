@@ -6,7 +6,8 @@ import numpy as np
 import pytest
 
 from opendock.protocol.cyclo_peptide_docking import (
-    _greedy_rmsd_select, _read_pose_models, _rmsd_no_align)
+    _assemble_ensemble_decomposition, _greedy_rmsd_select,
+    _pose_decomposition_slice, _read_pose_models, _rmsd_no_align)
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 
@@ -71,6 +72,102 @@ def test_read_pose_models(tmp_path):
     assert np.allclose(models[1]["xyz"], [[4.0, 5.0, 6.0]])
 
 
+def _conf_decomp():
+    return {
+        "cutoff": 8.0,
+        "inter_total": [-8.0, -6.0],
+        "target_residues": [{"A:1": -5.0}, {"A:1": -3.0}],
+        "ligand_residues": [{"L:1": -3.0}, {"L:1": -3.0}],
+        "by_cutoff": {
+            "4.0": {"cutoff": 4.0, "inter_total": [-3.0, -2.0],
+                    "target_residues": [{"A:1": -2.0}, {"A:1": -1.0}],
+                    "ligand_residues": [{"L:1": -1.0}, {"L:1": -1.0}]},
+            "8.0": {"cutoff": 8.0, "inter_total": [-8.0, -6.0],
+                    "target_residues": [{"A:1": -5.0}, {"A:1": -3.0}],
+                    "ligand_residues": [{"L:1": -3.0}, {"L:1": -3.0}]},
+        },
+    }
+
+
+def test_pose_decomposition_slice_extracts_per_pose():
+    s = _pose_decomposition_slice(_conf_decomp(), 1)
+    assert s["cutoff"] == 8.0
+    assert s["inter_total"] == -6.0
+    assert s["target_residues"] == {"A:1": -3.0}
+    assert s["ligand_residues"] == {"L:1": -3.0}
+    assert set(s["by_cutoff"]) == {"4.0", "8.0"}
+    assert s["by_cutoff"]["4.0"]["inter_total"] == -2.0
+    assert s["by_cutoff"]["4.0"]["target_residues"] == {"A:1": -1.0}
+
+
+def test_pose_decomposition_slice_handles_empty_error_and_bounds():
+    assert _pose_decomposition_slice({}, 0) is None
+    assert _pose_decomposition_slice(None, 0) is None
+    assert _pose_decomposition_slice({"error": "boom"}, 0) is None
+    conf = {"cutoff": 8.0, "inter_total": [1.0],
+            "target_residues": [{}], "ligand_residues": [{}]}
+    assert _pose_decomposition_slice(conf, 5) is None
+
+
+def test_assemble_ensemble_decomposition_kept_order_and_by_cutoff():
+    kept = [
+        {"decomposition": {
+            "cutoff": 8.0, "inter_total": -6.0,
+            "target_residues": {"A:2": -6.0},
+            "ligand_residues": {"L:2": -6.0},
+            "by_cutoff": {"4.0": {"cutoff": 4.0, "inter_total": -2.0,
+                                  "target_residues": {"A:2": -2.0},
+                                  "ligand_residues": {"L:2": -2.0}}}}},
+        {"decomposition": {
+            "cutoff": 8.0, "inter_total": -8.0,
+            "target_residues": {"A:1": -8.0},
+            "ligand_residues": {"L:1": -8.0},
+            "by_cutoff": {"4.0": {"cutoff": 4.0, "inter_total": -3.0,
+                                  "target_residues": {"A:1": -3.0},
+                                  "ligand_residues": {"L:1": -3.0}}}}},
+    ]
+    out = {}
+    _assemble_ensemble_decomposition(out, kept)
+    assert out["cutoff"] == 8.0
+    assert out["inter_total"] == [-6.0, -8.0]
+    assert out["target_residues"] == [{"A:2": -6.0}, {"A:1": -8.0}]
+    assert out["ligand_residues"] == [{"L:2": -6.0}, {"L:1": -8.0}]
+    assert out["by_cutoff"]["4.0"]["inter_total"] == [-2.0, -3.0]
+    assert out["by_cutoff"]["4.0"]["target_residues"] == [{"A:2": -2.0},
+                                                          {"A:1": -3.0}]
+
+
+def test_assemble_ensemble_decomposition_drops_when_any_pose_missing():
+    # Dropping the whole decomposition keeps the per-pose arrays aligned with
+    # the pose list (the UI indexes them by pose).
+    out = {}
+    _assemble_ensemble_decomposition(out, [{"decomposition": None}, {}])
+    assert out == {}
+    out = {}
+    _assemble_ensemble_decomposition(
+        out, [{"decomposition": {"cutoff": 8.0, "inter_total": -1.0,
+                                 "target_residues": {}, "ligand_residues": {}}},
+              {"decomposition": None}])
+    assert out == {}
+
+
+def test_assemble_ensemble_decomposition_omits_partial_by_cutoff():
+    kept = [
+        {"decomposition": {
+            "cutoff": 8.0, "inter_total": -1.0,
+            "target_residues": {}, "ligand_residues": {},
+            "by_cutoff": {"4.0": {"cutoff": 4.0, "inter_total": -1.0,
+                                  "target_residues": {},
+                                  "ligand_residues": {}}}}},
+        {"decomposition": {"cutoff": 8.0, "inter_total": -2.0,
+                           "target_residues": {}, "ligand_residues": {}}},
+    ]
+    out = {}
+    _assemble_ensemble_decomposition(out, kept)
+    assert out["inter_total"] == [-1.0, -2.0]
+    assert "by_cutoff" not in out
+
+
 @NEED_MGLTOOLS
 def test_dock_ensemble_uses_multiple_conformers(tmp_path):
     from opendock.protocol.cyclo_peptide_docking import (
@@ -84,19 +181,30 @@ def test_dock_ensemble_uses_multiple_conformers(tmp_path):
         pytest.skip("example receptor not present")
     out = str(tmp_path / "ensemble_poses.pdbqt")
     calls = []
+    decomp = {}
     scores, poses = dock_ensemble(ens, rec, center=[0.45, 9.06, -7.12],
                                   size=[12, 12, 12], keep=10,
                                   rmsd_cutoff=2.0, num_modes=2,
                                   cfg="mc-nomin", steps_per_ha=3,
                                   steps_scale=0.2, seed=1, out_pdbqt=out,
                                   progress_callback=lambda c, t, label:
-                                  calls.append((c, t, label)))
+                                  calls.append((c, t, label)),
+                                  decomposition_out=decomp,
+                                  decomposition_cutoffs=[4.0, 8.0])
     assert scores and poses
     assert calls and calls[-1][0] == calls[-1][1]
     text = open(out).read()
     assert "REMARK VinaScore" in text
     assert "REMARK Conformer" in text
     assert len({p["conformer"] for p in poses}) >= 1
+    assert decomp.get("target_residues"), "no ensemble decomposition"
+    assert len(decomp["target_residues"]) == len(scores)
+    assert len(decomp["ligand_residues"]) == len(scores)
+    assert set(decomp["by_cutoff"]) == {"4.0", "8.0"}
+    for cut in decomp["by_cutoff"].values():
+        assert len(cut["target_residues"]) == len(scores)
+    for p, tmap in enumerate(decomp["target_residues"]):
+        assert abs(sum(tmap.values()) - decomp["inter_total"][p]) < 1e-2
 
 
 def test_dock_ensemble_cli_parsing():
