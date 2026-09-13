@@ -462,6 +462,94 @@ class ReceptorConformation(Receptor):
         self._coord_version += 1
         return self.rec_heavy_atoms_xyz
 
+    def cnfr2xyz_batch(self, cnfrs):
+        """Rebuild receptor sidechains for a batch of conformations.
+
+        ``cnfrs`` is a list of per-residue sidechain torsion tensors, each of
+        shape ``[n, num_torsions_i]`` (or a flat ``[n, total]`` tensor that is
+        split internally).  Returns the receptor heavy-atom coordinates as a
+        ``[n, N, 3]`` tensor.
+        """
+        if type(cnfrs) != list:
+            cnfrs = self._split_cnfr_tensor_to_list(cnfrs)
+
+        device = cnfrs[0].device
+        n = cnfrs[0].shape[0]
+        init_xyz = self.init_rec_ha_xyz.to(device)
+        cur = init_xyz.unsqueeze(0).expand(n, -1, 3).clone()
+
+        def _rot(v, R):
+            # single-pose convention: v @ R (row vector times matrix)
+            return torch.bmm(v.unsqueeze(1), R).squeeze(1)
+
+        for i in range(0, len(self.selected_residues_indices)):
+            cnfr = cnfrs[i]
+            this_selected_residues_index = self.selected_residues_indices[i]
+            this_selected_residue_name = self.selected_residues_names[i]
+            this_selected_residue_ha_indices = self.residues_ha_indices[this_selected_residues_index]
+
+            pdb_types_in_this_residue = [self.rec_ha_pdb_types[x] for x in this_selected_residue_ha_indices]
+            pdb_type_2_heavy_atom_indices = dict(zip(pdb_types_in_this_residue, this_selected_residue_ha_indices))
+
+            sidechain_frames = self.sidechain_topol_dict[this_selected_residue_name]["frames"]
+            sidechain_torsion = self.sidechain_topol_dict[this_selected_residue_name]["torsion_bonds"]
+
+            sidechain_ha_indices_in_each_frame = []
+            for f_list in sidechain_frames:
+                try:
+                    indices = [pdb_type_2_heavy_atom_indices[x] for x in f_list]
+                except:
+                    indices = [pdb_type_2_heavy_atom_indices[x] for x in f_list if x in pdb_type_2_heavy_atom_indices.keys()]
+                sidechain_ha_indices_in_each_frame.append(indices)
+
+            sidechain_ha_indices_in_each_torsion = []
+            for t_list in sidechain_torsion:
+                try:
+                    indices = [pdb_type_2_heavy_atom_indices[x] for x in t_list]
+                    sidechain_ha_indices_in_each_torsion.append(indices)
+                except:
+                    pass
+
+            if len(sidechain_ha_indices_in_each_torsion) < len(sidechain_ha_indices_in_each_frame):
+                sidechain_ha_indices_in_each_frame = sidechain_ha_indices_in_each_frame[1:]
+
+            all_torsion_matrix = [0] * len(sidechain_ha_indices_in_each_torsion)
+            for torsion_id, frame_atoms_indices in enumerate(sidechain_ha_indices_in_each_frame):
+                rotorX_index, rotorY_index = sidechain_ha_indices_in_each_torsion[torsion_id]
+
+                rotorX_to_rotorY_vector = init_xyz[rotorY_index] - init_xyz[rotorX_index]
+
+                if torsion_id == 0:
+                    new_rotorY_coord = init_xyz[rotorY_index].unsqueeze(0).expand(n, 3)
+                else:
+                    rv = rotorX_to_rotorY_vector.unsqueeze(0).expand(n, 3)
+                    new_rotorY_coord = cur[:, rotorX_index, :] + \
+                        _rot(rv, all_torsion_matrix[torsion_id - 1])
+                cur[:, rotorY_index, :] = new_rotorY_coord
+
+                new_rotorX_to_rotorY_vector = new_rotorY_coord - cur[:, rotorX_index, :]
+                torsion_axis = F.normalize(new_rotorX_to_rotorY_vector, p=2, dim=1)
+                torsion_R = rodrigues(torsion_axis, cnfr[:, torsion_id]).transpose(-2, -1)
+
+                if torsion_id == 0:
+                    current_torsion_matrix = torsion_R
+                else:
+                    current_torsion_matrix = torch.bmm(torsion_R, all_torsion_matrix[torsion_id - 1])
+                all_torsion_matrix[torsion_id] = current_torsion_matrix
+
+                if len(frame_atoms_indices) != 1:
+                    for atm in frame_atoms_indices:
+                        if atm == rotorY_index:
+                            continue
+                        relative_coord = init_xyz[atm] - init_xyz[rotorY_index]
+                        rv = relative_coord.unsqueeze(0).expand(n, 3)
+                        new_coord = new_rotorY_coord + _rot(rv, current_torsion_matrix)
+                        cur[:, atm, :] = new_coord
+
+        self.rec_heavy_atoms_xyz = cur
+        self._coord_version += 1
+        return self.rec_heavy_atoms_xyz
+
 
 if __name__ == "__main__":
 

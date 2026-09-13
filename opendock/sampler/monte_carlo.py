@@ -64,15 +64,30 @@ class MonteCarloSampler(BaseSampler):
             cur = self.ligand.cnfrs_[0]
             if cur.dim() == 2 and cur.shape[0] != self.ntasks:
                 self.ligand.cnfrs_ = [cur.repeat(self.ntasks, 1)]
+        if self.ntasks > 1 and self.receptor.cnfrs_ is not None:
+            expanded = []
+            for j in range(len(self.receptor.cnfrs_)):
+                c = self.receptor.cnfrs_[j]
+                if c.dim() == 1:
+                    expanded.append(c.reshape(1, -1).repeat(self.ntasks, 1))
+                elif c.dim() == 2 and c.shape[0] != self.ntasks:
+                    expanded.append(c.repeat(self.ntasks, 1))
+                else:
+                    expanded.append(c)
+            self.receptor.cnfrs_ = expanded
 
     def _step(self, minimize=False):
         t1=time.time()
         # make mutations
-        if self.ntasks > 1 and self.receptor.cnfrs_ is None:
+        if self.ntasks > 1 and self.ligand.cnfrs_ is not None:
             # batch: mutate + score many poses in one scoring call
             _lig_cnfrs = [self._mutate_batch(self.ligand.cnfrs_, 5.0, 0.1,
                                              n=self.ntasks)]
-            _rec_cnfrs = None
+            if self.receptor.cnfrs_ is not None:
+                _rec_cnfrs = self._mutate_receptor_batch(self.receptor.cnfrs_,
+                                                         0.1, n=self.ntasks)
+            else:
+                _rec_cnfrs = None
             if minimize and self.minimizer is not None:
                 rows = []
                 for i in range(self.ntasks):
@@ -117,11 +132,15 @@ class MonteCarloSampler(BaseSampler):
                 self.ligand.cnfrs_ = [torch.Tensor(temp_cnfrs1)]
                 #print('new cnfrs', self.ligand.cnfrs_)
             if self.receptor_is_flexible_:
-                # temp_cnfrs1 = self.receptor.cnfrs_[0].detach().numpy()
-                # temp_cnfrs2 = _rec_cnfrs[0].detach().numpy()
-                # temp_cnfrs1[i] = temp_cnfrs2[i]
-                # self.receptor.cnfrs_ = [torch.Tensor(temp_cnfrs1)]
-                self.receptor.cnfrs_ = _rec_cnfrs
+                if (_rec_cnfrs is not None and len(_rec_cnfrs) and
+                        _rec_cnfrs[0].dim() == 2):
+                    for j in range(len(self.receptor.cnfrs_)):
+                        r1 = self.receptor.cnfrs_[j].detach().numpy()
+                        r2 = _rec_cnfrs[j].detach().numpy()
+                        r1[i] = r2[i]
+                        self.receptor.cnfrs_[j] = torch.Tensor(r1)
+                else:
+                    self.receptor.cnfrs_ = _rec_cnfrs
 
             self.history_[i].append([score[i][0], prob, 1.])
             print(f'[INFO] #{self.index_} {self.__class__.__name__} accept prob {prob:.2f} and rnd_num {rnd_num:.2f}')
@@ -156,7 +175,10 @@ class MonteCarloSampler(BaseSampler):
 
         is_a_success_sampling=True
         # score, prob, is_accept
-        _score = self._score(self.ligand.cnfrs_, self.receptor.cnfrs_)
+        if self.ntasks > 1 and self.ligand.cnfrs_ is not None:
+            _score = self._batch_score(self.ligand.cnfrs_, self.receptor.cnfrs_)
+        else:
+            _score = self._score(self.ligand.cnfrs_, self.receptor.cnfrs_)
         #print('_score',_score)
         for i in range(self.ntasks):
           self.history_[i].append([_score.detach().cpu().numpy()[i][0], 1., 1.])

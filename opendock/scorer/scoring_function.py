@@ -73,7 +73,12 @@ class BaseScoringFunction(object):
         if self._rec_xyz_dev is None or self._rec_version != version:
             self._rec_xyz_dev = rec_xyz.to(self.device)
             self._rec_version = version
-        rec_heavy_atoms_xyz = self._rec_xyz_dev.expand(len(self.ligand.pose_heavy_atoms_coords), -1, 3)
+        if self._rec_xyz_dev.dim() == 3:
+            # flexible receptor: one geometry per pose [n_poses, N, 3]
+            rec_heavy_atoms_xyz = self._rec_xyz_dev
+        else:
+            rec_heavy_atoms_xyz = self._rec_xyz_dev.expand(
+                len(self.ligand.pose_heavy_atoms_coords), -1, 3)
         #print('res:',rec_heavy_atoms_xyz)
         # Generate the distance matrix of heavy atoms between the protein and the ligand.
         n, N, C = rec_heavy_atoms_xyz.size()

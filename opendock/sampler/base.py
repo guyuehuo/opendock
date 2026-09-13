@@ -89,7 +89,10 @@ class BaseSampler(object):
                 lig_batch = lig_batch.reshape(1, -1)
             self.ligand.cnfr2xyz([lig_batch.to(device)])
         if receptor_cnfrs is not None:
-            self.receptor.cnfr2xyz(receptor_cnfrs)
+            if receptor_cnfrs and receptor_cnfrs[0].dim() == 2:
+                self.receptor.cnfr2xyz_batch(receptor_cnfrs)
+            else:
+                self.receptor.cnfr2xyz(receptor_cnfrs)
         return self.scoring_function.scoring()
 
     def _mutate_batch(self, ligand_cnfrs, coords_max=5.0, torsion_max=0.1,
@@ -112,6 +115,22 @@ class BaseSampler(object):
             if not bool(out.any()):
                 return candidate
         return candidate
+
+    def _mutate_receptor_batch(self, receptor_cnfrs, torsion_max=0.1, n=1):
+        """Mutate receptor sidechain torsions for a batch of ``n`` poses.
+
+        Returns a list of per-residue ``[n, num_torsions_i]`` tensors.
+        """
+        new_rec = []
+        for i in range(len(receptor_cnfrs)):
+            base = receptor_cnfrs[i]
+            if base.dim() == 1:
+                base = base.reshape(1, -1).repeat(n, 1)
+            d = base.shape[1]
+            delta = torch.empty(n, d, device=base.device).uniform_(
+                -torsion_max * np.pi, torsion_max * np.pi)
+            new_rec.append(base + delta)
+        return new_rec
 
     def _minimize(self, x_ligand=None, x_receptor=None,
                   is_ligand=True, is_receptor=False,
