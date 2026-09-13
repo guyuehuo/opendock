@@ -3,10 +3,23 @@ import os, sys
 import argparse
 import torch
 # sampler
-from opendock.sampler.bayesian import BayesianOptimizationSampler
 from opendock.sampler.monte_carlo import MonteCarloSampler
 from opendock.sampler.particle_swarm import ParticleSwarmOptimizer
 from opendock.sampler.ga import GeneticAlgorithmSampler
+try:
+    from opendock.sampler.bayesian import BayesianOptimizationSampler
+    samplers = {
+        "ga": [GeneticAlgorithmSampler, 10],
+        "bo": [BayesianOptimizationSampler, 20],
+        "mc": [MonteCarloSampler, 100],
+        "pso": [ParticleSwarmOptimizer, 10],
+    }
+except ImportError:
+    samplers = {
+        "ga": [GeneticAlgorithmSampler, 10],
+        "mc": [MonteCarloSampler, 100],
+        "pso": [ParticleSwarmOptimizer, 10],
+    }
 from opendock.sampler.minimizer import adam_minimizer, lbfgs_minimizer, sgd_minimizer
 # scorer
 from opendock.scorer.vina import VinaSF
@@ -24,14 +37,6 @@ from opendock.core.conformation import LigandConformation
 from opendock.core.clustering import BaseCluster
 from opendock.core.io import write_ligand_traj, generate_new_configs
 
-
-samplers = {
-    # sampler, number of sampling steps (per heavy atom)
-    "ga": [GeneticAlgorithmSampler, 10],
-    "bo": [BayesianOptimizationSampler, 20],
-    "mc": [MonteCarloSampler, 100],
-    "pso": [ParticleSwarmOptimizer, 10],
-}
 
 scorers = {
     "vina": VinaSF,
@@ -58,9 +63,20 @@ def argument():
     parser.add_argument("--scorer", default="vina", type=str, 
                         help="The scoring functhon name.")
     parser.add_argument("--sampler", default="mc", type=str, 
-                        help="The sampler method.")
-    parser.add_argument("--minimizer", default="lbfgs", type=str, 
-                        help="The minimization method.")
+                        help="The sampler method (mc/ga/pso/bo).")
+    parser.add_argument("--minimizer", default="adam", type=str, 
+                        help="The minimization method (adam/lbfgs/sgd/none).")
+    parser.add_argument("--device", default="auto", type=str,
+                        help="Scoring device: auto | cpu | cuda | cuda:0..N.")
+    parser.add_argument("--compile", action=argparse.BooleanOptionalAction,
+                        default=True,
+                        help="torch.compile the scoring/geometry kernels "
+                             "(default on; --no-compile to disable).")
+    parser.add_argument("--ntasks", type=int, default=None,
+                        help="MC batch size (chain count); default 32 on cuda "
+                             "else 1.")
+    parser.add_argument("--minimize-steps", type=int, default=None,
+                        help="Batched-Adam steps per minimize (default 3).")
     args = parser.parse_args()
 
     if len(sys.argv) < 2:
@@ -68,6 +84,26 @@ def argument():
         sys.exit(0)
 
     return args
+
+
+def _resolve_device(spec):
+    spec = (spec or "auto").strip()
+    if spec in ("", "auto"):
+        return "cuda" if torch.cuda.is_available() else "cpu"
+    return spec
+
+
+def _sampler_kwargs(args, xyz_center, box_sizes):
+    kwargs = dict(box_center=list(xyz_center),
+                  box_size=[float(x) for x in box_sizes],
+                  minimizer=minimizers[args.minimizer],
+                  verbose=False)
+    if args.sampler == "mc":
+        kwargs["ntasks"] = (args.ntasks if args.ntasks is not None
+                            else (32 if args.device.startswith("cuda") else 1))
+    if args.minimize_steps is not None:
+        kwargs["minimize_nsteps"] = int(args.minimize_steps)
+    return kwargs
 
 
 def main():
@@ -91,24 +127,17 @@ def main():
     print("Sidechain cnfrs", receptor.cnfrs_)
     init_lig_cnfrs = [torch.Tensor(ligand.init_cnfrs.detach().numpy())]
     
-    # define scoring function,m  
-    sf = VinaSF(receptor=receptor, ligand=ligand)
+    # define scoring function,m
+    device = _resolve_device(args.device)
+    sf = VinaSF(receptor=receptor, ligand=ligand, device=device,
+                compile=args.compile)
 
     collected_cnfrs = []
     collected_scores= []
-    sampler = samplers[args.sampler][0](ligand, receptor, sf, 
-                                         box_center=xyz_center, 
-                                         box_size=box_sizes, 
-                                         minimizer=minimizers[args.minimizer],
-                                         )
+    kwargs = _sampler_kwargs(args, xyz_center, box_sizes)
     for i in range(configs['tasks']):
+        sampler = samplers[args.sampler][0](ligand, receptor, sf, **kwargs)
         ligand.cnfrs_, receptor.cnfrs_ = sampler._random_move(init_lig_cnfrs, receptor.init_cnfrs)
-        #ligand.cnfrs_, receptor.cnfrs_ = ligand.init_cnfrs, receptor.init_cnfrs
-        sampler = samplers[args.sampler][0](ligand, receptor, sf, 
-                                         box_center=xyz_center, 
-                                         box_size=box_sizes, 
-                                         minimizer=minimizers[args.minimizer],
-                                         )
         print(f"[INFO] {args.sampler} Round #{i}")
         sampler.sampling(samplers[args.sampler][1] * ligand.number_of_heavy_atoms)
         collected_cnfrs += sampler.ligand_cnfrs_history_
@@ -130,7 +159,7 @@ def main():
         ligand.cnfrs_, receptor.cnfrs_ = [_cnfrs, ], None
         ligand.cnfr2xyz([_cnfrs])
         scorer = scorers[args.scorer](receptor=receptor, ligand=ligand)
-        _s = scorer.scoring().detach().numpy().ravel()[0] * 1.0
+        _s = scorer.scoring().detach().cpu().numpy().ravel()[0] * 1.0
         _rescores.append([_s, _cnfrs])
     
     sorted_scores_cnfrs = list(sorted(_rescores, key=lambda x: x[0]))

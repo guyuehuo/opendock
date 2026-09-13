@@ -15,6 +15,11 @@ def argument():
     parser = argparse.ArgumentParser()
     parser.add_argument("-c", "--config", dest="config", default="vina.config", type=str,
                         help="Configuration file.")
+    parser.add_argument("--device", default="auto", type=str,
+                        help="auto | cpu | cuda | cuda:0..N")
+    parser.add_argument("--compile", action=argparse.BooleanOptionalAction,
+                        default=True,
+                        help="torch.compile the scoring/geometry kernels.")
 
     args = parser.parse_args()
 
@@ -29,6 +34,8 @@ def main():
 
     args = argument()
     configs = generate_new_configs(args.config, None)
+    device = ("cuda" if (args.device in ("", "auto") and torch.cuda.is_available())
+              else (args.device if args.device != "auto" else "cpu"))
 
     # box information 
     xyz_center = float(configs['center_x']), \
@@ -46,7 +53,7 @@ def main():
     init_lig_cnfrs = [torch.Tensor(ligand.init_cnfrs.detach().numpy())]
     
     # define scoring function,m         
-    sf = VinaSF(receptor, ligand)
+    sf = VinaSF(receptor, ligand, device=device, compile=args.compile)
     #print("Initial ligand cnfrs ", init_lig_cnfrs, sf.scoring())
     
     collected_cnfrs = []
@@ -64,6 +71,7 @@ def main():
                                      p_c = 0.3,
                                      p_m = 0.05,
                                      early_stop_tolerance=10,
+                                     verbose=False,
                                     )
         print(f"[INFO] GeneticAlgorithmSampler Round #{i}")
         ga._random_move(init_lig_cnfrs, receptor.init_cnfrs)
