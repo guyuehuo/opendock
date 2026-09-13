@@ -215,6 +215,8 @@ def run_one_job(code, source, mode, cfg_name, cfg, prep_dir, run_dir,
         cond = f"{cond}-mlr{min_lr:g}"
     if n_pop is not None:
         cond = f"{cond}-pop{n_pop}"
+    if steps_scale != 1.0:
+        cond = f"{cond}-ss{steps_scale:g}"
     cond_dir = ensure_dir(os.path.join(run_dir, code))
     out_pdbqt = os.path.join(cond_dir, f"{cond}.pdbqt")
     scores_csv = os.path.join(run_dir, "scores.csv")
@@ -407,6 +409,8 @@ def main():
             cond = f"{cond}-mlr{args.min_lr:g}"
         if args.n_pop is not None:
             cond = f"{cond}-pop{args.n_pop}"
+        if args.steps_scale != 1.0:
+            cond = f"{cond}-ss{args.steps_scale:g}"
         try:
             return run_one_job(code, source, mode, cfg_name, cfg, prep_dir,
                                run_dir, conditions, num_modes, cluster_cutoff,
@@ -448,6 +452,8 @@ def main():
             cond = f"{cond}-mlr{args.min_lr:g}"
         if args.n_pop is not None:
             cond = f"{cond}-pop{args.n_pop}"
+        if args.steps_scale != 1.0:
+            cond = f"{cond}-ss{args.steps_scale:g}"
         if args.resume and job_state(run_dir, args.code, cond) != "pending":
             log(f"{args.code} {cond}: already done/failed, skipping")
         else:
