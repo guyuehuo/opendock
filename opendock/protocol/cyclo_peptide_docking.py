@@ -277,6 +277,31 @@ def build_peptide_model(mol) -> PeptideModel:
     backbone = {a.index for a in pep.atoms if a.is_backbone}
     residues = [(r.name, sorted(r.atom_indices)) for r in cyc.residues]
 
+    # porality's residue atom sets can omit atoms that are not part of the
+    # standard backbone/side chain (e.g. an N-methyl carbon bonded to the
+    # backbone N).  Assign every remaining heavy atom to a bonded residue so no
+    # atom is left with MGLTools' generic UNL label.
+    res_atoms = [set(int(a) for a in idxs) for _, idxs in residues]
+    owner = {}
+    for ri, atoms in enumerate(res_atoms):
+        for ai in atoms:
+            owner[ai] = ri
+    changed = True
+    while changed:
+        changed = False
+        for ai in range(mol.GetNumAtoms()):
+            if ai in owner:
+                continue
+            for nb in mol.GetAtomWithIdx(ai).GetNeighbors():
+                ni = nb.GetIdx()
+                if ni in owner:
+                    owner[ai] = owner[ni]
+                    res_atoms[owner[ni]].add(ai)
+                    changed = True
+                    break
+    residues = [(residues[ri][0], sorted(res_atoms[ri]))
+                for ri in range(len(residues))]
+
     # RDKit view of macrocycle ring paths (independent of porality's mode
     # detection which only recognises head-to-tail amide closures): any ring
     # of >= 9 heavy atoms that runs through >= 2 flagged backbone atoms.
@@ -874,25 +899,24 @@ def _freeze_and_write(mol, model, flexible, backbone, out_pdbqt, tools=None,
     # ligand residue/frame (independent of MGLTools' residue labels).
     mol_to_res = {}
     for res_i, (rname, idxs) in enumerate(model.residues):
-        # Match the PDBQT/pose resName (3-character field) plus the 1-based
-        # sequence position so meta labels and rendered fragments agree.
-        label = f"{rname[:3]}{res_i + 1}"
         for ai in idxs:
-            mol_to_res[int(ai)] = label
+            mol_to_res[int(ai)] = (rname, res_i + 1)
     # Atoms porality did not assign to a residue (e.g. capping groups) fall back
     # to the MGLTools residue label written into the PDBQT.
     for mi, rec in heavy_by_mol.items():
         if int(mi) not in mol_to_res:
-            rn = rec.line[17:20].strip()[:3]
-            rs = rec.line[22:26].strip()
-            mol_to_res[int(mi)] = f"{rn}{rs}"
+            mol_to_res[int(mi)] = (rec.line[17:20].strip(),
+                                   rec.line[22:26].strip())
     heavy_order = (topo or {}).get("heavy_order", [])
     frame_of = (topo or {}).get("frame_of", {})
-    atom_map = [
-        {"pdbqt_index": i, "mol_index": int(mi),
-         "residue": mol_to_res.get(int(mi), ""), "frame": int(frame_of.get(mi, 0))}
-        for i, mi in enumerate(heavy_order)
-    ]
+
+    def _atom_entry(i, mi):
+        rname, rseq = mol_to_res.get(int(mi), ("", ""))
+        return {"pdbqt_index": i, "mol_index": int(mi),
+                "residue": f"{rname}{rseq}", "resname": rname,
+                "resseq": str(rseq), "frame": int(frame_of.get(mi, 0))}
+
+    atom_map = [_atom_entry(i, mi) for i, mi in enumerate(heavy_order)]
 
     meta = {
         "atom_map": atom_map,

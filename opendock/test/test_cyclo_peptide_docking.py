@@ -460,4 +460,7 @@ def test_atom_map_residues_match_pdbqt(tmp_path):
     assert all(a["residue"] for a in meta["atom_map"])
     for a in meta["atom_map"]:
         ln = lines[a["pdbqt_index"]]
-        assert a["residue"] == f"{ln[17:20].strip()}{ln[22:26].strip()}"
+        # The PDB stores a 3-character resName; the meta keeps the full name.
+        assert a["resname"][:3] == ln[17:20].strip()
+        assert a["resseq"] == ln[22:26].strip()
+        assert a["residue"] == f"{a['resname']}{a['resseq']}"
