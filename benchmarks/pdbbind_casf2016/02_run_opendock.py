@@ -348,9 +348,11 @@ def main():
                         default=True,
                         help="batched Adam minimize (default on); "
                              "pass --no-batch-minimize for per-pose LBFGS")
-    parser.add_argument("--compile", action="store_true",
+    parser.add_argument("--compile", action=argparse.BooleanOptionalAction,
+                        default=True,
                         help="torch.compile the scoring/geometry kernels "
-                             "(one-time tracing cost, big speedup on long runs)")
+                             "(default on; 3-9x on CPU and GPU; "
+                             "pass --no-compile to disable)")
     parser.add_argument("--n-conformers", type=int, default=None,
                         help="number of RDKit conformers to dock (ensemble); "
                              "default reads meta.n_rdkit_conformers")
