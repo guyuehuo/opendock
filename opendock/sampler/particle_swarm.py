@@ -201,8 +201,9 @@ class ParticleSwarmOptimizer(BaseSampler):
     def _batch_score_positions(self, positions):
         """Score a batch of particle positions, returning ``[n]`` scores."""
         lig_cnfr = self._decode_positions(positions).to(self.scoring_function.device)
-        out = self._out_of_box_check_batch([lig_cnfr])
-        scores = self._batch_score([lig_cnfr])[:, 0]
+        pose = self.ligand.cnfr2xyz([lig_cnfr])
+        out = self._out_of_box_check_coords(pose.detach())
+        scores = self.scoring_function.scoring()[:, 0]
         return torch.where(out, torch.full_like(scores, 999.99), scores)
 
 

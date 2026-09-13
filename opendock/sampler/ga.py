@@ -107,8 +107,11 @@ class GeneticAlgorithmSampler(BaseSampler):
         if self.ligand.cnfrs_ is not None:
             xyz_ranges = []
             for i in range(3):
-                _range = [self.box_center[i] - 10.0,
-                          self.box_center[i] + 10.0]  # according to mc,set box range
+                # Use the actual docking box half-extent (matching
+                # BaseSampler._out_of_box_check) instead of a hard-coded 10 A.
+                half = float(self.box_size[i]) if self.box_size is not None else 10.0
+                _range = [self.box_center[i] - half,
+                          self.box_center[i] + half]
                 xyz_ranges.append(_range)
 
             # setup box bound
@@ -322,65 +325,110 @@ class GeneticAlgorithmSampler(BaseSampler):
             # print("2")
             # if True:
             # if self.minimization_ratio < random.random():
-            for sn_pair in range(0, self.n_pop, 2):
-                p1 = self.chrom_pop[ind_parents[sn_pair]]
-                p2 = self.chrom_pop[ind_parents[sn_pair + 1]]
+            # crossover
+            if self.receptor.cnfrs_ is None:
+                # ---- batched crossover (rigid receptor) ----
+                def _lig_cnfr_of(chrom):
+                    lig_cnfrs, _ = self._variables2cnfrs(
+                        self.decode_entire_chrom(chrom))
+                    return lig_cnfrs[0]
 
+                origins = [self.chrom_pop[ind_parents[k]]
+                           for k in range(self.n_pop)]
+                origin_vars = torch.tensor(
+                    [self.decode_entire_chrom(c) for c in origins],
+                    dtype=torch.float32)
+                origin_fit = self._batch_fitness_from_vars(
+                    origin_vars).detach().cpu().numpy()
 
+                children = []
+                for sn_pair in range(0, self.n_pop, 2):
+                    p1 = self.chrom_pop[ind_parents[sn_pair]]
+                    p2 = self.chrom_pop[ind_parents[sn_pair + 1]]
+                    c1, c2 = self.crossover(p1, p2, p_c=self.p_c)
+                    children.append(self._minimize_chromosome(c1))
+                    children.append(self._minimize_chromosome(c2))
+                child_vars = torch.tensor(
+                    [self.decode_entire_chrom(c) for c in children],
+                    dtype=torch.float32)
+                child_fit = self._batch_fitness_from_vars(
+                    child_vars).detach().cpu().numpy()
 
-                # cnfr to chrom
-                # minimize p1
-                _p1_new, _p2_new = self.crossover(p1, p2, p_c=self.p_c)
-                _p1_new = self._minimize_chromosome(_p1_new)
-                _p2_new = self._minimize_chromosome(_p2_new)
+                for sn_pair in range(0, self.n_pop, 2):
+                    for k in (sn_pair, sn_pair + 1):
+                        self.cnfrs_history[k].append(
+                            torch.Tensor(_lig_cnfr_of(origins[k]).detach().numpy()[0])
+                            .reshape((1, -1)))
+                        self.score_history[k].append(origin_fit[k] * -1.0)
+                        if child_fit[k] - origin_fit[k] > 0:
+                            self.chrom_pop2[k] = children[k]
+                            if child_fit[k] > 0:
+                                _lig_cnfrs, _rec_cnfrs_ = self._variables2cnfrs(
+                                    self.decode_entire_chrom(children[k]))
+                                self.ligand_cnfrs_history_.append(
+                                    torch.Tensor(_lig_cnfrs[0].detach().numpy()[0])
+                                    .reshape((1, -1)))
+                                self.ligand_scores_history_.append(
+                                    child_fit[k] * -1.0)
+            else:
+                # ---- serial crossover (flexible receptor) ----
+                for sn_pair in range(0, self.n_pop, 2):
+                    p1 = self.chrom_pop[ind_parents[sn_pair]]
+                    p2 = self.chrom_pop[ind_parents[sn_pair + 1]]
 
-                # decide whether to choose new cnfrs
-                # ......................................
-                _chrom_decoded1 = self.decode_entire_chrom(p1)
-                _fitness1 = self.objective_func(_chrom_decoded1)
-                #print(sn_pair)
-                #print("_fitness1",_fitness1)
+                    # cnfr to chrom
+                    # minimize p1
+                    _p1_new, _p2_new = self.crossover(p1, p2, p_c=self.p_c)
+                    _p1_new = self._minimize_chromosome(_p1_new)
+                    _p2_new = self._minimize_chromosome(_p2_new)
 
-                _chrom_decoded1_new = self.decode_entire_chrom(_p1_new)
-                _fitness1_new = self.objective_func(_chrom_decoded1_new)
+                    # decide whether to choose new cnfrs
+                    # ......................................
+                    _chrom_decoded1 = self.decode_entire_chrom(p1)
+                    _fitness1 = self.objective_func(_chrom_decoded1)
+                    #print(sn_pair)
+                    #print("_fitness1",_fitness1)
 
-                delta_score = _fitness1_new - _fitness1
-                # new add history
-                cnfrs,_=self._variables2cnfrs(_chrom_decoded1)
-                #print("cnfrs",cnfrs)
-                #print(cnfrs)x`
+                    _chrom_decoded1_new = self.decode_entire_chrom(_p1_new)
+                    _fitness1_new = self.objective_func(_chrom_decoded1_new)
 
-                self.cnfrs_history[sn_pair].append(torch.Tensor(cnfrs[0].detach().numpy()[0]).reshape((1, -1)))
-                self.score_history[sn_pair].append(_fitness1 * -1.0)
-                if delta_score > 0 :
-                    self.chrom_pop2[sn_pair] = _p1_new
-                    if _fitness1_new > 0:
-                        _lig_cnfrs, _rec_cnfrs_ = self._variables2cnfrs(_chrom_decoded1_new)
-                        self.ligand_cnfrs_history_.append(torch.Tensor(_lig_cnfrs[0].detach() \
-                                                                       .numpy()[0]).reshape((1, -1)))
-                        self.ligand_scores_history_.append(_fitness1_new * -1.0)
+                    delta_score = _fitness1_new - _fitness1
+                    # new add history
+                    cnfrs,_=self._variables2cnfrs(_chrom_decoded1)
+                    #print("cnfrs",cnfrs)
+                    #print(cnfrs)x`
 
-                # ......................................
-                _chrom_decoded2 = self.decode_entire_chrom(p2)
-                _fitness2 = self.objective_func(_chrom_decoded2)
+                    self.cnfrs_history[sn_pair].append(torch.Tensor(cnfrs[0].detach().numpy()[0]).reshape((1, -1)))
+                    self.score_history[sn_pair].append(_fitness1 * -1.0)
+                    if delta_score > 0 :
+                        self.chrom_pop2[sn_pair] = _p1_new
+                        if _fitness1_new > 0:
+                            _lig_cnfrs, _rec_cnfrs_ = self._variables2cnfrs(_chrom_decoded1_new)
+                            self.ligand_cnfrs_history_.append(torch.Tensor(_lig_cnfrs[0].detach() \
+                                                                           .numpy()[0]).reshape((1, -1)))
+                            self.ligand_scores_history_.append(_fitness1_new * -1.0)
 
-                _chrom_decoded2_new = self.decode_entire_chrom(_p2_new)
-                _fitness2_new = self.objective_func(_chrom_decoded2_new)
+                    # ......................................
+                    _chrom_decoded2 = self.decode_entire_chrom(p2)
+                    _fitness2 = self.objective_func(_chrom_decoded2)
 
-                delta_score = _fitness2_new - _fitness2
+                    _chrom_decoded2_new = self.decode_entire_chrom(_p2_new)
+                    _fitness2_new = self.objective_func(_chrom_decoded2_new)
 
-                # new add history
-                cnfrs,_ = self._variables2cnfrs(_chrom_decoded2)
-                self.cnfrs_history[sn_pair+1].append(torch.Tensor(cnfrs[0].detach() \
-                                                                .numpy()[0]).reshape((1, -1)))
-                self.score_history[sn_pair+1].append(_fitness2 * -1.0)
-                if delta_score > 0:
-                    self.chrom_pop2[sn_pair + 1] = _p2_new
-                    if _fitness2_new > 0:
-                        _lig_cnfrs, _rec_cnfrs_ = self._variables2cnfrs(_chrom_decoded2_new)
-                        self.ligand_cnfrs_history_.append(torch.Tensor(_lig_cnfrs[0].detach() \
-                                                                       .numpy()[0]).reshape((1, -1)))
-                        self.ligand_scores_history_.append(_fitness2_new * -1.0)
+                    delta_score = _fitness2_new - _fitness2
+
+                    # new add history
+                    cnfrs,_ = self._variables2cnfrs(_chrom_decoded2)
+                    self.cnfrs_history[sn_pair+1].append(torch.Tensor(cnfrs[0].detach() \
+                                                                    .numpy()[0]).reshape((1, -1)))
+                    self.score_history[sn_pair+1].append(_fitness2 * -1.0)
+                    if delta_score > 0:
+                        self.chrom_pop2[sn_pair + 1] = _p2_new
+                        if _fitness2_new > 0:
+                            _lig_cnfrs, _rec_cnfrs_ = self._variables2cnfrs(_chrom_decoded2_new)
+                            self.ligand_cnfrs_history_.append(torch.Tensor(_lig_cnfrs[0].detach() \
+                                                                           .numpy()[0]).reshape((1, -1)))
+                            self.ligand_scores_history_.append(_fitness2_new * -1.0)
 
             # ......................................
 
@@ -622,8 +670,9 @@ class GeneticAlgorithmSampler(BaseSampler):
         angles = torch.remainder(vars_matrix[:, 3:] + np.pi, 2 * np.pi) - np.pi
         lig_cnfr = torch.cat([xyz, angles], dim=1)
         lig_cnfr = lig_cnfr.to(self.scoring_function.device)
-        out = self._out_of_box_check_batch([lig_cnfr])
-        scores = self._batch_score([lig_cnfr])
+        pose = self.ligand.cnfr2xyz([lig_cnfr])
+        out = self._out_of_box_check_coords(pose.detach())
+        scores = self.scoring_function.scoring()
         fitness = -scores[:, 0]
         return torch.where(out, torch.full_like(fitness, -999.99), fitness)
 

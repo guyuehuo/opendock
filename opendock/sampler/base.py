@@ -216,6 +216,11 @@ class BaseSampler(object):
 
     def _out_of_box_check_batch(self, ligand_cnfrs=None):
         """Vectorized out-of-box check returning a ``[n]`` bool mask."""
+        xyz_coords = self.ligand.cnfr2xyz(ligand_cnfrs).detach()
+        return self._out_of_box_check_coords(xyz_coords)
+
+    def _out_of_box_check_coords(self, xyz_coords):
+        """Out-of-box check on already-decoded ``[n, M, 3]`` coordinates."""
         xyz_ranges = []
         for i in range(3):
             _range = [self.box_center[i] - 1.0 * self.box_size[i],
@@ -223,7 +228,6 @@ class BaseSampler(object):
             xyz_ranges.append(_range)
         self.box_ranges_ = xyz_ranges
 
-        xyz_coords = self.ligand.cnfr2xyz(ligand_cnfrs).detach()
         n = xyz_coords.shape[0]
         out = torch.zeros(n, dtype=torch.bool, device=xyz_coords.device)
         for i in range(3):

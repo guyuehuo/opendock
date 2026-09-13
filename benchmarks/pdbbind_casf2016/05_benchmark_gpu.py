@@ -41,6 +41,13 @@ from opendock.scorer.vina import VinaSF  # noqa: E402
 MINIMIZERS = {"lbfgs": lbfgs_minimizer, "adam": adam_minimizer}
 
 
+def no_minimizer(x, target_function, **kwargs):
+    return x
+
+
+MINIMIZERS["none"] = no_minimizer
+
+
 def set_seed(seed):
     random.seed(seed)
     np.random.seed(seed)
