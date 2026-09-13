@@ -111,8 +111,11 @@ def build_objects(code, source, mode, cfg, prep_dir, conditions, clip_default):
 
 
 def run_one_job(code, source, mode, cfg_name, cfg, prep_dir, run_dir,
-                conditions, num_modes, cluster_cutoff, steps_scale=1.0):
+                conditions, num_modes, cluster_cutoff, steps_scale=1.0,
+                bound_value=None):
     cond = condition_id(source, mode, cfg_name)
+    if bound_value is not None:
+        cond = f"{cond}-bv{bound_value:g}"
     cond_dir = ensure_dir(os.path.join(run_dir, code))
     out_pdbqt = os.path.join(cond_dir, f"{cond}.pdbqt")
     scores_csv = os.path.join(run_dir, "scores.csv")
@@ -128,6 +131,8 @@ def run_one_job(code, source, mode, cfg_name, cfg, prep_dir, run_dir,
                   minimizer=minimizer)
     if cfg["sampler"] == "ga":
         kwargs["n_pop"] = int(cfg.get("n_pop", 100))
+        if bound_value is not None:
+            kwargs["bound_value"] = bound_value
 
     n_steps = int(float(cfg["steps_per_ha"]) * ligand.number_of_heavy_atoms
                   * steps_scale)
@@ -217,6 +222,9 @@ def main():
     parser.add_argument("--cfg", default=None, help="sampler cfg name")
     parser.add_argument("--max-cases", type=int, default=None)
     parser.add_argument("--steps-scale", type=float, default=1.0)
+    parser.add_argument("--bound-value", type=float, default=None,
+                        help="override the GA angular search half-range (rad) "
+                             "for rotation/torsion variables (torsion step size)")
     parser.add_argument("--num-modes", type=int, default=None)
     parser.add_argument("--threads", type=int, default=1)
     parser.add_argument("--seed", type=int, default=2026)
@@ -236,10 +244,13 @@ def main():
     def _safe_run(code, source, mode, cfg_name, cfg):
         """Run one job; on exception record a permanent failure marker."""
         cond = condition_id(source, mode, cfg_name)
+        if args.bound_value is not None:
+            cond = f"{cond}-bv{args.bound_value:g}"
         try:
             return run_one_job(code, source, mode, cfg_name, cfg, prep_dir,
                                run_dir, conditions, num_modes, cluster_cutoff,
-                               steps_scale=args.steps_scale)
+                               steps_scale=args.steps_scale,
+                               bound_value=args.bound_value)
         except Exception as exc:
             log(f"{code} {cond}: FAILED - {exc}")
             mark_failed(run_dir, code, cond, traceback.format_exc())
@@ -252,6 +263,8 @@ def main():
         cfg = next(c for c in conditions["opendock_samplers"]
                    if c["name"] == args.cfg)
         cond = condition_id(args.source, args.mode, args.cfg)
+        if args.bound_value is not None:
+            cond = f"{cond}-bv{args.bound_value:g}"
         if args.resume and job_state(run_dir, args.code, cond) != "pending":
             log(f"{args.code} {cond}: already done/failed, skipping")
         else:

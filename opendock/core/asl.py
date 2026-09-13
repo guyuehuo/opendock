@@ -118,7 +118,7 @@ class AtomSelection(object):
             The indices of atoms belonging to specific names. 
         """
         if len(self.atomnames_) == 0:
-            return self.molecule.dataframe_ha_.index.values()
+            return list(self.molecule.dataframe_ha_.index)
         else:
             atom_indices = []
             for atomnames in self.atomnames_:

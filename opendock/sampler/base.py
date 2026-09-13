@@ -418,21 +418,13 @@ class BaseSampler(object):
             # ligand step size
             # print("cnfr_tensor shape ", ligand_cnfrs[0].shape)
 
-            _ligand_mutate_size = torch.Tensor([_get_rn(), _get_rn(), _get_rn()] + \
-                                               [0 for x in
-                                                range(ligand_cnfrs[0].shape[1] - 3)])
-            # _ligand_mutate_size = torch.Tensor(
-            #     [_get_rn(), _get_rn(), _get_rn()] + [self.kt_*0.5 * np.pi * _get_rn() for x in range(3)] + \
-            #     [0 for x in
-            #      range(ligand_cnfrs[0].shape[1] - 6)])
-            # minimize=False
-            # _ligand_mutate_size = torch.Tensor([_get_rn(), _get_rn(), _get_rn()] + \
-            #                                    [torsion_max * np.pi * _get_rn() for x in
-            #                                     range(ligand_cnfrs[0].shape[1] - 3)])
-            # _ligand_mutate_size = torch.Tensor([coords_max * _get_rn(), ] * 3 + \
-            #                                    [torsion_max * np.pi * _get_rn() for x in
-            #                                     range(ligand_cnfrs[0].shape[1] - 3)])
-            # print("_ligand_mutate_size ", _ligand_mutate_size)
+            # mutate translation (coords_max scale), rotation and every
+            # rotatable torsion (torsion_max * pi scale) so the sampler
+            # actually explores the internal degrees of freedom.
+            _ligand_mutate_size = torch.Tensor(
+                [coords_max * _get_rn() for x in range(3)] + \
+                [torsion_max * np.pi * _get_rn()
+                 for x in range(ligand_cnfrs[0].shape[1] - 3)])
 
             # if self.ligand_is_flexible_:
             #     _new_ligand_cnfrs = [ligand_cnfrs[0] \
@@ -452,9 +444,10 @@ class BaseSampler(object):
             # print('new vector', _new_ligand_cnfrs)
             while self._out_of_box_check(_new_ligand_cnfrs) and _idx <= max_box_trials:
                 # print("_new_ligand_cnfrs:",_new_ligand_cnfrs)
-                _ligand_mutate_size = torch.Tensor([_get_rn(), _get_rn(), _get_rn()] + \
-                                                   [0 for x in
-                                                    range(ligand_cnfrs[0].shape[1] - 3)])
+                _ligand_mutate_size = torch.Tensor(
+                    [coords_max * _get_rn() for x in range(3)] + \
+                    [torsion_max * np.pi * _get_rn()
+                     for x in range(ligand_cnfrs[0].shape[1] - 3)])
                 _new_ligand_cnfrs = [ligand_cnfrs[0] \
                                      + _ligand_mutate_size, ]
                 _idx += 1
@@ -713,18 +706,7 @@ class BaseSampler(object):
         return variables
 
     def _restrict_angle_range(self, x):
-        if x < -np.pi:
-            y = x + np.pi
-            while y < -np.pi:
-                y = y + np.pi
-        elif x > np.pi:
-            y = x - np.pi
-            while y > np.pi:
-                y = y - np.pi
-        else:
-            y = x
-
-        return y
+        return (x + np.pi) % (2 * np.pi) - np.pi
 
     def objective_func(self, x, **kwargs):
         """
