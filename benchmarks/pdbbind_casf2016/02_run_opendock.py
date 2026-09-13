@@ -113,12 +113,17 @@ def build_objects(code, source, mode, cfg, prep_dir, conditions, clip_default,
 
 def run_one_job(code, source, mode, cfg_name, cfg, prep_dir, run_dir,
                 conditions, num_modes, cluster_cutoff, steps_scale=1.0,
-                bound_value=None, n_bit=None, device="cpu", mc_tasks=None):
+                bound_value=None, n_bit=None, device="cpu", mc_tasks=None,
+                anneal=False, bound_min=None):
     cond = condition_id(source, mode, cfg_name)
     if bound_value is not None:
         cond = f"{cond}-bv{bound_value:g}"
     if n_bit is not None:
         cond = f"{cond}-nb{n_bit}"
+    if anneal:
+        cond = f"{cond}-anneal"
+        if bound_min is not None:
+            cond = f"{cond}-bm{bound_min:g}"
     cond_dir = ensure_dir(os.path.join(run_dir, code))
     out_pdbqt = os.path.join(cond_dir, f"{cond}.pdbqt")
     scores_csv = os.path.join(run_dir, "scores.csv")
@@ -138,6 +143,10 @@ def run_one_job(code, source, mode, cfg_name, cfg, prep_dir, run_dir,
             kwargs["bound_value"] = bound_value
         if n_bit is not None:
             kwargs["n_bit"] = n_bit
+        if anneal:
+            kwargs["anneal"] = True
+        if bound_min is not None:
+            kwargs["bound_min"] = bound_min
     if cfg["sampler"] == "mc":
         if mc_tasks is not None:
             kwargs["ntasks"] = int(mc_tasks)
@@ -238,6 +247,10 @@ def main():
     parser.add_argument("--n-bit", type=int, default=None,
                         help="GA binary resolution (bits per variable); "
                              "higher = finer torsion resolution at full range")
+    parser.add_argument("--anneal", action="store_true",
+                        help="anneal the GA angular search range (coarse-to-fine)")
+    parser.add_argument("--bound-min", type=float, default=None,
+                        help="final angular half-range for --anneal (rad)")
     parser.add_argument("--device", default="cpu",
                         help="scoring device for VinaSF (cpu, cuda, cuda:0..N)")
     parser.add_argument("--mc-tasks", type=int, default=None,
@@ -265,13 +278,18 @@ def main():
             cond = f"{cond}-bv{args.bound_value:g}"
         if args.n_bit is not None:
             cond = f"{cond}-nb{args.n_bit}"
+        if args.anneal:
+            cond = f"{cond}-anneal"
+            if args.bound_min is not None:
+                cond = f"{cond}-bm{args.bound_min:g}"
         try:
             return run_one_job(code, source, mode, cfg_name, cfg, prep_dir,
                                run_dir, conditions, num_modes, cluster_cutoff,
                                steps_scale=args.steps_scale,
                                bound_value=args.bound_value,
                                n_bit=args.n_bit, device=args.device,
-                               mc_tasks=args.mc_tasks)
+                               mc_tasks=args.mc_tasks,
+                               anneal=args.anneal, bound_min=args.bound_min)
         except Exception as exc:
             log(f"{code} {cond}: FAILED - {exc}")
             mark_failed(run_dir, code, cond, traceback.format_exc())
@@ -288,6 +306,10 @@ def main():
             cond = f"{cond}-bv{args.bound_value:g}"
         if args.n_bit is not None:
             cond = f"{cond}-nb{args.n_bit}"
+        if args.anneal:
+            cond = f"{cond}-anneal"
+            if args.bound_min is not None:
+                cond = f"{cond}-bm{args.bound_min:g}"
         if args.resume and job_state(run_dir, args.code, cond) != "pending":
             log(f"{args.code} {cond}: already done/failed, skipping")
         else:

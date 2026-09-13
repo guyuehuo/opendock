@@ -64,6 +64,8 @@ class GeneticAlgorithmSampler(BaseSampler):
         self.minimization_ratio = kwargs.pop("minimization_ratio", 1. / 5.)
         self.early_stop_tolerance = kwargs.pop("early_stop_tolerance", 10)
         self.bound_value = kwargs.pop('bound_value', np.pi)
+        self.anneal = kwargs.pop('anneal', False)
+        self.bound_min = kwargs.pop('bound_min', 0.25)
         self.kt_ = kwargs.pop('kt', 1.0)
 
         print("self.bound_value",self.bound_value)
@@ -265,6 +267,27 @@ class GeneticAlgorithmSampler(BaseSampler):
         else:
             return chrom
 
+    def _anneal_bound(self, sn_gen, n_gen):
+        """Shrink the angular search range as generations progress.
+
+        Decodes the current population under the current bound, tightens the
+        rotation/torsion bounds linearly from ``bound_value`` toward
+        ``bound_min``, and re-encodes the population under the new bound. With
+        a fixed ``n_bit`` this simultaneously narrows the search and increases
+        its resolution (coarse-to-fine exploration).
+        """
+        ratio = sn_gen / max(n_gen, 1)
+        new_bound = self.bound_min + (self.bound_value - self.bound_min) * \
+            (1.0 - ratio)
+        new_bound = max(new_bound, self.bound_min)
+
+        old_vars = [self.decode_entire_chrom(np.array(c))
+                    for c in self.chrom_pop]
+        for i in range(3, self.n_var):
+            self.bound[i] = [-new_bound, new_bound]
+        self.chrom_pop = np.array(
+            [list(self.encode2chrom(v)) for v in old_vars], dtype=int)
+
     def sampling(self, n_gen=None, verbose=True, output=None):
         """
         Evolution for a given number of iterations/generations
@@ -300,6 +323,10 @@ class GeneticAlgorithmSampler(BaseSampler):
         # print("n_gen",n_gen)
         for sn_gen in range(n_gen):
             self.kt_ = (n_gen - sn_gen) / n_gen
+
+            # anneal the angular search range (coarse-to-fine)
+            if self.anneal and sn_gen > 0:
+                self._anneal_bound(sn_gen, n_gen)
 
             # --------------------------------------------
             # selecting parents
