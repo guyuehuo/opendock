@@ -5,6 +5,9 @@ import time
 from opendock.core.utils import *
 from opendock.scorer.scoring_function import BaseScoringFunction
 
+# exp(-9/4), the constant subtracted from the second Gaussian term.
+_GAUSS2_CENTER_SUB = float(torch.exp(torch.tensor(-9.0 / 4.0)))
+
 
 class VinaSF(BaseScoringFunction):
     """Vina scoring function. This is a pytorch implementation of the
@@ -843,8 +846,7 @@ class VinaScoreCore(object):
         d_ij = self.dist_matrix - self.rec_lig_atom_vdw_sum
         gauss_1 = torch.exp(- torch.pow(d_ij / 0.5, 2)) - (d_ij == 0) * 1.
         gauss_2 = torch.exp(- torch.pow((d_ij - 3) / 2, 2)) - \
-            (d_ij == 0) * 1. * torch.exp(torch.tensor(
-                -9 / 4, device=d_ij.device, dtype=d_ij.dtype))
+            (d_ij == 0) * 1. * _GAUSS2_CENTER_SUB
         repulsion = torch.pow(((d_ij < 0) * d_ij), 2)
         hydro_1 = self.rec_lig_is_hydro * (d_ij <= 0.5) * 1.
         hydro_2_condition = self.rec_lig_is_hydro * (d_ij > 0.5) * (d_ij < 1.5) * 1.

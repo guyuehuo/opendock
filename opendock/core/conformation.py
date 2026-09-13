@@ -149,6 +149,13 @@ class LigandConformation(Ligand):
         self.number_of_cnfr_tensor = len(cnfr_tensor[0])
         self.pose_heavy_atoms_coords = [0] * self.number_of_heavy_atoms
 
+        # Keep the reference geometry on the same device as the input cnfr so
+        # the decoded coordinates can be built on CPU or GPU transparently.
+        _dev = cnfr_tensor[0].device
+        _orig_center = self.ligand_center
+        _orig_init_ha = self.init_heavy_atoms_coords
+        self.ligand_center = self.ligand_center.to(_dev)
+        self.init_heavy_atoms_coords = self.init_heavy_atoms_coords.to(_dev)
 
         self.cnfr_tensor = cnfr_tensor[0]
         # self.cnfr_tensor = cnfr_tensor
@@ -161,7 +168,10 @@ class LigandConformation(Ligand):
 
         self.pose_heavy_atoms_coords = torch.cat(self.pose_heavy_atoms_coords, axis=1)\
             .reshape(len(self.cnfr_tensor), -1, 3)
-            
+
+        self.ligand_center = _orig_center
+        self.init_heavy_atoms_coords = _orig_init_ha
+
         return self.pose_heavy_atoms_coords
 
     def _get_geo_center(self):
@@ -241,6 +251,10 @@ class ReceptorConformation(Receptor):
 
         # select pocket residues by distance cutoff
         self.pocket_dist_cutoff_ = pocket_dist_cutoff
+
+        # Receptor geometry version (bumped whenever sidechains are rebuilt).
+        # Used by the scoring function to invalidate its device cache.
+        self._coord_version = 0
 
     def _generate_pldist(self):
         """Calculates the protein-ligand heavy atom distance matrix. 
@@ -445,6 +459,7 @@ class ReceptorConformation(Receptor):
                         self.current_receptor_heavy_atoms_xyz[i] = new_coord
 
         self.rec_heavy_atoms_xyz = self.current_receptor_heavy_atoms_xyz * 1.0
+        self._coord_version += 1
         return self.rec_heavy_atoms_xyz
 
 

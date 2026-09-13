@@ -163,7 +163,7 @@ def rodrigues_single_pose(vector, theta):
     b = vector[1]
     c = vector[2]
 
-    R = torch.zeros(9)
+    R = torch.zeros(9, device=theta.device)
 
     R_list = [
         cos(theta) + torch.pow(a, 2) * (1 - cos(theta)), a * b * (1 - cos(theta)) - c * sin(theta),
@@ -284,7 +284,7 @@ def relative_vector_center_rotation(vector, center, R):
     vec_length = vector_length(vector)  # shape [-1, 1, 1]
 
     point_1 = vector
-    point_0 = torch.zeros(num_of_vec, 1, 3)  # shape [-1, 1, 3]
+    point_0 = torch.zeros(num_of_vec, 1, 3, device=vector.device)  # shape [-1, 1, 3]
     
     new_point_1 = torch.matmul(R_tensor, (point_1 - center).reshape(-1, 3, 1)) + center.reshape(-1, 3, 1)  # shape [-1, 3, 1]
     new_point_0 = torch.matmul(R_tensor, (point_0 - center).reshape(-1, 3, 1)) + center.reshape(-1, 3, 1)  # shape [-1, 3, 1]

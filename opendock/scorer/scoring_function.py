@@ -54,6 +54,11 @@ class BaseScoringFunction(object):
         self.dist = None
         self.intra_dist=None
 
+        # Cached receptor coordinates on the scoring device (refreshed only when
+        # the receptor geometry changes; rigid receptors never change).
+        self._rec_xyz_dev = None
+        self._rec_version = None
+
     def generate_pldist_mtrx(self):
         """Generate protein-ligand distance matrix.
 
@@ -63,8 +68,12 @@ class BaseScoringFunction(object):
         #print(self.receptor.rec_heavy_atoms_xyz)
         #print('len(self.ligand.pose_heavy_atoms_coords)',len(self.ligand.pose_heavy_atoms_coords))
         lig_coords = self.ligand.pose_heavy_atoms_coords.to(self.device)
-        rec_xyz = self.receptor.rec_heavy_atoms_xyz.to(self.device)
-        rec_heavy_atoms_xyz = rec_xyz.expand(len(self.ligand.pose_heavy_atoms_coords), -1, 3)
+        rec_xyz = self.receptor.rec_heavy_atoms_xyz
+        version = getattr(self.receptor, "_coord_version", 0)
+        if self._rec_xyz_dev is None or self._rec_version != version:
+            self._rec_xyz_dev = rec_xyz.to(self.device)
+            self._rec_version = version
+        rec_heavy_atoms_xyz = self._rec_xyz_dev.expand(len(self.ligand.pose_heavy_atoms_coords), -1, 3)
         #print('res:',rec_heavy_atoms_xyz)
         # Generate the distance matrix of heavy atoms between the protein and the ligand.
         n, N, C = rec_heavy_atoms_xyz.size()
