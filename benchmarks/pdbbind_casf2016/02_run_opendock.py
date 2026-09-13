@@ -196,7 +196,8 @@ def run_one_job(code, source, mode, cfg_name, cfg, prep_dir, run_dir,
                 bound_value=None, n_bit=None, device="cpu", mc_tasks=None,
                 anneal=False, bound_min=None, compile=False, n_conformers=None,
                 batch_minimize=True, min_steps=None, min_lr=None, n_pop=None,
-                torsion_max=None):
+                torsion_max=None, ring_pucker=True):
+    os.environ["OPENDOCK_RING_PUCKER"] = "1" if ring_pucker else "0"
     cond = condition_id(source, mode, cfg_name)
     if bound_value is not None:
         cond = f"{cond}-bv{bound_value:g}"
@@ -220,6 +221,8 @@ def run_one_job(code, source, mode, cfg_name, cfg, prep_dir, run_dir,
         cond = f"{cond}-mt{mc_tasks}"
     if torsion_max is not None:
         cond = f"{cond}-tm{torsion_max:g}"
+    if not ring_pucker:
+        cond = f"{cond}-rp0"
     if steps_scale != 1.0:
         cond = f"{cond}-ss{steps_scale:g}"
     cond_dir = ensure_dir(os.path.join(run_dir, code))
@@ -385,6 +388,10 @@ def main():
     parser.add_argument("--torsion-max", type=float, default=None,
                         help="MC torsion mutation half-range in units of pi "
                              "(default 0.1; larger = wider torsion search)")
+    parser.add_argument("--ring-pucker", action=argparse.BooleanOptionalAction,
+                        default=True,
+                        help="add the ring-pucker DOF to the ligand vector "
+                             "(default on; --no-ring-pucker to disable)")
     parser.add_argument("--num-modes", type=int, default=None)
     parser.add_argument("--threads", type=int, default=1)
     parser.add_argument("--seed", type=int, default=2026)
@@ -424,6 +431,8 @@ def main():
             cond = f"{cond}-mt{args.mc_tasks}"
         if args.torsion_max is not None:
             cond = f"{cond}-tm{args.torsion_max:g}"
+        if not args.ring_pucker:
+            cond = f"{cond}-rp0"
         if args.steps_scale != 1.0:
             cond = f"{cond}-ss{args.steps_scale:g}"
         try:
@@ -439,7 +448,8 @@ def main():
                                batch_minimize=args.batch_minimize,
                                min_steps=args.min_steps, min_lr=args.min_lr,
                                n_pop=args.n_pop,
-                               torsion_max=args.torsion_max)
+                               torsion_max=args.torsion_max,
+                               ring_pucker=args.ring_pucker)
         except Exception as exc:
             log(f"{code} {cond}: FAILED - {exc}")
             mark_failed(run_dir, code, cond, traceback.format_exc())
@@ -472,6 +482,8 @@ def main():
             cond = f"{cond}-mt{args.mc_tasks}"
         if args.torsion_max is not None:
             cond = f"{cond}-tm{args.torsion_max:g}"
+        if not args.ring_pucker:
+            cond = f"{cond}-rp0"
         if args.steps_scale != 1.0:
             cond = f"{cond}-ss{args.steps_scale:g}"
         if args.resume and job_state(run_dir, args.code, cond) != "pending":
