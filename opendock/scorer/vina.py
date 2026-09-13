@@ -807,7 +807,12 @@ class VinaSF(BaseScoringFunction):
         total = core.score_terms()["total"] * mask.to(dist.dtype)
         return total.sum(dim=1).reshape(-1, 1)
 
-    def scoring(self):
+    def scoring(self, inter_only=False):
+        """Binding energy per pose (lower is better).
+
+        ``inter_only=True`` skips the intra-molecular term; used by the batched
+        minimizer on alternating steps (the intra term changes slowly).
+        """
         self._ensure_static()
 
         # make distance matrix
@@ -830,6 +835,12 @@ class VinaSF(BaseScoringFunction):
                                                   device=self.device,
                                                   requires_grad=True)
 
+        norm = 1 + 0.05846 * (self.ligand.active_torsion
+                              + 0.5 * self.ligand.inactive_torsion)
+
+        if inter_only:
+            return self.vina_inter_energy / norm
+
         # intra-molecular term (vectorized, device-aware)
         try:
             self.generate_intra_mtrx()
@@ -839,9 +850,7 @@ class VinaSF(BaseScoringFunction):
                                            device=self.device,
                                            requires_grad=True)
 
-        return (self.vina_inter_energy + vina_intra_term) / (
-            1 + 0.05846 * (self.ligand.active_torsion
-                           + 0.5 * self.ligand.inactive_torsion))
+        return (self.vina_inter_energy + vina_intra_term) / norm
 
     # ── energy decomposition ─────────────────────────────────────────────
     def _residue_labels(self, mol_obj):

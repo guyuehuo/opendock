@@ -53,6 +53,7 @@ class BaseSampler(object):
         self.minimize_lr = kwargs.pop('minimize_lr', 0.1)
         self.pocket_subset = kwargs.pop('pocket_subset', True)
         self.warm_start = kwargs.pop('warm_start', False)
+        self.intra_stride = kwargs.pop('intra_stride', 2)
         self._adam_state = None
         self.output_fpath = kwargs.pop('output_fpath', 'output.pdb')
         self.box_center = kwargs.pop('box_center', None)
@@ -252,10 +253,25 @@ class BaseSampler(object):
             v = torch.zeros_like(x)
             t = 0
 
+        # Optionally skip the intra term on alternating steps (it changes
+        # slowly); detect once whether the scorer supports ``inter_only``.
+        intra_stride = getattr(self, "intra_stride", 1)
+        _use_inter_only = False
+        if intra_stride > 1:
+            try:
+                import inspect
+                _use_inter_only = ('inter_only' in
+                                   inspect.signature(sf.scoring).parameters)
+            except Exception:
+                _use_inter_only = False
+
         try:
-            for _ in range(nsteps):
+            for it in range(nsteps):
                 self.ligand.cnfr2xyz([x])
-                loss = self.scoring_function.scoring().sum()
+                if _use_inter_only and (it % intra_stride) != 0:
+                    loss = sf.scoring(inter_only=True).sum()
+                else:
+                    loss = sf.scoring().sum()
                 g = torch.autograd.grad(loss, x)[0]
                 t += 1
                 m = beta1 * m + (1 - beta1) * g

@@ -72,6 +72,7 @@ class GeneticAlgorithmSampler(BaseSampler):
         self.minimize_lr = kwargs.pop('minimize_lr', 0.1)
         self.pocket_subset = kwargs.pop('pocket_subset', True)
         self.warm_start = kwargs.pop('warm_start', False)
+        self.intra_stride = kwargs.pop('intra_stride', 2)
 
         print("self.bound_value",self.bound_value)
 

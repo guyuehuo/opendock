@@ -36,6 +36,7 @@ class MonteCarloSampler(BaseSampler):
         self.minimize_lr = kwargs.pop('minimize_lr', 0.1)
         self.pocket_subset = kwargs.pop('pocket_subset', True)
         self.warm_start = kwargs.pop('warm_start', True)
+        self.intra_stride = kwargs.pop('intra_stride', 2)
         self.index_ = 0
         self.best_cnfrs_ = [None, None]
         self.history_ = [[] for _ in range(self.ntasks)]
