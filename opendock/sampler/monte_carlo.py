@@ -58,16 +58,41 @@ class MonteCarloSampler(BaseSampler):
         self.initialized_ = True
         return self
     
+    def _ensure_ntasks(self):
+        """Expand the single starting pose into ``ntasks`` independent chains."""
+        if self.ntasks > 1 and self.ligand.cnfrs_ is not None:
+            cur = self.ligand.cnfrs_[0]
+            if cur.dim() == 2 and cur.shape[0] != self.ntasks:
+                self.ligand.cnfrs_ = [cur.repeat(self.ntasks, 1)]
+
     def _step(self, minimize=False):
         t1=time.time()
         # make mutations
-        _lig_cnfrs, _rec_cnfrs = self._mutate(self.ligand.cnfrs_, 
-                                              self.receptor.cnfrs_,
-                                              5.0, 0.1,
-                                              minimize=minimize)
+        if self.ntasks > 1 and self.receptor.cnfrs_ is None:
+            # batch: mutate + score many poses in one scoring call
+            _lig_cnfrs = [self._mutate_batch(self.ligand.cnfrs_, 5.0, 0.1,
+                                             n=self.ntasks)]
+            _rec_cnfrs = None
+            if minimize and self.minimizer is not None:
+                rows = []
+                for i in range(self.ntasks):
+                    r = _lig_cnfrs[0][i:i+1].detach().clone().requires_grad_(True)
+                    try:
+                        rmin, _ = self._minimize([r], None, is_ligand=True,
+                                                 is_receptor=False)
+                        rows.append(rmin[0].detach().reshape(1, -1))
+                    except Exception:
+                        rows.append(_lig_cnfrs[0][i:i+1].detach())
+                _lig_cnfrs = [torch.cat(rows, dim=0)]
+            score = self._batch_score(_lig_cnfrs, _rec_cnfrs).detach().cpu().numpy()
+        else:
+            _lig_cnfrs, _rec_cnfrs = self._mutate(self.ligand.cnfrs_,
+                                                  self.receptor.cnfrs_,
+                                                  5.0, 0.1,
+                                                  minimize=minimize)
+            score = self._score(_lig_cnfrs, _rec_cnfrs).detach().cpu().numpy()
         t2=time.time()
         # calculate score
-        score = self._score(_lig_cnfrs, _rec_cnfrs).detach().cpu().numpy()
         t3=time.time()
         # delta score
         for i in range(len(score)):
@@ -127,6 +152,7 @@ class MonteCarloSampler(BaseSampler):
             self._initialize()
         if nsteps is not None:
             self.nsteps_ = nsteps
+        self._ensure_ntasks()
 
         is_a_success_sampling=True
         # score, prob, is_accept

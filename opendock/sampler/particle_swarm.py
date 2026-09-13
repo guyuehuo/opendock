@@ -51,6 +51,7 @@ class Particle(object):
         self.velocity = np.zeros(dim)
         self.best_position = np.array([random.uniform(lb[i], ub[i]) for i in range(dim)])
         self.fitness = float('inf')
+        self.best_fitness = float('inf')
         self.cnfrs_history=[]
         self.scores_history=[]
 
@@ -153,6 +154,7 @@ class ParticleSwarmOptimizer(BaseSampler):
         init_particle.position = np.array(init_variables)
         init_particle.fitness = fitness
         init_particle.best_position = init_particle.position
+        init_particle.best_fitness = fitness
 
         self.swarm = [init_particle, ] + [Particle(self.dim, self.lb, self.ub) \
                       for _ in range(self.size - 1)]
@@ -190,6 +192,19 @@ class ParticleSwarmOptimizer(BaseSampler):
         # return (2 * init_lr * abs(0.5 - ratio)) ** 2 + 1e-4
         return init_w * (1 - ratio) + 1e-4
 
+    def _decode_positions(self, positions):
+        """Decode a ``[n, n_var]`` position matrix to a ``[n, 6+k]`` ligand cnfr."""
+        xyz = positions[:, :3]
+        angles = torch.remainder(positions[:, 3:] + np.pi, 2 * np.pi) - np.pi
+        return torch.cat([xyz, angles], dim=1)
+
+    def _batch_score_positions(self, positions):
+        """Score a batch of particle positions, returning ``[n]`` scores."""
+        lig_cnfr = self._decode_positions(positions).to(self.scoring_function.device)
+        out = self._out_of_box_check_batch([lig_cnfr])
+        scores = self._batch_score([lig_cnfr])[:, 0]
+        return torch.where(out, torch.full_like(scores, 999.99), scores)
+
 
     def sampling(self, nsteps=None) -> tuple:
         # initialize variables
@@ -213,89 +228,102 @@ class ParticleSwarmOptimizer(BaseSampler):
             #        particle.position=self.global_best_position*1.0
             #        particle.fitness= self.global_best_fitness*1.0
             # print("self.swarm[0].fitness",self.swarm[0].fitness)
-            for i in range(self.size):
+            # ---- batch score the swarm (rigid receptor) ----
+            if self.receptor.cnfrs_ is None:
+                pos_matrix = torch.tensor(
+                    np.stack([p.position for p in self.swarm]), dtype=torch.float32)
+                swarm_scores = self._batch_score_positions(pos_matrix).detach().cpu().numpy()
+                for i, particle in enumerate(self.swarm):
+                    particle.fitness = float(swarm_scores[i])
+            else:
+                for particle in self.swarm:
+                    particle.fitness = self.objective_func(particle.position)
 
-
-                particle = self.swarm[i]
-                particle.fitness = self.objective_func(particle.position)
-
-                # lcnfrs_, rcnfrs_ = self._variables2cnfrs(particle.position)
-                # self.ligand_cnfrs_history_.append(torch.Tensor(lcnfrs_[0].detach() \
-                #                                                .numpy()[0]).reshape((1, -1)))
-                # self.ligand_scores_history_.append(particle.fitness)
-                # print("particle.position:",particle.position)
-
-                # minimize if necessary
-                _random_num = random.random()
-                if self.minimizer is not None and _random_num < self.minimization_ratio:
-                    lcnfrs_, rcnfrs_ = self._variables2cnfrs(particle.position)
-                    particle.cnfrs_history.append(torch.Tensor(lcnfrs_[0].detach() \
-                                                                           .numpy()[0]).reshape((1, -1)))
-                    particle.scores_history.append(particle.fitness)
-                    try:
-                        # print("before lcnfrs_:", lcnfrs_)
-                        # print("rcnfrs_",rcnfrs_)
-                        # lcnfrs_, rcnfrs_ = self._minimize(lcnfrs_, rcnfrs_,
-                        #                                 (lcnfrs_ is not None),
-                        #                                 (rcnfrs_ is not None))
-                        # print("before fitness",particle.fitness)
-
-                        lcnfrs_, rcnfrs_ = self._mutate(lcnfrs_, rcnfrs_,
-                                                        5.0, 0.1,
-                                                        minimize=True)
-
-                        # print("after lcnfrs_:", lcnfrs_)
-                        x = self._cnfrs2variables(lcnfrs_, rcnfrs_)
-                        # print("x",x)
-                        _fitness = self.objective_func(x)
-                        # print("i:",i,"   score",_fitness)
-                        # print("after fitness", _fitness)
-
-                        delta_score = _fitness - particle.fitness
-
-                        if delta_score < 0:
-                            particle.position = np.array(x)
-                            particle.best_position = np.array(x)
+            # ---- minimize subset ----
+            if self.minimizer is not None and self.receptor.cnfrs_ is None:
+                subset = [i for i in range(self.size)
+                          if random.random() < self.minimization_ratio]
+                if subset:
+                    base_pos = torch.tensor(
+                        np.stack([self.swarm[i].position for i in subset]),
+                        dtype=torch.float32)
+                    base_lig = self._decode_positions(base_pos)
+                    mutated = self._mutate_batch([base_lig], n=len(subset))
+                    rows = []
+                    for k in range(len(subset)):
+                        r = mutated[k:k+1].detach().clone().requires_grad_(True)
+                        try:
+                            rmin, _ = self._minimize([r], None, is_ligand=True,
+                                                     is_receptor=False)
+                            rows.append(rmin[0].detach().reshape(1, -1))
+                        except RuntimeError:
+                            rows.append(mutated[k:k+1].detach())
+                    minimized = torch.cat(rows, dim=0)
+                    new_scores = self._batch_score([minimized])[:, 0].detach().cpu().numpy()
+                    new_pos = self._decode_positions(
+                        torch.cat([minimized[:, :3],
+                                   torch.remainder(minimized[:, 3:] + np.pi,
+                                                   2 * np.pi) - np.pi], dim=1))
+                    for idx, i in enumerate(subset):
+                        particle = self.swarm[i]
+                        particle.cnfrs_history.append(
+                            torch.Tensor(base_lig[idx].detach().numpy()).reshape((1, -1)))
+                        particle.scores_history.append(particle.fitness)
+                        _fitness = float(new_scores[idx])
+                        if _fitness - particle.fitness < 0:
+                            particle.position = new_pos[idx].detach().numpy()
+                            particle.best_position = particle.position * 1.0
+                            particle.best_fitness = _fitness
                             particle.fitness = _fitness
-                            # print("accept new fitness",particle.fitness)
-
-                            self.ligand_cnfrs_history_.append(torch.Tensor(lcnfrs_[0].detach() \
-                                                                           .numpy()[0]).reshape((1, -1)))
+                            self.ligand_cnfrs_history_.append(
+                                torch.Tensor(minimized[idx].detach().numpy()).reshape((1, -1)))
                             self.ligand_scores_history_.append(_fitness)
+                            self.receptor_cnfrs_history_.append(None)
+            elif self.minimizer is not None:
+                for particle in self.swarm:
+                    if random.random() < self.minimization_ratio:
+                        lcnfrs_, rcnfrs_ = self._variables2cnfrs(particle.position)
+                        particle.cnfrs_history.append(
+                            torch.Tensor(lcnfrs_[0].detach().numpy()[0]).reshape((1, -1)))
+                        particle.scores_history.append(particle.fitness)
+                        try:
+                            lcnfrs_, rcnfrs_ = self._mutate(lcnfrs_, rcnfrs_,
+                                                            5.0, 0.1, minimize=True)
+                            x = self._cnfrs2variables(lcnfrs_, rcnfrs_)
+                            _fitness = self.objective_func(x)
+                            delta_score = _fitness - particle.fitness
+                            if delta_score < 0:
+                                particle.position = np.array(x)
+                                particle.best_position = np.array(x)
+                                particle.best_fitness = _fitness
+                                particle.fitness = _fitness
+                                self.ligand_cnfrs_history_.append(
+                                    torch.Tensor(lcnfrs_[0].detach().numpy()[0]).reshape((1, -1)))
+                                self.ligand_scores_history_.append(_fitness)
+                                if self.receptor.cnfrs_ is not None:
+                                    self.receptor_cnfrs_history_.append(
+                                        [[torch.Tensor(x.detach().numpy()) for x in rcnfrs_]])
+                                else:
+                                    self.receptor_cnfrs_history_.append(None)
+                        except RuntimeError:
+                            _fitness = 999.99
+                            print("[WARNING] Running minimization failed, ignore ...")
 
-                            if self.receptor.cnfrs_ is not None:
-                                self.receptor_cnfrs_history_.append([[torch.Tensor(x.detach().numpy())
-                                                                      for x in rcnfrs_]])
-                            else:
-                                self.receptor_cnfrs_history_.append(None)
-
-                        # print(f"Minimize particle with fitness {_fitness} and prev fitness {particle.fitness}")
-                    except RuntimeError:
-                        _fitness = 999.99
-                        print("[WARNING] Running minimization failed, ignore ...")
-
+            # ---- global best update ----
+            for particle in self.swarm:
                 if particle.fitness < self.global_best_fitness:
                     self.global_best_fitness = particle.fitness
-                    self.global_best_position = particle.position * 1.0  # * 1.0 is to ensure that is a cloned object
+                    self.global_best_position = particle.position * 1.0
 
-                if particle.fitness < self.objective_func(particle.best_position):
-                    particle.best_position = particle.position
-
-                # cognitive_velocity = self.cognitive_param * random.uniform(0, 1) \
-                #     * (particle.best_position - particle.position)
+            # ---- best-position + velocity update ----
+            for particle in self.swarm:
+                if particle.fitness < particle.best_fitness:
+                    particle.best_position = particle.position * 1.0
+                    particle.best_fitness = particle.fitness
                 social_velocity = self.social_param * random.uniform(0, 1) \
                                   * (self.global_best_position - particle.position)
-                # particle.velocity = 0*self.weight * particle.velocity + \
-                #     0*cognitive_velocity + social_velocity
                 particle.velocity = social_velocity
                 particle.position += particle.velocity
-                #
-                #particle.position = np.clip(particle.position, self.lb, self.ub)
-
-                # _lig_cnfrs, _rec_cnfrs = self._mutate(self.ligand.cnfrs_,
-                #                                       self.receptor.cnfrs_,
-                #                                       5.0, 0.1,
-                #                                       minimize=minimize)
 
             # save history
             _lig_cnfrs, _rec_cnfrs_ = self._variables2cnfrs(self.global_best_position)

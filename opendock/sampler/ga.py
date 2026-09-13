@@ -463,33 +463,58 @@ class GeneticAlgorithmSampler(BaseSampler):
 
             # mutate 2
 
-            for sn_chrom, chrom in enumerate(self.chrom_pop2):
+            if self.receptor.cnfrs_ is None:
+                origin_vars = torch.tensor(
+                    [self.decode_entire_chrom(chrom) for chrom in self.chrom_pop2],
+                    dtype=torch.float32)
+                origin_fit = self._batch_fitness_from_vars(origin_vars).detach().cpu().numpy()
+                new_chroms = [self._minimize_chromosome(self.mutate(chrom))
+                              for chrom in self.chrom_pop2]
+                new_vars = torch.tensor(
+                    [self.decode_entire_chrom(chrom) for chrom in new_chroms],
+                    dtype=torch.float32)
+                new_fit = self._batch_fitness_from_vars(new_vars).detach().cpu().numpy()
 
-                _chrom_decoded = self.decode_entire_chrom(chrom)
-                _fitness_origin = self.objective_func(_chrom_decoded)
-
-                _p = self.mutate(chrom)
-                _p_new = self._minimize_chromosome(_p)
-                _chrom_decoded_new = self.decode_entire_chrom(_p_new)
-                _fitness_new = self.objective_func(_chrom_decoded_new)
-
-                delta_score = _fitness_new - _fitness_origin
-
-                if delta_score > 0:
-                    self.chrom_pop2[sn_chrom] = _p_new
-
-                    # _chrom_decoded = self.decode_entire_chrom(_p)
-                    # _fitness = self.objective_func(_chrom_decoded)
-                    if _fitness_new > 0:
-                        _lig_cnfrs, _rec_cnfrs_ = self._variables2cnfrs(_chrom_decoded_new)
-                        self.ligand_cnfrs_history_.append(torch.Tensor(_lig_cnfrs[0].detach().numpy()))
-                        self.ligand_scores_history_.append(_fitness_new * -1.0)
-
-                    if self.receptor.cnfrs_ is not None:
-                        self.receptor_cnfrs_history_.append([[torch.Tensor(x.detach().numpy())
-                                                              for x in _rec_cnfrs_]])
-                    else:
+                for sn_chrom in range(self.n_pop):
+                    delta_score = new_fit[sn_chrom] - origin_fit[sn_chrom]
+                    if delta_score > 0:
+                        self.chrom_pop2[sn_chrom] = new_chroms[sn_chrom]
+                        if new_fit[sn_chrom] > 0:
+                            _chrom_decoded_new = self.decode_entire_chrom(
+                                np.array(new_chroms[sn_chrom]))
+                            _lig_cnfrs, _rec_cnfrs_ = self._variables2cnfrs(_chrom_decoded_new)
+                            self.ligand_cnfrs_history_.append(
+                                torch.Tensor(_lig_cnfrs[0].detach().numpy()))
+                            self.ligand_scores_history_.append(new_fit[sn_chrom] * -1.0)
                         self.receptor_cnfrs_history_.append(None)
+            else:
+                for sn_chrom, chrom in enumerate(self.chrom_pop2):
+
+                    _chrom_decoded = self.decode_entire_chrom(chrom)
+                    _fitness_origin = self.objective_func(_chrom_decoded)
+
+                    _p = self.mutate(chrom)
+                    _p_new = self._minimize_chromosome(_p)
+                    _chrom_decoded_new = self.decode_entire_chrom(_p_new)
+                    _fitness_new = self.objective_func(_chrom_decoded_new)
+
+                    delta_score = _fitness_new - _fitness_origin
+
+                    if delta_score > 0:
+                        self.chrom_pop2[sn_chrom] = _p_new
+
+                        # _chrom_decoded = self.decode_entire_chrom(_p)
+                        # _fitness = self.objective_func(_chrom_decoded)
+                        if _fitness_new > 0:
+                            _lig_cnfrs, _rec_cnfrs_ = self._variables2cnfrs(_chrom_decoded_new)
+                            self.ligand_cnfrs_history_.append(torch.Tensor(_lig_cnfrs[0].detach().numpy()))
+                            self.ligand_scores_history_.append(_fitness_new * -1.0)
+
+                        if self.receptor.cnfrs_ is not None:
+                            self.receptor_cnfrs_history_.append([[torch.Tensor(x.detach().numpy())
+                                                                  for x in _rec_cnfrs_]])
+                        else:
+                            self.receptor_cnfrs_history_.append(None)
                 # print("5")
 
             # --------------------------------------------
@@ -586,6 +611,22 @@ class GeneticAlgorithmSampler(BaseSampler):
             return self._score(self.ligand.cnfrs_, \
                                self.receptor.cnfrs_).detach().cpu().numpy().ravel()[0] * -1.0
 
+    def _batch_fitness_from_vars(self, vars_matrix):
+        """Score a batch of decoded variable vectors, returning fitness.
+
+        ``vars_matrix`` is ``[n, n_var]``.  Only valid for a rigid receptor
+        (the whole vector encodes the ligand pose).  Out-of-box poses get the
+        standard ``-999.99`` fitness.  Returns a device tensor ``[n]``.
+        """
+        xyz = vars_matrix[:, :3]
+        angles = torch.remainder(vars_matrix[:, 3:] + np.pi, 2 * np.pi) - np.pi
+        lig_cnfr = torch.cat([xyz, angles], dim=1)
+        lig_cnfr = lig_cnfr.to(self.scoring_function.device)
+        out = self._out_of_box_check_batch([lig_cnfr])
+        scores = self._batch_score([lig_cnfr])
+        fitness = -scores[:, 0]
+        return torch.where(out, torch.full_like(fitness, -999.99), fitness)
+
     def get_best_chrom(self):
         """
         outputting information on best chrom in population
@@ -681,8 +722,15 @@ class GeneticAlgorithmSampler(BaseSampler):
         -------
         None.
         """
-        for sn_chrom, chrom in enumerate(self.chrom_pop):
-            self.fit_vals[sn_chrom] = self.eval_fit(chrom, **kwargs)
+        if self.receptor.cnfrs_ is None:
+            vars_matrix = torch.tensor(
+                [self.decode_entire_chrom(np.array(chrom))
+                 for chrom in self.chrom_pop], dtype=torch.float32)
+            fit = self._batch_fitness_from_vars(vars_matrix).detach().cpu().numpy()
+            self.fit_vals[:] = fit
+        else:
+            for sn_chrom, chrom in enumerate(self.chrom_pop):
+                self.fit_vals[sn_chrom] = self.eval_fit(chrom, **kwargs)
 
         self.fit_max_list = np.append(self.fit_max_list, self.fit_vals.max())
 

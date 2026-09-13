@@ -73,6 +73,46 @@ class BaseSampler(object):
         except:
             return torch.Tensor([[99.99, ]]).requires_grad_()
 
+    def _batch_score(self, ligand_cnfrs, receptor_cnfrs=None):
+        """Score a batch of poses in a single scoring call.
+
+        ``ligand_cnfrs`` is a list ``[batch]`` where ``batch`` has shape
+        ``[n, 6+k]`` (or a bare ``[n, 6+k]`` tensor).  Returns the score tensor
+        of shape ``[n, 1]`` on the scoring device without syncing to CPU.
+        """
+        device = self.scoring_function.device
+        if ligand_cnfrs is not None:
+            if not isinstance(ligand_cnfrs, (list, tuple)):
+                ligand_cnfrs = [ligand_cnfrs]
+            lig_batch = ligand_cnfrs[0]
+            if lig_batch.dim() == 1:
+                lig_batch = lig_batch.reshape(1, -1)
+            self.ligand.cnfr2xyz([lig_batch.to(device)])
+        if receptor_cnfrs is not None:
+            self.receptor.cnfr2xyz(receptor_cnfrs)
+        return self.scoring_function.scoring()
+
+    def _mutate_batch(self, ligand_cnfrs, coords_max=5.0, torsion_max=0.1,
+                      n=1, max_box_trials=20):
+        """Produce ``n`` mutated ligand poses as a ``[n, 6+k]`` tensor.
+
+        Mirrors the translation/rotation/torsion scaling of
+        :meth:`_mutate` but draws independent perturbations for every pose so a
+        whole batch can be scored in one call.
+        """
+        base = ligand_cnfrs[0]
+        k = base.shape[1]
+        candidate = None
+        for _ in range(max_box_trials + 1):
+            deltas = torch.empty(n, k, device=base.device)
+            deltas[:, :3].uniform_(-coords_max, coords_max)
+            deltas[:, 3:].uniform_(-torsion_max * np.pi, torsion_max * np.pi)
+            candidate = base + deltas
+            out = self._out_of_box_check_batch([candidate])
+            if not bool(out.any()):
+                return candidate
+        return candidate
+
     def _minimize(self, x_ligand=None, x_receptor=None,
                   is_ligand=True, is_receptor=False,
                   lr=0.1, nsteps=5):
@@ -146,6 +186,25 @@ class BaseSampler(object):
                 return True
 
         return False
+
+    def _out_of_box_check_batch(self, ligand_cnfrs=None):
+        """Vectorized out-of-box check returning a ``[n]`` bool mask."""
+        xyz_ranges = []
+        for i in range(3):
+            _range = [self.box_center[i] - 1.0 * self.box_size[i],
+                      self.box_center[i] + 1.0 * self.box_size[i]]
+            xyz_ranges.append(_range)
+        self.box_ranges_ = xyz_ranges
+
+        xyz_coords = self.ligand.cnfr2xyz(ligand_cnfrs).detach()
+        n = xyz_coords.shape[0]
+        out = torch.zeros(n, dtype=torch.bool, device=xyz_coords.device)
+        for i in range(3):
+            out = out | (xyz_coords[:, :, i].min(dim=1).values
+                         <= xyz_ranges[i][0]) \
+                      | (xyz_coords[:, :, i].max(dim=1).values
+                         >= xyz_ranges[i][1])
+        return out
 
     def _random_move(self, ligand_cnfrs, receptor_cnfrs):
         # make a random move
