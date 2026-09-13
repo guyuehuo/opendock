@@ -84,8 +84,12 @@ def argument():
     parser.add_argument("--ntasks", type=int, default=None,
                         help="MC batch size (chain count); default 32 on cuda "
                              "else 1.")
-    parser.add_argument("--compile", action="store_true",
-                        help="torch.compile the scoring/geometry kernels.")
+    parser.add_argument("--minimize-steps", type=int, default=None,
+                        help="Batched-Adam steps per minimize (default 3).")
+    parser.add_argument("--compile", action=argparse.BooleanOptionalAction,
+                        default=True,
+                        help="torch.compile the scoring/geometry kernels "
+                             "(default on; pass --no-compile to disable).")
     parser.add_argument("--steps-per-ha", type=int, default=None,
                         help="Override sampling steps per heavy atom.")
     return parser.parse_args()
@@ -107,7 +111,7 @@ def _parse_devices(device_spec):
 
 
 def _worker(device, config_path, sampler_name, minimizer_name, scorer_name,
-            steps_per_ha, ntasks, compile_, task_id,
+            steps_per_ha, ntasks, compile_, minimize_steps, task_id,
             results_cnfrs, results_scores):
     # Pin to the requested device before touching any CUDA/CPU resources.
     if device.startswith("cuda"):
@@ -138,10 +142,13 @@ def _worker(device, config_path, sampler_name, minimizer_name, scorer_name,
     sampler_cls, default_steps = samplers[sampler_name]
     kwargs = dict(box_center=list(xyz_center),
                   box_size=[float(x) for x in box_sizes],
-                  minimizer=minimizers[minimizer_name])
+                  minimizer=minimizers[minimizer_name],
+                  verbose=False)
     if sampler_name == "mc":
         kwargs["ntasks"] = (ntasks if ntasks is not None
                             else (32 if device.startswith("cuda") else 1))
+    if minimize_steps is not None:
+        kwargs["minimize_nsteps"] = int(minimize_steps)
 
     init_lig_cnfrs = [torch.Tensor(ligand.init_cnfrs.detach().numpy())]
     sampler = sampler_cls(ligand, receptor, sf, **kwargs)
@@ -193,7 +200,7 @@ def main():
         p = ctx.Process(target=_worker,
                         args=(dev, args.config, args.sampler, args.minimizer,
                               args.scorer, args.steps_per_ha, args.ntasks,
-                              args.compile, task_id,
+                              args.compile, args.minimize_steps, task_id,
                               results_cnfrs, results_scores))
         procs.append(p)
         p.start()

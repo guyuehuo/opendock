@@ -68,7 +68,7 @@ class GeneticAlgorithmSampler(BaseSampler):
         self.bound_min = kwargs.pop('bound_min', 0.25)
         self.kt_ = kwargs.pop('kt', 1.0)
         self.batch_minimize = kwargs.pop("batch_minimize", True)
-        self.minimize_nsteps = kwargs.pop('minimize_nsteps', 5)
+        self.minimize_nsteps = kwargs.pop('minimize_nsteps', 3)
         self.minimize_lr = kwargs.pop('minimize_lr', 0.1)
         self.pocket_subset = kwargs.pop('pocket_subset', True)
         self.warm_start = kwargs.pop('warm_start', False)

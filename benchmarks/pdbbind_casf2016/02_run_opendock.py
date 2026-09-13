@@ -251,7 +251,8 @@ def run_one_job(code, source, mode, cfg_name, cfg, prep_dir, run_dir,
     minimizer = resolve_minimizer(cfg.get("minimizer", "none"))
     kwargs = dict(box_center=list(center),
                   box_size=[float(x) for x in half],
-                  minimizer=minimizer)
+                  minimizer=minimizer,
+                  verbose=False)
     kwargs["batch_minimize"] = batch_minimize
     if min_steps is not None:
         kwargs["minimize_nsteps"] = int(min_steps)
