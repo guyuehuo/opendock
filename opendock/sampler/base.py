@@ -128,21 +128,28 @@ class BaseSampler(object):
                       n=1, max_box_trials=20):
         """Produce ``n`` mutated ligand poses as a ``[n, 6+k]`` tensor.
 
-        Mirrors the translation/rotation/torsion scaling of
-        :meth:`_mutate` but draws independent perturbations for every pose so a
-        whole batch can be scored in one call.
+        Mirrors the translation/rotation/torsion scaling of :meth:`_mutate` but
+        draws independent perturbations for every pose.  Only the poses that
+        land outside the box are re-mutated (instead of regenerating the whole
+        batch), so the box-check geometry rebuild is amortized.
         """
         base = ligand_cnfrs[0]
         k = base.shape[1]
-        candidate = None
-        for _ in range(max_box_trials + 1):
-            deltas = torch.empty(n, k, device=base.device)
-            deltas[:, :3].uniform_(-coords_max, coords_max)
-            deltas[:, 3:].uniform_(-torsion_max * np.pi, torsion_max * np.pi)
-            candidate = base + deltas
+
+        def _deltas(m):
+            d = torch.empty(m, k, device=base.device)
+            d[:, :3].uniform_(-coords_max, coords_max)
+            d[:, 3:].uniform_(-torsion_max * np.pi, torsion_max * np.pi)
+            return d
+
+        candidate = base + _deltas(n)
+        for _ in range(max_box_trials):
             out = self._out_of_box_check_batch([candidate])
             if not bool(out.any()):
                 return candidate
+            idx = out.nonzero(as_tuple=True)[0]
+            candidate = candidate.clone()
+            candidate[idx] = base[idx] + _deltas(len(idx))
         return candidate
 
     def _mutate_receptor_batch(self, receptor_cnfrs, torsion_max=0.1, n=1):
