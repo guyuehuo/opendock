@@ -213,6 +213,48 @@ def rdkit_de_novo_sdf(ref_heavy_sdf, out_sdf, seed=2026):
     return molH.GetNumHeavyAtoms()
 
 
+def rdkit_conformer_ensemble(ref_heavy_sdf, out_prefix, n_conformers=10,
+                             seed=2026, prune_rms=0.5, optimize="mmff"):
+    """Generate a diverse low-energy conformer ensemble (order preserved).
+
+    Embeds ``n_conformers`` de-novo 3D conformers with ETKDGv3, prunes by RMSD
+    and MMFF/UFF-optimizes them, then writes each surviving conformer to its own
+    SDF (``<out_prefix>_<i>.sdf``) with the heavy-atom order preserved. Returns
+    the list of written SDF paths.
+    """
+    from rdkit import Chem
+    from rdkit.Chem import AllChem, rdDistGeom
+    mol = Chem.SDMolSupplier(ref_heavy_sdf, removeHs=True)[0]
+    molH = Chem.AddHs(mol)
+    params = rdDistGeom.ETKDGv3()
+    params.randomSeed = seed
+    params.pruneRmsThresh = prune_rms
+    conf_ids = list(AllChem.EmbedMultipleConfs(molH, numConfs=n_conformers,
+                                               params=params))
+    if not conf_ids:
+        raise ValueError(f"RDKit produced no 3D conformers for {ref_heavy_sdf}")
+    if optimize == "mmff" and AllChem.MMFFHasAllMoleculeParams(molH):
+        AllChem.MMFFOptimizeMoleculeConfs(molH)
+    else:
+        AllChem.UFFOptimizeMoleculeConfs(molH)
+
+    paths = []
+    for i, cid in enumerate(conf_ids):
+        conf = molH.GetConformer(cid)
+        single = Chem.Mol(molH, False, int(cid))
+        single.RemoveAllConformers()
+        c = Chem.Conformer(single.GetNumAtoms())
+        for a in range(single.GetNumAtoms()):
+            c.SetAtomPosition(a, conf.GetAtomPosition(a))
+        single.AddConformer(c, assignId=True)
+        path = f"{out_prefix}_{i}.sdf"
+        writer = Chem.SDWriter(path)
+        writer.write(single)
+        writer.close()
+        paths.append(path)
+    return paths
+
+
 def prepare_receptor(protein_pdb, out_pdbqt, tools):
     """Receptor PDBQT via MGLTools (mirrors FBDesign3 step2_docking.py).
 
@@ -262,7 +304,7 @@ def sdf_to_mol2(in_sdf, out_mol2, obabel_bin):
     return out_mol2
 
 
-def prepare_one(code, data_root, prep_dir, tools):
+def prepare_one(code, data_root, prep_dir, tools, n_conformers=1):
     code_dir = os.path.join(data_root, code)
     protein_pdb = os.path.join(code_dir, "protein.pdb")
     ligand_sdf = os.path.join(code_dir, "ligand.sdf")
@@ -313,23 +355,38 @@ def prepare_one(code, data_root, prep_dir, tools):
         order_ok = False
     n_crystal_pdbqt = pdbqt_heavy_atom_count(lig_crystal_pdbqt)
 
-    # ---- RDKit de-novo ligand (order preserved by construction) ----------
-    rdkit_sdf = os.path.join(out_dir, "_lig_rdkit_pose.sdf")
-    rdkit_mol2 = os.path.join(out_dir, "_lig_rdkit_pose.mol2")
-    n_heavy_rdkit = rdkit_de_novo_sdf(ref_sdf, rdkit_sdf)
-    try:
-        sdf_to_mol2(rdkit_sdf, rdkit_mol2, tools.get("obabel"))
-        prepare_ligand(rdkit_mol2, lig_rdkit_pdbqt, tools)
-    except subprocess.CalledProcessError:
-        if not tools.get("obabel"):
-            raise
-        log(f"{code}: rdkit ligand prepare_ligand4 failed, OpenBabel fallback")
-        run([tools["obabel"], rdkit_sdf, "-O", lig_rdkit_pdbqt, "-p", "7.4"],
-            timeout=600)
-        order_ok = False
-    n_rdkit_pdbqt = pdbqt_heavy_atom_count(lig_rdkit_pdbqt)
+    # ---- RDKit de-novo ligand(s) (order preserved by construction) --------
+    if n_conformers > 1:
+        rdkit_sdfs = rdkit_conformer_ensemble(ref_sdf,
+                                              os.path.join(out_dir, "_lig_rdkit"),
+                                              n_conformers=n_conformers)
+    else:
+        rdkit_sdfs = [os.path.join(out_dir, "_lig_rdkit_pose.sdf")]
+        rdkit_de_novo_sdf(ref_sdf, rdkit_sdfs[0])
+    n_heavy_rdkit = n_heavy_crystal  # same molecule, heavy-atom order preserved
 
-    for tmp in (rdkit_sdf, rdkit_mol2):
+    lig_rdkit_pdbqts = []
+    for i, rdkit_sdf in enumerate(rdkit_sdfs):
+        out_pdbqt = (os.path.join(out_dir, "lig_rdkit.pdbqt") if i == 0
+                     else os.path.join(out_dir, f"lig_rdkit_{i}.pdbqt"))
+        rdkit_mol2 = os.path.join(out_dir, f"_lig_rdkit_{i}.mol2")
+        try:
+            sdf_to_mol2(rdkit_sdf, rdkit_mol2, tools.get("obabel"))
+            prepare_ligand(rdkit_mol2, out_pdbqt, tools)
+        except subprocess.CalledProcessError:
+            if not tools.get("obabel"):
+                raise
+            log(f"{code}: rdkit conformer {i} prepare_ligand4 failed, "
+                f"OpenBabel fallback")
+            run([tools["obabel"], rdkit_sdf, "-O", out_pdbqt, "-p", "7.4"],
+                timeout=600)
+            order_ok = False
+        lig_rdkit_pdbqts.append(out_pdbqt)
+
+    n_rdkit_pdbqt = pdbqt_heavy_atom_count(lig_rdkit_pdbqts[0])
+
+    for tmp in rdkit_sdfs + [os.path.join(out_dir, f"_lig_rdkit_{i}.mol2")
+                             for i in range(len(rdkit_sdfs))]:
         try:
             os.remove(tmp)
         except OSError:
@@ -361,6 +418,7 @@ def prepare_one(code, data_root, prep_dir, tools):
         "heavy_atoms_crystal_pdbqt": int(n_crystal_pdbqt),
         "heavy_atoms_rdkit": int(n_heavy_rdkit),
         "heavy_atoms_rdkit_pdbqt": int(n_rdkit_pdbqt),
+        "n_rdkit_conformers": len(lig_rdkit_pdbqts),
         "heavy_atoms_receptor": int(n_rec),
         "heavy_atom_order_corresponds_ref": bool(order_ok),
         "margin": margin,
@@ -399,6 +457,9 @@ def main():
                         help="prepare_ligand4.py path (auto-discovered)")
     parser.add_argument("--obabel", default=os.environ.get("OBABEL"),
                         help="OpenBabel binary for the ligand fallback path")
+    parser.add_argument("--n-conformers", type=int, default=1,
+                        help="number of RDKit de-novo conformers to prepare "
+                             "(MMFF-optimized ensemble, RDKit conformer docking)")
     parser.add_argument("--dry", action="store_true",
                         help="check tool availability and exit")
     args = parser.parse_args()
@@ -444,10 +505,12 @@ def main():
     rows = []
     for code in codes:
         try:
-            meta = prepare_one(code, args.data_root, prep_dir, tools)
+            meta = prepare_one(code, args.data_root, prep_dir, tools,
+                               n_conformers=args.n_conformers)
             log(f"{code}: OK rec={meta['heavy_atoms_receptor']} "
                 f"lig_c={meta['heavy_atoms_crystal_pdbqt']} "
-                f"lig_r={meta['heavy_atoms_rdkit_pdbqt']}")
+                f"lig_r={meta['heavy_atoms_rdkit_pdbqt']} "
+                f"n_conf={meta['n_rdkit_conformers']}")
             rows.append([code, meta["heavy_atoms_receptor"],
                          meta["heavy_atoms_crystal"], meta["heavy_atoms_crystal_pdbqt"],
                          meta["heavy_atoms_rdkit"], meta["heavy_atoms_rdkit_pdbqt"],

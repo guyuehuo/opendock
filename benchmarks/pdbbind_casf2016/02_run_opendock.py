@@ -82,11 +82,11 @@ def set_seed(seed):
 
 
 def build_objects(code, source, mode, cfg, prep_dir, conditions, clip_default,
-                  device="cpu", compile=False):
+                  device="cpu", compile=False, ligand_pdbqt=None):
     meta = load_meta(os.path.join(prep_dir, code, "meta.json"))
     center, half = docking_center_and_half(meta, mode, conditions)
 
-    lig_pdbqt = os.path.join(prep_dir, code, f"lig_{source}.pdbqt")
+    lig_pdbqt = ligand_pdbqt or os.path.join(prep_dir, code, f"lig_{source}.pdbqt")
     rec_pdbqt = os.path.join(prep_dir, code, "rec.pdbqt")
 
     ligand = LigandConformation(lig_pdbqt)
@@ -112,10 +112,89 @@ def build_objects(code, source, mode, cfg, prep_dir, conditions, clip_default,
     return ligand, receptor, sf, center, half
 
 
+def build_ligand_sf(lig_pdbqt, receptor, center, device="cpu", compile=False):
+    """Build a ligand (from an explicit pdbqt) + VinaSF around an existing
+    receptor, mirroring ``build_objects``. Used for conformer-ensemble docking
+    where the receptor is shared across conformers."""
+    ligand = LigandConformation(lig_pdbqt)
+    ligand.ligand_center[0][0] = center[0]
+    ligand.ligand_center[0][1] = center[1]
+    ligand.ligand_center[0][2] = center[2]
+    sf = VinaSF(receptor=receptor, ligand=ligand, device=device,
+                compile=compile)
+    return ligand, sf
+
+
+def _dock_one(ligand, receptor, sf, center, half, cfg, sampler_cls,
+              minimizer, kwargs, n_steps, num_modes, cluster_cutoff):
+    """Dock a single ligand/conformer; return (cluster_scores, cluster_cnfrs)."""
+    init_lig_cnfrs = [torch.Tensor(ligand.init_cnfrs.detach().numpy())]
+    init_rec_cnfrs = receptor.init_cnfrs
+
+    random_sampler = sampler_cls(ligand, receptor, sf, **dict(kwargs))
+    ligand.cnfrs_, receptor.cnfrs_ = random_sampler._random_move(init_lig_cnfrs,
+                                                                 init_rec_cnfrs)
+    sampler = sampler_cls(ligand, receptor, sf, **kwargs)
+    sampler.sampling(n_steps)
+
+    pairs = list(zip(sampler.ligand_scores_history_,
+                     sampler.ligand_cnfrs_history_))
+    pairs = sorted(pairs, key=lambda p: p[0])
+    if not pairs and sampler.best_cnfrs_ is not None and sampler.best_cnfrs_[0]:
+        best = sampler.best_cnfrs_[0]
+        if isinstance(best, list):
+            for c in best[:10]:
+                score = float(sampler.best[0]) if getattr(sampler, "best", None) \
+                    else 0.0
+                pairs.append((score, torch.Tensor(c.detach().numpy())))
+    if not pairs:
+        return [], []
+
+    scores = [p[0] for p in pairs]
+    cnfrs = [p[1] for p in pairs]
+    cluster = BaseCluster(cnfrs, None, scores, ligand, cutoff=cluster_cutoff)
+    cluster_scores, cluster_cnfrs, _ = cluster.clustering(num_modes=num_modes,
+                                                          energy_cutoff=1e3)
+    return cluster_scores, cluster_cnfrs
+
+
+def _write_pose_file(out_pdbqt, triples, receptor):
+    """Write a multi-model PDBQT from ``(score, cnfr, ligand)`` triples.
+
+    Each cnfr is decoded with its own (conformer) ligand, so conformer-ensemble
+    poses keep their correct internal geometry; the atom-name lines are shared
+    across conformers (identical heavy-atom ordering).
+    """
+    origin_lines = triples[0][2].origin_heavy_atoms_lines
+    lines = []
+    for idx, (score, cnfr, ligand) in enumerate(triples):
+        _cnfr = torch.tensor(cnfr.detach().numpy() * 1.0)
+        ligand.cnfrs_, receptor.cnfrs_ = [_cnfr], None
+        coord = ligand.cnfr2xyz([_cnfr])[0].detach().cpu().numpy()
+        lines.append("MODEL%9s" % str(idx + 1))
+        lines.append("REMARK VinaScore %.3f" % score)
+        for num, oline in enumerate(origin_lines):
+            x, y, z = coord[num]
+            atom_type = oline.split()[2]
+            if atom_type[:2] == "CL":
+                element = "Cl"
+            elif atom_type[:2] == "BR":
+                element = "Br"
+            else:
+                element = atom_type[0]
+            lines.append("ATOM%7s%5s%4s%2s%4s%12s%8s%8s%6s%6s%12s" % (
+                str(num + 1), atom_type, "LIG", "A", "1",
+                "%.3f" % x, "%.3f" % y, "%.3f" % z, "1.00", "0.00", element))
+        lines.append("TER\nENDMDL")
+    with open(out_pdbqt, "w") as f:
+        for line in lines:
+            f.write(line + "\n")
+
+
 def run_one_job(code, source, mode, cfg_name, cfg, prep_dir, run_dir,
                 conditions, num_modes, cluster_cutoff, steps_scale=1.0,
                 bound_value=None, n_bit=None, device="cpu", mc_tasks=None,
-                anneal=False, bound_min=None, compile=False):
+                anneal=False, bound_min=None, compile=False, n_conformers=None):
     cond = condition_id(source, mode, cfg_name)
     if bound_value is not None:
         cond = f"{cond}-bv{bound_value:g}"
@@ -125,14 +204,29 @@ def run_one_job(code, source, mode, cfg_name, cfg, prep_dir, run_dir,
         cond = f"{cond}-anneal"
         if bound_min is not None:
             cond = f"{cond}-bm{bound_min:g}"
+    if n_conformers is not None:
+        cond = f"{cond}-nc{n_conformers}"
     cond_dir = ensure_dir(os.path.join(run_dir, code))
     out_pdbqt = os.path.join(cond_dir, f"{cond}.pdbqt")
     scores_csv = os.path.join(run_dir, "scores.csv")
 
+    meta = load_meta(os.path.join(prep_dir, code, "meta.json"))
+    n_conf = n_conformers
+    if n_conf is None:
+        n_conf = int(meta.get("n_rdkit_conformers", 1)) if source == "rdkit" else 1
+
+    if source == "rdkit" and n_conf > 1:
+        lig_pdbqts = [os.path.join(prep_dir, code, "lig_rdkit.pdbqt")] + \
+                     [os.path.join(prep_dir, code, f"lig_rdkit_{i}.pdbqt")
+                      for i in range(1, n_conf)]
+    else:
+        lig_pdbqts = [os.path.join(prep_dir, code, f"lig_{source}.pdbqt")]
+
+    # receptor built once (pocket centre from meta is conformer-independent)
     ligand, receptor, sf, center, half = \
         build_objects(code, source, mode, cfg_name, prep_dir, conditions,
                       float(conditions["box"]["clip_default"]), device=device,
-                      compile=compile)
+                      compile=compile, ligand_pdbqt=lig_pdbqts[0])
 
     sampler_cls = SAMPLERS[cfg["sampler"]]
     minimizer = resolve_minimizer(cfg.get("minimizer", "none"))
@@ -158,67 +252,53 @@ def run_one_job(code, source, mode, cfg_name, cfg, prep_dir, run_dir,
     n_steps = int(float(cfg["steps_per_ha"]) * ligand.number_of_heavy_atoms
                   * steps_scale)
 
-    init_lig_cnfrs = [torch.Tensor(ligand.init_cnfrs.detach().numpy())]
-    init_rec_cnfrs = receptor.init_cnfrs
+    # dock every conformer (each run starts from a different frozen geometry)
+    all_triples = []
+    for i, lig_pdbqt in enumerate(lig_pdbqts):
+        if i == 0:
+            lig, sff = ligand, sf
+        else:
+            lig, sff = build_ligand_sf(lig_pdbqt, receptor, center,
+                                       device=device, compile=compile)
+        log(f"{code} {cond}: docking conformer {i}/{len(lig_pdbqts)}")
+        cs, cc = _dock_one(lig, receptor, sff, center, half, cfg, sampler_cls,
+                           minimizer, kwargs, n_steps, num_modes, cluster_cutoff)
+        for s, c in zip(cs, cc):
+            all_triples.append((s, c, lig))
 
-    # random starting pose placed inside the docking box, then a fresh sampler
-    # is built so that GA/PSO initialise their internal populations from it
-    random_sampler = sampler_cls(ligand, receptor, sf, **dict(kwargs))
-    ligand.cnfrs_, receptor.cnfrs_ = random_sampler._random_move(init_lig_cnfrs,
-                                                                 init_rec_cnfrs)
-    sampler = sampler_cls(ligand, receptor, sf, **kwargs)
-
-    log(f"{code} {cond}: starting {cfg['sampler']} sampling "
-        f"({n_steps} steps)")
-    sampler.sampling(n_steps)
-
-    # collect candidate poses (score ascending)
-    pairs = list(zip(sampler.ligand_scores_history_, sampler.ligand_cnfrs_history_))
-    pairs = sorted(pairs, key=lambda p: p[0])
-    if not pairs and sampler.best_cnfrs_ is not None and sampler.best_cnfrs_[0]:
-        best = sampler.best_cnfrs_[0]
-        if isinstance(best, list):
-            for c in best[:10]:
-                score = float(sampler.best[0]) if getattr(sampler, "best", None) else 0.0
-                pairs.append((score, torch.Tensor(c.detach().numpy())))
-    if not pairs:
+    if not all_triples:
         log(f"{code} {cond}: WARNING no poses sampled, writing empty output")
         with open(out_pdbqt, "w") as f:
             f.write("")
         mark_done(run_dir, code, cond)
         return 0
 
-    scores = [p[0] for p in pairs]
-    cnfrs = [p[1] for p in pairs]
+    all_triples.sort(key=lambda x: x[0])
+    top = all_triples[:num_modes]
 
-    # diversify and rank through clustering (RMSD cutoff = 2 A)
-    cluster = BaseCluster(cnfrs, None, scores, ligand, cutoff=cluster_cutoff)
-    cluster_scores, cluster_cnfrs, _ = cluster.clustering(num_modes=num_modes,
-                                                          energy_cutoff=1e3)
-
-    # final re-scoring with Vina and ascending sort
+    # final re-scoring with Vina (each pose scored with its own ligand)
     rescored = []
-    for _cnfr in cluster_cnfrs:
+    for _s, _cnfr, lig in top:
         _cnfr = torch.tensor(_cnfr.detach().numpy() * 1.0)
-        ligand.cnfrs_, receptor.cnfrs_ = [_cnfr, ], None
-        ligand.cnfr2xyz([_cnfr])
-        _s = float(sf.scoring().detach().cpu().numpy().ravel()[0])
-        rescored.append([_s, _cnfr])
+        lig.cnfrs_, receptor.cnfrs_ = [_cnfr], None
+        lig.cnfr2xyz([_cnfr])
+        sff = VinaSF(receptor=receptor, ligand=lig, device=device,
+                     compile=compile)
+        _s = float(sff.scoring().detach().cpu().numpy().ravel()[0])
+        rescored.append([_s, _cnfr, lig])
+    rescored.sort(key=lambda x: x[0])
 
-    rescored = sorted(rescored, key=lambda x: x[0])
     final_scores = [x[0] for x in rescored]
-    final_cnfrs = [x[1] for x in rescored]
-
-    write_ligand_traj(final_cnfrs, ligand, out_pdbqt,
-                      information={"VinaScore": final_scores})
-    log(f"{code} {cond}: wrote {len(final_cnfrs)} models to {out_pdbqt}")
+    _write_pose_file(out_pdbqt, rescored, receptor)
+    log(f"{code} {cond}: wrote {len(rescored)} models to {out_pdbqt} "
+        f"(n_conf={n_conf})")
 
     rows = [[code, "opendock", cfg_name, source, mode, rank, score]
             for rank, score in enumerate(final_scores)]
     append_rows(scores_csv, rows, SCORES_HEADER)
 
     mark_done(run_dir, code, cond)
-    return len(final_cnfrs)
+    return len(rescored)
 
 
 def enumerate_jobs(conditions):
@@ -260,6 +340,9 @@ def main():
     parser.add_argument("--compile", action="store_true",
                         help="torch.compile the scoring/geometry kernels "
                              "(one-time tracing cost, big speedup on long runs)")
+    parser.add_argument("--n-conformers", type=int, default=None,
+                        help="number of RDKit conformers to dock (ensemble); "
+                             "default reads meta.n_rdkit_conformers")
     parser.add_argument("--num-modes", type=int, default=None)
     parser.add_argument("--threads", type=int, default=1)
     parser.add_argument("--seed", type=int, default=2026)
@@ -287,6 +370,8 @@ def main():
             cond = f"{cond}-anneal"
             if args.bound_min is not None:
                 cond = f"{cond}-bm{args.bound_min:g}"
+        if args.n_conformers is not None:
+            cond = f"{cond}-nc{args.n_conformers}"
         try:
             return run_one_job(code, source, mode, cfg_name, cfg, prep_dir,
                                run_dir, conditions, num_modes, cluster_cutoff,
@@ -295,7 +380,8 @@ def main():
                                n_bit=args.n_bit, device=args.device,
                                mc_tasks=args.mc_tasks,
                                anneal=args.anneal, bound_min=args.bound_min,
-                               compile=args.compile)
+                               compile=args.compile,
+                               n_conformers=args.n_conformers)
         except Exception as exc:
             log(f"{code} {cond}: FAILED - {exc}")
             mark_failed(run_dir, code, cond, traceback.format_exc())
@@ -316,6 +402,8 @@ def main():
             cond = f"{cond}-anneal"
             if args.bound_min is not None:
                 cond = f"{cond}-bm{args.bound_min:g}"
+        if args.n_conformers is not None:
+            cond = f"{cond}-nc{args.n_conformers}"
         if args.resume and job_state(run_dir, args.code, cond) != "pending":
             log(f"{args.code} {cond}: already done/failed, skipping")
         else:
