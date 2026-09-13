@@ -874,11 +874,18 @@ def _freeze_and_write(mol, model, flexible, backbone, out_pdbqt, tools=None,
     # ligand residue/frame (independent of MGLTools' residue labels).
     mol_to_res = {}
     for res_i, (rname, idxs) in enumerate(model.residues):
-        # Residue names repeat (e.g. several ALA); suffix the sequence position
-        # so the per-residue decomposition keeps them distinct.
-        label = f"{rname}:{res_i + 1}"
+        # Match the PDBQT/pose resName (3-character field) plus the 1-based
+        # sequence position so meta labels and rendered fragments agree.
+        label = f"{rname[:3]}{res_i + 1}"
         for ai in idxs:
             mol_to_res[int(ai)] = label
+    # Atoms porality did not assign to a residue (e.g. capping groups) fall back
+    # to the MGLTools residue label written into the PDBQT.
+    for mi, rec in heavy_by_mol.items():
+        if int(mi) not in mol_to_res:
+            rn = rec.line[17:20].strip()[:3]
+            rs = rec.line[22:26].strip()
+            mol_to_res[int(mi)] = f"{rn}{rs}"
     heavy_order = (topo or {}).get("heavy_order", [])
     frame_of = (topo or {}).get("frame_of", {})
     atom_map = [

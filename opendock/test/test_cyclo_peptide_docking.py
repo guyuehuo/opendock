@@ -443,3 +443,21 @@ def test_write_frozen_pdbqt_unique_atom_names(tmp_path):
     assert len(names) == 2
     assert len(set(names)) == 2
 
+
+
+@NEED_MGLTOOLS
+def test_atom_map_residues_match_pdbqt(tmp_path):
+    # A peptide with N-methylated residues and a cap: porality leaves some
+    # atoms unassigned, and MGLTools names must be used as the fallback label.
+    smi = ("CC[C@H](C)[C@H]1C(=O)N[C@@H](C(C)C)C(=O)N(C)[C@@H](Cc2ccccc2)"
+           "C(=O)N[C@@H]([C@@H](C)O)C(=O)N[C@@H](CC(C)C)C(=O)N1C")
+    out = os.path.join(str(tmp_path), "frozen.pdbqt")
+    _, meta = prepare_peptide_pdbqt(smiles=smi, out_pdbqt=out,
+                                    workdir=str(tmp_path / "work"))
+    lines = [l for l in open(out)
+             if l.startswith(("ATOM", "HETATM"))
+             and l[77:79].strip() not in ("H", "HD")]
+    assert all(a["residue"] for a in meta["atom_map"])
+    for a in meta["atom_map"]:
+        ln = lines[a["pdbqt_index"]]
+        assert a["residue"] == f"{ln[17:20].strip()}{ln[22:26].strip()}"
