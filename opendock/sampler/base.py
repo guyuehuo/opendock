@@ -52,10 +52,37 @@ class BaseSampler(object):
         self.output_fpath = kwargs.pop('output_fpath', 'output.pdb')
         self.box_center = kwargs.pop('box_center', None)
         self.box_size = kwargs.pop('box_size', None)
+        self.box_constraint = kwargs.pop('box_constraint', None)
+        self.box_constraint_force = kwargs.pop('box_constraint_force', 1.0)
+        self._box_sf = None
         self.kt_ = kwargs.pop('kt', 1.0)
         self.ligand_cnfrs_history_ = []
         self.ligand_scores_history_ = []
         self.receptor_cnfrs_history_ = []
+
+    def _soft_box_enabled(self):
+        return self.box_constraint in ("soft", "soft_box", "box", True)
+
+    def _soft_box_score(self):
+        """Differentiable out-of-box penalty (zero unless ``box_constraint`` is
+        set).  The penalty is a quadratic wall on every heavy atom that leaves
+        ``box_center +/- box_size``, giving minimizers a smooth gradient to
+        pull poses back into the box instead of a hard reject."""
+        device = getattr(self.scoring_function, "device", torch.device("cpu"))
+        if not self._soft_box_enabled():
+            return torch.zeros((1, 1), device=device)
+        if self._box_sf is None:
+            if self.box_center is None or self.box_size is None:
+                raise ValueError(
+                    "soft box constraint requires box_center and box_size")
+            from opendock.scorer.constraints import OutOfBoxConstraint
+            self._box_sf = OutOfBoxConstraint(
+                self.receptor, self.ligand,
+                box_center=list(self.box_center),
+                box_size=list(self.box_size),
+                force=self.box_constraint_force,
+                device=device)
+        return self._box_sf.scoring()
 
     def _score(self, ligand_cnfrs=None, receptor_cnfrs=None):
 
@@ -69,7 +96,7 @@ class BaseSampler(object):
             self.receptor.cnfr2xyz(receptor_cnfrs)
 
         try:
-            return self.scoring_function.scoring()
+            return self.scoring_function.scoring() + self._soft_box_score()
         except:
             return torch.Tensor([[99.99, ]]).requires_grad_()
 
@@ -77,23 +104,25 @@ class BaseSampler(object):
         """Score a batch of poses in a single scoring call.
 
         ``ligand_cnfrs`` is a list ``[batch]`` where ``batch`` has shape
-        ``[n, 6+k]`` (or a bare ``[n, 6+k]`` tensor).  Returns the score tensor
-        of shape ``[n, 1]`` on the scoring device without syncing to CPU.
+        ``[n, 6+k]`` (or a bare ``[n, 6+k]`` tensor).  Geometry decoding
+        (``cnfr2xyz``) runs on the CPU -- it is a small serial frame loop that
+        is faster on the CPU -- while the distance matrix and energy terms run
+        on the scoring device.  Returns ``[n, 1]`` on the scoring device.
         """
-        device = self.scoring_function.device
         if ligand_cnfrs is not None:
             if not isinstance(ligand_cnfrs, (list, tuple)):
                 ligand_cnfrs = [ligand_cnfrs]
             lig_batch = ligand_cnfrs[0]
             if lig_batch.dim() == 1:
                 lig_batch = lig_batch.reshape(1, -1)
-            self.ligand.cnfr2xyz([lig_batch.to(device)])
+            # Run cnfr2xyz on CPU for speed; scoring moves coords to device.
+            self.ligand.cnfr2xyz([lig_batch])
         if receptor_cnfrs is not None:
             if receptor_cnfrs and receptor_cnfrs[0].dim() == 2:
                 self.receptor.cnfr2xyz_batch(receptor_cnfrs)
             else:
                 self.receptor.cnfr2xyz(receptor_cnfrs)
-        return self.scoring_function.scoring()
+        return self.scoring_function.scoring() + self._soft_box_score()
 
     def _mutate_batch(self, ligand_cnfrs, coords_max=5.0, torsion_max=0.1,
                       n=1, max_box_trials=20):
@@ -136,60 +165,39 @@ class BaseSampler(object):
                   is_ligand=True, is_receptor=False,
                   lr=0.1, nsteps=5):
         """
-        Minimize the cnfrs if required.  The gradient loop runs on the scoring
-        function's device so CUDA works end to end; results are returned on CPU
-        for backward compatibility with the samplers' history bookkeeping.
+        Minimize the cnfrs if required.  The conformations stay on the CPU (the
+        geometry rebuild is a small serial loop that is fastest on the CPU);
+        the differentiable loss is evaluated on the scoring device, so CUDA
+        still accelerates the distance-matrix and energy kernels, and autograd
+        flows back to the CPU leaf.
         """
         lr = 0.1
-        device = self.scoring_function.device
-
-        def _to_dev(xs):
-            if xs is None:
-                return None
-            return [x.detach().to(device).requires_grad_(True) for x in xs]
-
-        def _to_cpu(xs):
-            if xs is None:
-                return None
-            return [x.detach().cpu() for x in xs]
 
         if is_ligand and not is_receptor:
-            # minimize the ligand only
-            x_ligand_dev = _to_dev(x_ligand)
-
             def _sf(x):
                 self.ligand.cnfr2xyz(x)
-                score = torch.sum(self.scoring_function.scoring())
-                return score
+                return (torch.sum(self.scoring_function.scoring())
+                        + torch.sum(self._soft_box_score()))
 
-            res = self.minimizer(x_ligand_dev, _sf, lr=lr, nsteps=nsteps)
-            return _to_cpu(res), None
+            return self.minimizer(x_ligand, _sf, lr=lr, nsteps=nsteps), None
 
         elif not is_ligand and is_receptor:
-            # minimize the receptor sidechain only
-            x_receptor_dev = _to_dev(x_receptor)
-
             def _sf(x):
                 self.receptor.cnfr2xyz(x)
-                score = torch.sum(self.scoring_function.scoring())
-                return score
+                return (torch.sum(self.scoring_function.scoring())
+                        + torch.sum(self._soft_box_score()))
 
-            res = self.minimizer(x_receptor_dev, _sf, lr=lr, nsteps=nsteps)
-            return None, _to_cpu(res)
+            return None, self.minimizer(x_receptor, _sf, lr=lr, nsteps=nsteps)
         else:
-            # minimize both the ligand and the receptor sidechains
-            combined = x_ligand + x_receptor
-            combined_dev = _to_dev(combined)
-
             def _sf(x):
                 self.receptor.cnfr2xyz(x[1:])
                 self.ligand.cnfr2xyz([x[0]])
-                score = torch.sum(self.scoring_function.scoring())
-                return score
+                return (torch.sum(self.scoring_function.scoring())
+                        + torch.sum(self._soft_box_score()))
 
-            new_cnfrs = self.minimizer(combined_dev, _sf, lr=lr, nsteps=nsteps)
-            new_cnfrs_cpu = _to_cpu(new_cnfrs)
-            return [new_cnfrs_cpu[0]], new_cnfrs_cpu[1:]
+            new_cnfrs = self.minimizer(x_ligand + x_receptor, _sf, lr=lr,
+                                       nsteps=nsteps)
+            return [new_cnfrs[0]], new_cnfrs[1:]
 
     def _out_of_box_check(self, ligand_cnfrs=None):
         xyz_ranges = []
@@ -822,7 +830,7 @@ class BaseSampler(object):
         self.ligand.cnfrs_, self.receptor.cnfrs_ = self._variables2cnfrs(x)
         # print("Converted cnfrs, ", self.ligand.cnfrs_, self.receptor.cnfrs_ )
         # if the cnfr is out of box, drop it and assign a very large value
-        if self._out_of_box_check(self.ligand.cnfrs_):
+        if not self._soft_box_enabled() and self._out_of_box_check(self.ligand.cnfrs_):
             return 999.99
         else:
             return self._score(self.ligand.cnfrs_, self.receptor.cnfrs_) \

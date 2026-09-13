@@ -25,6 +25,8 @@ class MonteCarloSampler(BaseSampler):
         self.output_fpath = kwargs.pop('output_fpath', 'output.pdb')
         self.box_center = kwargs.pop('box_center', None)
         self.box_size   = kwargs.pop('box_size', None)
+        self.box_constraint = kwargs.pop('box_constraint', None)
+        self.box_constraint_force = kwargs.pop('box_constraint_force', 1.0)
         self.random_start = kwargs.pop('random_start', False)
         self.early_stop_tolerance = kwargs.pop("early_stop_tolerance", 300)
         self.ntasks=kwargs.pop("ntasks", 1)

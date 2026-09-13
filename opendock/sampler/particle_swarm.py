@@ -95,6 +95,8 @@ class ParticleSwarmOptimizer(BaseSampler):
         self.output_fpath = kwargs.pop('output_fpath', 'output.pdb')
         self.box_center = kwargs.pop('box_center', None)
         self.box_size = kwargs.pop('box_size', None)
+        self.box_constraint = kwargs.pop('box_constraint', None)
+        self.box_constraint_force = kwargs.pop('box_constraint_force', 1.0)
         self.early_stop_tolerance = kwargs.pop('early_stop_tolerance', 20)
 
 
@@ -200,11 +202,15 @@ class ParticleSwarmOptimizer(BaseSampler):
 
     def _batch_score_positions(self, positions):
         """Score a batch of particle positions, returning ``[n]`` scores."""
-        lig_cnfr = self._decode_positions(positions).to(self.scoring_function.device)
+        lig_cnfr = self._decode_positions(positions)
         pose = self.ligand.cnfr2xyz([lig_cnfr])
+        scores = (self.scoring_function.scoring()
+                  + self._soft_box_score())[:, 0]
+        if self._soft_box_enabled():
+            return scores
         out = self._out_of_box_check_coords(pose.detach())
-        scores = self.scoring_function.scoring()[:, 0]
-        return torch.where(out, torch.full_like(scores, 999.99), scores)
+        return torch.where(out.to(scores.device),
+                           torch.full_like(scores, 999.99), scores)
 
 
     def sampling(self, nsteps=None) -> tuple:

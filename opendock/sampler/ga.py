@@ -57,6 +57,8 @@ class GeneticAlgorithmSampler(BaseSampler):
         self.output_fpath = kwargs.pop('output_fpath', 'output.pdb')
         self.box_center = kwargs.pop('box_center', None)
         self.box_size = kwargs.pop('box_size', None)
+        self.box_constraint = kwargs.pop('box_constraint', None)
+        self.box_constraint_force = kwargs.pop('box_constraint_force', 1.0)
         self.n_gen = kwargs.pop("n_gen", 4)
         self.n_pop = kwargs.pop("n_pop", 4)
         self.minimization_ratio = kwargs.pop("minimization_ratio", 1. / 5.)
@@ -653,7 +655,7 @@ class GeneticAlgorithmSampler(BaseSampler):
 
         """
         self.ligand.cnfrs_, self.receptor.cnfrs_ = self._variables2cnfrs(x)
-        if self._out_of_box_check(self.ligand.cnfrs_):
+        if not self._soft_box_enabled() and self._out_of_box_check(self.ligand.cnfrs_):
             return -999.99
         else:
             return self._score(self.ligand.cnfrs_, \
@@ -669,12 +671,14 @@ class GeneticAlgorithmSampler(BaseSampler):
         xyz = vars_matrix[:, :3]
         angles = torch.remainder(vars_matrix[:, 3:] + np.pi, 2 * np.pi) - np.pi
         lig_cnfr = torch.cat([xyz, angles], dim=1)
-        lig_cnfr = lig_cnfr.to(self.scoring_function.device)
         pose = self.ligand.cnfr2xyz([lig_cnfr])
-        out = self._out_of_box_check_coords(pose.detach())
-        scores = self.scoring_function.scoring()
+        scores = self.scoring_function.scoring() + self._soft_box_score()
         fitness = -scores[:, 0]
-        return torch.where(out, torch.full_like(fitness, -999.99), fitness)
+        if self._soft_box_enabled():
+            return fitness
+        out = self._out_of_box_check_coords(pose.detach())
+        return torch.where(out.to(fitness.device),
+                           torch.full_like(fitness, -999.99), fitness)
 
     def get_best_chrom(self):
         """

@@ -239,6 +239,8 @@ class MinimizerSampler(BaseSampler):
         self.minimizer = kwargs.pop('minimizer', None)
         self.box_center = kwargs.pop('box_center', None)
         self.box_size   = kwargs.pop('box_size', None)
+        self.box_constraint = kwargs.pop('box_constraint', None)
+        self.box_constraint_force = kwargs.pop('box_constraint_force', 1.0)
     
     def _make_periodic_lr(self, total_step=1000, 
                           current_step=0, 

@@ -258,37 +258,54 @@ class DistanceConstraintSF(ConstraintSF):
     
 
 class OutOfBoxConstraint(ConstraintSF):
+    """Differentiable soft penalty that keeps the ligand inside the docking box.
+
+    Every heavy atom that leaves ``box_center +/- box_size`` on any axis is
+    penalized with a quadratic wall, so the gradient pushes out-of-box poses
+    back toward the box.  Unlike ``BaseSampler._out_of_box_check`` (a hard
+    reject), this is a smooth term that minimizers can follow.
+
+    ``box_size`` is the half-extent (same convention as the sampler's box).
+    """
     def __init__(self, 
                  receptor = None,
                  ligand = None, 
                  **kwargs):
+        device = kwargs.pop('device', None)
         super(OutOfBoxConstraint, self)\
-        .__init__(receptor=receptor, ligand=ligand)
+        .__init__(receptor=receptor, ligand=ligand, device=device)
 
         self.box_center = kwargs.pop('box_center', None)
         self.box_size   = kwargs.pop('box_size', None)
 
-        self.constraint_type_ = kwargs.pop('constraint', 'upper_wall')
+        self.constraint_type_ = kwargs.pop('constraint', 'wall')
         self.force_constant_ = kwargs.pop('force', 1.0)
-        # distance boundary, unit is angstrom
-        default_bounds = [self.box_size[0] / 2.0, ] if self.box_size else None
-        self.bounds_ = kwargs.pop('bounds', default_bounds)
-        if self.bounds_ is None:
+        self.bounds_ = kwargs.pop('bounds', None)
+        if self.box_size is None and self.bounds_ is None:
             raise ValueError("OutOfBoxConstraint requires box_size or bounds")
         if self.box_center is None:
             raise ValueError("OutOfBoxConstraint requires box_center")
 
     def scoring(self):
-        # ligand coordinates center 
-        _ligand_center = torch.mean(self.ligand.cnfr2xyz(self.ligand.cnfrs_)[0], axis=0)
+        # current ligand heavy-atom coordinates: [N, 3] or batched [n, N, 3]
+        _xyz = self.ligand.pose_heavy_atoms_coords
+        if _xyz.dim() == 2:
+            _xyz = _xyz.unsqueeze(0)
+        _xyz = _xyz.to(self.device)
 
-        # center distance 
-        _distance = self._distance(torch.Tensor(self.box_center), _ligand_center)
+        center = torch.tensor(self.box_center, dtype=_xyz.dtype,
+                              device=_xyz.device)
+        half = torch.tensor(self.box_size, dtype=_xyz.dtype,
+                            device=_xyz.device)
+        lo = center - half
+        hi = center + half
 
-        # apply constraints
-        score = self._apply_constraint(_distance)
+        below = torch.clamp(lo - _xyz, min=0.0)   # >0 where atom < lo
+        above = torch.clamp(_xyz - hi, min=0.0)   # >0 where atom > hi
 
-        return score.reshape((1, -1))
+        score = self.force_constant_ * (below ** 2 + above ** 2).sum(dim=(1, 2))
+
+        return score.reshape((-1, 1))
 
 class DistanceMatrixConstraintSF(ConstraintSF):
     def __init__(self,

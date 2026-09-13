@@ -30,6 +30,8 @@ class BayesianOptimizationSampler(BaseSampler):
         self.output_fpath = kwargs.pop('output_fpath', 'output.pdb')
         self.box_center = kwargs.pop('box_center', None)
         self.box_size   = kwargs.pop('box_size', None)
+        self.box_constraint = kwargs.pop('box_constraint', None)
+        self.box_constraint_force = kwargs.pop('box_constraint_force', 1.0)
         self.acquisition = kwargs.pop('acquisition', 'ucb')
         self.kappa = kwargs.pop('kappa', 2.576)
         self.minimization_ratio = kwargs.pop('minimization_ratio', 1. / 3.)
