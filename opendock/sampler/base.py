@@ -117,52 +117,60 @@ class BaseSampler(object):
                   is_ligand=True, is_receptor=False,
                   lr=0.1, nsteps=5):
         """
-        Minimize the cnfrs if required.
+        Minimize the cnfrs if required.  The gradient loop runs on the scoring
+        function's device so CUDA works end to end; results are returned on CPU
+        for backward compatibility with the samplers' history bookkeeping.
         """
         lr = 0.1
-        # nsteps=5+int((x_ligand[0][0].shape[0]-6)/5)
-        # print("x_ligand[0][0].shape[0]",x_ligand[0][0].shape[0])
-        # print("nsteps",nsteps)
-        # print("lr",lr)
+        device = self.scoring_function.device
+
+        def _to_dev(xs):
+            if xs is None:
+                return None
+            return [x.detach().to(device).requires_grad_(True) for x in xs]
+
+        def _to_cpu(xs):
+            if xs is None:
+                return None
+            return [x.detach().cpu() for x in xs]
+
         if is_ligand and not is_receptor:
             # minimize the ligand only
+            x_ligand_dev = _to_dev(x_ligand)
+
             def _sf(x):
-                # print('d0')
                 self.ligand.cnfr2xyz(x)
-                # print('d1')
                 score = torch.sum(self.scoring_function.scoring())
-                # print('d2')
                 return score
 
-            # print("Current Minimimzer ", self.minimizer)
-            #print("x_ligand",x_ligand)
-            return self.minimizer(x_ligand, _sf, lr=lr, nsteps=nsteps), None
+            res = self.minimizer(x_ligand_dev, _sf, lr=lr, nsteps=nsteps)
+            return _to_cpu(res), None
 
         elif not is_ligand and is_receptor:
             # minimize the receptor sidechain only
+            x_receptor_dev = _to_dev(x_receptor)
+
             def _sf(x):
-                # print('d0')
                 self.receptor.cnfr2xyz(x)
-                # print('d1')
                 score = torch.sum(self.scoring_function.scoring())
-                # print('d2')
                 return score
 
-            return None, self.minimizer(x_receptor, _sf, lr=lr, nsteps=nsteps)
+            res = self.minimizer(x_receptor_dev, _sf, lr=lr, nsteps=nsteps)
+            return None, _to_cpu(res)
         else:
             # minimize both the ligand and the receptor sidechains
+            combined = x_ligand + x_receptor
+            combined_dev = _to_dev(combined)
+
             def _sf(x):
-                # print('d0')
                 self.receptor.cnfr2xyz(x[1:])
                 self.ligand.cnfr2xyz([x[0]])
-                # print('d1')
                 score = torch.sum(self.scoring_function.scoring())
-                # print('d2')
                 return score
 
-            new_cnfrs = self.minimizer(x_ligand + x_receptor, _sf, lr=lr, nsteps=nsteps)
-
-            return [new_cnfrs[0]], new_cnfrs[1:]
+            new_cnfrs = self.minimizer(combined_dev, _sf, lr=lr, nsteps=nsteps)
+            new_cnfrs_cpu = _to_cpu(new_cnfrs)
+            return [new_cnfrs_cpu[0]], new_cnfrs_cpu[1:]
 
     def _out_of_box_check(self, ligand_cnfrs=None):
         xyz_ranges = []

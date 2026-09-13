@@ -67,7 +67,7 @@ def sgd_minimizer(x, target_function, **kwargs):
         loss = target_function(x)
         #print('loss',loss)
         #print('x',x)
-        loss.backward(retain_graph=True)
+        loss.backward()
         # optimize now
         try:
             optimizer.step()
@@ -95,7 +95,7 @@ def adam_minimizer(x, target_function, **kwargs):
         #print("adam",x)
         loss = target_function(x)
         #print('loss', loss)
-        loss.backward(retain_graph=True)
+        loss.backward()
 
         # optimize now
         try:
