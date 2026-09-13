@@ -34,6 +34,7 @@ class MonteCarloSampler(BaseSampler):
         self.verbose = kwargs.pop("verbose", True)
         self.minimize_nsteps = kwargs.pop('minimize_nsteps', 5)
         self.minimize_lr = kwargs.pop('minimize_lr', 0.1)
+        self.torsion_max = kwargs.pop('torsion_max', 0.1)
         self.pocket_subset = kwargs.pop('pocket_subset', True)
         self.warm_start = kwargs.pop('warm_start', True)
         self.intra_stride = kwargs.pop('intra_stride', 2)
@@ -52,7 +53,7 @@ class MonteCarloSampler(BaseSampler):
             (self.ligand.cnfrs_, self.receptor.cnfrs_) = \
                  self._mutate(self.ligand.cnfrs_, 
                               self.receptor.cnfrs_, 
-                              5, np.pi * 0.1)
+                              5, np.pi * self.torsion_max)
             #print("Random Start: ", self.ligand.cnfrs_, self.receptor.cnfrs_)
 
         self.init_score = self._score() 
@@ -90,11 +91,12 @@ class MonteCarloSampler(BaseSampler):
         # make mutations
         if self.ntasks > 1 and self.ligand.cnfrs_ is not None:
             # batch: mutate + score many poses in one scoring call
-            _lig_cnfrs = [self._mutate_batch(self.ligand.cnfrs_, 5.0, 0.1,
-                                             n=self.ntasks)]
+            _lig_cnfrs = [self._mutate_batch(self.ligand.cnfrs_, 5.0,
+                                             self.torsion_max, n=self.ntasks)]
             if self.receptor.cnfrs_ is not None:
                 _rec_cnfrs = self._mutate_receptor_batch(self.receptor.cnfrs_,
-                                                         0.1, n=self.ntasks)
+                                                         self.torsion_max,
+                                                         n=self.ntasks)
             else:
                 _rec_cnfrs = None
             if minimize and self.minimizer is not None:
@@ -115,7 +117,7 @@ class MonteCarloSampler(BaseSampler):
         else:
             _lig_cnfrs, _rec_cnfrs = self._mutate(self.ligand.cnfrs_,
                                                   self.receptor.cnfrs_,
-                                                  5.0, 0.1,
+                                                  5.0, self.torsion_max,
                                                   minimize=minimize)
             score = self._score(_lig_cnfrs, _rec_cnfrs).detach().cpu().numpy()
         t2=time.time()
