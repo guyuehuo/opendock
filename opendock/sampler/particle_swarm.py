@@ -103,14 +103,9 @@ class ParticleSwarmOptimizer(BaseSampler):
         # make boundary points
         self.bounds = []
         if self.ligand.cnfrs_ is not None:
-            # print("self.ligand.cnfrs_[0]",self.ligand.cnfrs_[0])
-            # print("self.ligand.cnfrs_[0].shape[0][0]",self.ligand.cnfrs_[0][0].shape[0])
-            # self.bounds += [[self.box_center[x] - self.box_size[x] / 2.0,
-            #                  self.box_center[x] + self.box_size[x] / 2.0] for x in range(3)] + [
-            #                    [-1.0, 1.0]] * (3 + self.ligand.cnfrs_[0][0].shape[0] - 6)
             self.bounds += [[self.box_center[x] - 5.0,
                              self.box_center[x] + 5.0] for x in range(3)] + [
-                               [-1.0, 1.0]] * (3 + self.ligand.cnfrs_[0][0].shape[0] - 6)
+                               [-1.0 * np.pi, np.pi]] * (3 + self.ligand.cnfrs_[0][0].shape[0] - 6)
 
 
         if self.receptor.cnfrs_ is not None:
