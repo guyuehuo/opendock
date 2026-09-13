@@ -32,6 +32,10 @@ class MonteCarloSampler(BaseSampler):
         self.ntasks=kwargs.pop("ntasks", 1)
         self.batch_minimize = kwargs.pop("batch_minimize", True)
         self.verbose = kwargs.pop("verbose", True)
+        self.minimize_nsteps = kwargs.pop('minimize_nsteps', 5)
+        self.minimize_lr = kwargs.pop('minimize_lr', 0.1)
+        self.pocket_subset = kwargs.pop('pocket_subset', True)
+        self.warm_start = kwargs.pop('warm_start', True)
         self.index_ = 0
         self.best_cnfrs_ = [None, None]
         self.history_ = [[] for _ in range(self.ntasks)]

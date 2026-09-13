@@ -67,6 +67,11 @@ class BaseScoringFunction(object):
         self._rec_xyz_dev = None
         self._rec_version = None
 
+        # Optional active-receptor subset (indices into the heavy atoms).  When
+        # set, generate_pldist_mtrx and the energy terms only consider these
+        # receptor atoms (used for a pocket-local minimize).  None = all atoms.
+        self._active_rec_indices = None
+
     def generate_pldist_mtrx(self):
         """Generate protein-ligand distance matrix.
 
@@ -87,6 +92,14 @@ class BaseScoringFunction(object):
         else:
             rec_heavy_atoms_xyz = self._rec_xyz_dev.expand(
                 len(self.ligand.pose_heavy_atoms_coords), -1, 3)
+
+        # Restrict to the active receptor subset (pocket-local minimize).
+        if self._active_rec_indices is not None:
+            idx = self._active_rec_indices
+            if rec_heavy_atoms_xyz.dim() == 3:
+                rec_heavy_atoms_xyz = rec_heavy_atoms_xyz[:, idx, :]
+            else:
+                rec_heavy_atoms_xyz = rec_heavy_atoms_xyz[:, idx, :]
         #print('res:',rec_heavy_atoms_xyz)
         # Generate the distance matrix of heavy atoms between the protein and the ligand.
         n, N, C = rec_heavy_atoms_xyz.size()

@@ -103,6 +103,10 @@ class ParticleSwarmOptimizer(BaseSampler):
 
         self.minimization_ratio = kwargs.pop('minimization_ratio', 1. / 3.)
         self.batch_minimize = kwargs.pop('batch_minimize', True)
+        self.minimize_nsteps = kwargs.pop('minimize_nsteps', 5)
+        self.minimize_lr = kwargs.pop('minimize_lr', 0.1)
+        self.pocket_subset = kwargs.pop('pocket_subset', True)
+        self.warm_start = kwargs.pop('warm_start', False)
 
         # make boundary points
         self.bounds = []

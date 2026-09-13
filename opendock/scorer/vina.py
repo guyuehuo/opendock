@@ -720,6 +720,41 @@ class VinaSF(BaseScoringFunction):
 
         self._static_ready = True
 
+    # ── pocket-local scoring (receptor subset) ──────────────────────────
+    def _lig_max_radius(self):
+        """Max distance of a ligand heavy atom from the ligand centroid."""
+        if getattr(self, "_lig_max_radius_", None) is None:
+            init = self.ligand.init_lig_heavy_atoms_xyz[0].to(self.device)
+            centroid = init.mean(dim=0)
+            self._lig_max_radius_ = float(
+                torch.norm(init - centroid, dim=1).max().item())
+        return self._lig_max_radius_
+
+    def set_pocket_subset(self, cutoff=8.0, margin=3.0):
+        """Restrict scoring to receptor atoms near the current ligand pose.
+
+        Selects the receptor heavy atoms whose distance from the current batch
+        centroid is within ``cutoff + ligand_radius + margin``.  This skips the
+        far-field receptor atoms that can never contribute to the inter term,
+        shrinking the distance matrix.  Call :meth:`clear_pocket_subset` to
+        restore full-receptor scoring.
+        """
+        if self._rec_xyz_dev is None:
+            return
+        coords = self.ligand.pose_heavy_atoms_coords
+        if coords.dim() == 3:
+            centroid = coords.reshape(-1, 3).mean(dim=0)
+        else:
+            centroid = coords.reshape(-1, 3).mean(dim=0)
+        centroid = centroid.to(self._rec_xyz_dev.device)
+        r = cutoff + self._lig_max_radius() + margin
+        d = torch.norm(self._rec_xyz_dev - centroid, dim=1)
+        idx = (d <= r).nonzero(as_tuple=True)[0]
+        self._active_rec_indices = idx.to(self.device)
+
+    def clear_pocket_subset(self):
+        self._active_rec_indices = None
+
     def _inter_dense(self, cutoff=8.0):
         """Dense (unpadded) inter-molecular Vina terms.
 
@@ -730,11 +765,22 @@ class VinaSF(BaseScoringFunction):
         n, N, M = dist.shape
         mask = torch.isfinite(dist) & (dist <= cutoff)
 
-        is_hydro = self._rec_hydro.view(1, N, 1) * self._lig_hydro.view(1, 1, M)
-        is_hb = ((self._rec_donor.view(1, N, 1) * self._lig_accept.view(1, 1, M)
-                  + self._rec_accept.view(1, N, 1)
+        rec_hydro = self._rec_hydro
+        rec_donor = self._rec_donor
+        rec_accept = self._rec_accept
+        rec_vdw = self._rec_vdw
+        if self._active_rec_indices is not None:
+            idx = self._active_rec_indices
+            rec_hydro = rec_hydro[idx]
+            rec_donor = rec_donor[idx]
+            rec_accept = rec_accept[idx]
+            rec_vdw = rec_vdw[idx]
+
+        is_hydro = rec_hydro.view(1, N, 1) * self._lig_hydro.view(1, 1, M)
+        is_hb = ((rec_donor.view(1, N, 1) * self._lig_accept.view(1, 1, M)
+                  + rec_accept.view(1, N, 1)
                   * self._lig_donor.view(1, 1, M)) > 0).to(torch.float32)
-        vdw = self._rec_vdw.view(1, N, 1) + self._lig_vdw.view(1, 1, M)
+        vdw = rec_vdw.view(1, N, 1) + self._lig_vdw.view(1, 1, M)
 
         core = VinaScoreCore(dist.reshape(n, -1),
                              is_hydro.expand(n, N, M).reshape(n, -1),
