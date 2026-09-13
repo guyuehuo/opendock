@@ -31,6 +31,7 @@ class MonteCarloSampler(BaseSampler):
         self.early_stop_tolerance = kwargs.pop("early_stop_tolerance", 300)
         self.ntasks=kwargs.pop("ntasks", 1)
         self.batch_minimize = kwargs.pop("batch_minimize", True)
+        self.verbose = kwargs.pop("verbose", True)
         self.index_ = 0
         self.best_cnfrs_ = [None, None]
         self.history_ = [[] for _ in range(self.ntasks)]
@@ -115,12 +116,16 @@ class MonteCarloSampler(BaseSampler):
         t2=time.time()
         # calculate score
         t3=time.time()
-        # delta score
+        # delta score (Metropolis) -- deferred tensor cnfr update (no per-accept
+        # numpy round-trips), prints gated by self.verbose.
+        new_cnfr = self.ligand.cnfrs_[0].detach().clone() if (
+            self.ligand_is_flexible_ and _lig_cnfrs is not None) else None
         for i in range(len(score)):
           his=self.history_[i][-1][0]
           #print('his:',his)
           delta_score= score[i][0] - his
-          print(f'[INFO] #{self.index_} {self.__class__.__name__} curr {score[i][0]:.2f} prev {his:.2f} dG {delta_score:.2f}')
+          if self.verbose:
+              print(f'[INFO] #{self.index_} {self.__class__.__name__} curr {score[i][0]:.2f} prev {his:.2f} dG {delta_score:.2f}')
 
           # metropolis
           if delta_score < 0:
@@ -131,12 +136,8 @@ class MonteCarloSampler(BaseSampler):
 
           rnd_num = random.random()
           if prob >= rnd_num:
-            if self.ligand_is_flexible_:
-                temp_cnfrs1=self.ligand.cnfrs_[0].detach().numpy()
-                temp_cnfrs2=_lig_cnfrs[0].detach().numpy()
-                temp_cnfrs1[i]=temp_cnfrs2[i]
-                self.ligand.cnfrs_ = [torch.Tensor(temp_cnfrs1)]
-                #print('new cnfrs', self.ligand.cnfrs_)
+            if new_cnfr is not None:
+                new_cnfr[i] = _lig_cnfrs[0][i]
             if self.receptor_is_flexible_:
                 if (_rec_cnfrs is not None and len(_rec_cnfrs) and
                         _rec_cnfrs[0].dim() == 2):
@@ -149,18 +150,25 @@ class MonteCarloSampler(BaseSampler):
                     self.receptor.cnfrs_ = _rec_cnfrs
 
             self.history_[i].append([score[i][0], prob, 1.])
-            print(f'[INFO] #{self.index_} {self.__class__.__name__} accept prob {prob:.2f} and rnd_num {rnd_num:.2f}')
+            if self.verbose:
+                print(f'[INFO] #{self.index_} {self.__class__.__name__} accept prob {prob:.2f} and rnd_num {rnd_num:.2f}')
             if self.ligand.cnfrs_ is not None:
-              self.ligand_cnfrs_history_.append(torch.Tensor(np.array([self.ligand.cnfrs_[0].detach().numpy()[i]])))
+              self.ligand_cnfrs_history_.append(
+                  torch.Tensor(_lig_cnfrs[0][i].detach().numpy()).reshape(1, -1))
             elif self.receptor.cnfrs_ is not None:
               self.receptor_cnfrs_history_.append(torch.Tensor(np.array(torch.cat(self.receptor.cnfrs_).detach().numpy())))
             self.ligand_scores_history_.append(score[i][0])
           else:
             #self.history_.append([his, prob, 0.])
-            print(f'[INFO] #{self.index_} {self.__class__.__name__} reject prob {prob:.2f} and rnd_num {rnd_num:.2f}')
+            if self.verbose:
+                print(f'[INFO] #{self.index_} {self.__class__.__name__} reject prob {prob:.2f} and rnd_num {rnd_num:.2f}')
           if score[i][0] < self.best[0] and self.ligand.cnfrs_ is not None:
             self.best = [score[i][0], 1, prob]
-            self.best_cnfrs_ = [torch.Tensor(np.array([self.ligand.cnfrs_[0].detach().numpy()[i]])), _rec_cnfrs]
+            cur_row = new_cnfr[i] if new_cnfr is not None else _lig_cnfrs[0][i]
+            self.best_cnfrs_ = [torch.Tensor(cur_row.detach().numpy()).reshape(1, -1), _rec_cnfrs]
+
+        if new_cnfr is not None:
+            self.ligand.cnfrs_ = [new_cnfr]
         
         return self,t2-t1,t3-t2
     
