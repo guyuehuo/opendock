@@ -195,7 +195,7 @@ def run_one_job(code, source, mode, cfg_name, cfg, prep_dir, run_dir,
                 conditions, num_modes, cluster_cutoff, steps_scale=1.0,
                 bound_value=None, n_bit=None, device="cpu", mc_tasks=None,
                 anneal=False, bound_min=None, compile=False, n_conformers=None,
-                batch_minimize=False):
+                batch_minimize=True):
     cond = condition_id(source, mode, cfg_name)
     if bound_value is not None:
         cond = f"{cond}-bv{bound_value:g}"
@@ -207,8 +207,8 @@ def run_one_job(code, source, mode, cfg_name, cfg, prep_dir, run_dir,
             cond = f"{cond}-bm{bound_min:g}"
     if n_conformers is not None:
         cond = f"{cond}-nc{n_conformers}"
-    if batch_minimize:
-        cond = f"{cond}-batchmin"
+    if not batch_minimize:
+        cond = f"{cond}-serialmin"
     cond_dir = ensure_dir(os.path.join(run_dir, code))
     out_pdbqt = os.path.join(cond_dir, f"{cond}.pdbqt")
     scores_csv = os.path.join(run_dir, "scores.csv")
@@ -239,8 +239,7 @@ def run_one_job(code, source, mode, cfg_name, cfg, prep_dir, run_dir,
     kwargs = dict(box_center=list(center),
                   box_size=[float(x) for x in half],
                   minimizer=minimizer)
-    if batch_minimize:
-        kwargs["batch_minimize"] = True
+    kwargs["batch_minimize"] = batch_minimize
     if cfg["sampler"] == "ga":
         kwargs["n_pop"] = int(cfg.get("n_pop", 100))
         if bound_value is not None:
@@ -345,9 +344,10 @@ def main():
                         help="scoring device for VinaSF (cpu, cuda, cuda:0..N)")
     parser.add_argument("--mc-tasks", type=int, default=None,
                         help="MC batch size (ntasks); default auto = 32 on cuda")
-    parser.add_argument("--batch-minimize", action="store_true",
-                        help="MC: batched Adam minimize (30x faster than "
-                             "per-pose LBFGS, at least as accurate)")
+    parser.add_argument("--batch-minimize", action=argparse.BooleanOptionalAction,
+                        default=True,
+                        help="batched Adam minimize (default on); "
+                             "pass --no-batch-minimize for per-pose LBFGS")
     parser.add_argument("--compile", action="store_true",
                         help="torch.compile the scoring/geometry kernels "
                              "(one-time tracing cost, big speedup on long runs)")

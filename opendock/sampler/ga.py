@@ -67,7 +67,7 @@ class GeneticAlgorithmSampler(BaseSampler):
         self.anneal = kwargs.pop('anneal', False)
         self.bound_min = kwargs.pop('bound_min', 0.25)
         self.kt_ = kwargs.pop('kt', 1.0)
-        self.batch_minimize = kwargs.pop("batch_minimize", False)
+        self.batch_minimize = kwargs.pop("batch_minimize", True)
 
         print("self.bound_value",self.bound_value)
 

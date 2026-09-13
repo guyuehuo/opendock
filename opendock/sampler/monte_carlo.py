@@ -30,7 +30,7 @@ class MonteCarloSampler(BaseSampler):
         self.random_start = kwargs.pop('random_start', False)
         self.early_stop_tolerance = kwargs.pop("early_stop_tolerance", 300)
         self.ntasks=kwargs.pop("ntasks", 1)
-        self.batch_minimize = kwargs.pop("batch_minimize", False)
+        self.batch_minimize = kwargs.pop("batch_minimize", True)
         self.index_ = 0
         self.best_cnfrs_ = [None, None]
         self.history_ = [[] for _ in range(self.ntasks)]

@@ -102,7 +102,7 @@ class ParticleSwarmOptimizer(BaseSampler):
 
 
         self.minimization_ratio = kwargs.pop('minimization_ratio', 1. / 3.)
-        self.batch_minimize = kwargs.pop('batch_minimize', False)
+        self.batch_minimize = kwargs.pop('batch_minimize', True)
 
         # make boundary points
         self.bounds = []
