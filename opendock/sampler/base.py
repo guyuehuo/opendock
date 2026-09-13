@@ -49,8 +49,11 @@ class BaseSampler(object):
         self.ligand_is_flexible_ = False
         self.receptor_is_flexible_ = False
         self.minimizer = kwargs.pop('minimizer', None)
-        self.minimize_nsteps = kwargs.pop('minimize_nsteps', 5)
+        self.minimize_nsteps = kwargs.pop('minimize_nsteps', 3)
         self.minimize_lr = kwargs.pop('minimize_lr', 0.1)
+        self.pocket_subset = kwargs.pop('pocket_subset', True)
+        self.warm_start = kwargs.pop('warm_start', False)
+        self._adam_state = None
         self.output_fpath = kwargs.pop('output_fpath', 'output.pdb')
         self.box_center = kwargs.pop('box_center', None)
         self.box_size = kwargs.pop('box_size', None)
@@ -228,13 +231,44 @@ class BaseSampler(object):
         lr = self.minimize_lr if lr is None else lr
         nsteps = self.minimize_nsteps if nsteps is None else nsteps
         x = ligand_cnfrs[0].detach().clone().requires_grad_(True)
-        opt = torch.optim.Adam([x], lr=lr)
-        for _ in range(nsteps):
-            opt.zero_grad()
-            self.ligand.cnfr2xyz([x])
-            loss = self.scoring_function.scoring().sum()
-            loss.backward()
-            opt.step()
+
+        sf = self.scoring_function
+        setter = getattr(sf, "set_pocket_subset", None)
+        clearer = getattr(sf, "clear_pocket_subset", None)
+        if setter is not None and getattr(self, "pocket_subset", True):
+            try:
+                setter()
+            except Exception:
+                setter = None
+
+        # Manual Adam (identical update to torch.optim.Adam) so the moments can
+        # be warm-started across MC steps instead of reset every call.
+        beta1, beta2, eps = 0.9, 0.999, 1e-8
+        if (getattr(self, "warm_start", False)
+                and getattr(self, "_adam_state", None) is not None):
+            m, v, t = self._adam_state
+        else:
+            m = torch.zeros_like(x)
+            v = torch.zeros_like(x)
+            t = 0
+
+        try:
+            for _ in range(nsteps):
+                self.ligand.cnfr2xyz([x])
+                loss = self.scoring_function.scoring().sum()
+                g = torch.autograd.grad(loss, x)[0]
+                t += 1
+                m = beta1 * m + (1 - beta1) * g
+                v = beta2 * v + (1 - beta2) * g * g
+                m_hat = m / (1 - beta1 ** t)
+                v_hat = v / (1 - beta2 ** t)
+                x = (x - lr * m_hat / (v_hat.sqrt() + eps)).detach().requires_grad_(True)
+        finally:
+            if clearer is not None:
+                clearer()
+
+        if getattr(self, "warm_start", False):
+            self._adam_state = (m, v, t)
         return [x.detach()]
 
     def _out_of_box_check(self, ligand_cnfrs=None):
