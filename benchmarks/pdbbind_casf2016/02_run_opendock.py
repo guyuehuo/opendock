@@ -186,7 +186,7 @@ def run_one_job(code, source, mode, cfg_name, cfg, prep_dir, run_dir,
         _cnfr = torch.tensor(_cnfr.detach().numpy() * 1.0)
         ligand.cnfrs_, receptor.cnfrs_ = [_cnfr, ], None
         ligand.cnfr2xyz([_cnfr])
-        _s = float(sf.scoring().detach().numpy().ravel()[0])
+        _s = float(sf.scoring().detach().cpu().numpy().ravel()[0])
         rescored.append([_s, _cnfr])
 
     rescored = sorted(rescored, key=lambda x: x[0])
