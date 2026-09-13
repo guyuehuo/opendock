@@ -143,13 +143,19 @@ class BaseSampler(object):
             return d
 
         candidate = base + _deltas(n)
+        out = self._out_of_box_check_batch([candidate])
         for _ in range(max_box_trials):
-            out = self._out_of_box_check_batch([candidate])
             if not bool(out.any()):
                 return candidate
             idx = out.nonzero(as_tuple=True)[0]
             candidate = candidate.clone()
             candidate[idx] = base[idx] + _deltas(len(idx))
+            # Only re-check the rows that were re-mutated (in-box rows stay
+            # in-box), so the geometry rebuild is proportional to the number of
+            # out-of-box poses instead of the whole batch.
+            out_sub = self._out_of_box_check_batch([candidate[idx]])
+            out = out.clone()
+            out[idx] = out_sub
         return candidate
 
     def _mutate_receptor_batch(self, receptor_cnfrs, torsion_max=0.1, n=1):
