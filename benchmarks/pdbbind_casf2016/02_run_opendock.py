@@ -239,6 +239,8 @@ def run_one_job(code, source, mode, cfg_name, cfg, prep_dir, run_dir,
     kwargs = dict(box_center=list(center),
                   box_size=[float(x) for x in half],
                   minimizer=minimizer)
+    if batch_minimize:
+        kwargs["batch_minimize"] = True
     if cfg["sampler"] == "ga":
         kwargs["n_pop"] = int(cfg.get("n_pop", 100))
         if bound_value is not None:
@@ -254,8 +256,6 @@ def run_one_job(code, source, mode, cfg_name, cfg, prep_dir, run_dir,
             kwargs["ntasks"] = int(mc_tasks)
         elif device.startswith("cuda"):
             kwargs["ntasks"] = 32
-        if batch_minimize:
-            kwargs["batch_minimize"] = True
 
     n_steps = int(float(cfg["steps_per_ha"]) * ligand.number_of_heavy_atoms
                   * steps_scale)

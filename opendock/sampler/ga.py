@@ -67,6 +67,7 @@ class GeneticAlgorithmSampler(BaseSampler):
         self.anneal = kwargs.pop('anneal', False)
         self.bound_min = kwargs.pop('bound_min', 0.25)
         self.kt_ = kwargs.pop('kt', 1.0)
+        self.batch_minimize = kwargs.pop("batch_minimize", False)
 
         print("self.bound_value",self.bound_value)
 
@@ -267,6 +268,44 @@ class GeneticAlgorithmSampler(BaseSampler):
         else:
             return chrom
 
+    def _minimize_chromosomes_batch(self, chroms):
+        """Batched Adam minimize of a list of chromosomes (rigid receptor).
+
+        Decodes the chromosomes selected for minimization into one ``[n, 6+k]``
+        batch and runs a single batched Adam loop (``nsteps`` scoring calls for
+        the whole batch) instead of ``n`` separate single-pose minimizer runs.
+        """
+        if self.minimizer is None:
+            return list(chroms)
+        idx = [i for i in range(len(chroms))
+               if self.minimization_ratio < random.random()]
+        if not idx:
+            return list(chroms)
+
+        sub = [chroms[i] for i in idx]
+        vars_matrix = torch.tensor(
+            [self.decode_entire_chrom(np.array(c)) for c in sub],
+            dtype=torch.float32)
+        xyz = vars_matrix[:, :3]
+        angles = torch.remainder(vars_matrix[:, 3:] + np.pi, 2 * np.pi) - np.pi
+        lig_cnfr = torch.cat([xyz, angles], dim=1)
+
+        try:
+            minimized = self._minimize_batch([lig_cnfr])[0]
+        except RuntimeError:
+            return list(chroms)
+
+        new_vars = torch.cat(
+            [minimized[:, :3],
+             torch.remainder(minimized[:, 3:] + np.pi, 2 * np.pi) - np.pi],
+            dim=1).detach().numpy()
+        new_chroms = [list(self.encode2chrom(v)) for v in new_vars]
+
+        out = list(chroms)
+        for k, i in enumerate(idx):
+            out[i] = new_chroms[k]
+        return out
+
     def _anneal_bound(self, sn_gen, n_gen):
         """Shrink the angular search range as generations progress.
 
@@ -375,8 +414,12 @@ class GeneticAlgorithmSampler(BaseSampler):
                     p1 = self.chrom_pop[ind_parents[sn_pair]]
                     p2 = self.chrom_pop[ind_parents[sn_pair + 1]]
                     c1, c2 = self.crossover(p1, p2, p_c=self.p_c)
-                    children.append(self._minimize_chromosome(c1))
-                    children.append(self._minimize_chromosome(c2))
+                    children.append(c1)
+                    children.append(c2)
+                if self.batch_minimize:
+                    children = self._minimize_chromosomes_batch(children)
+                else:
+                    children = [self._minimize_chromosome(c) for c in children]
                 child_vars = torch.tensor(
                     [self.decode_entire_chrom(c) for c in children],
                     dtype=torch.float32)
@@ -545,8 +588,12 @@ class GeneticAlgorithmSampler(BaseSampler):
                     [self.decode_entire_chrom(chrom) for chrom in self.chrom_pop2],
                     dtype=torch.float32)
                 origin_fit = self._batch_fitness_from_vars(origin_vars).detach().cpu().numpy()
-                new_chroms = [self._minimize_chromosome(self.mutate(chrom))
-                              for chrom in self.chrom_pop2]
+                if self.batch_minimize:
+                    new_chroms = self._minimize_chromosomes_batch(
+                        [self.mutate(chrom) for chrom in self.chrom_pop2])
+                else:
+                    new_chroms = [self._minimize_chromosome(self.mutate(chrom))
+                                  for chrom in self.chrom_pop2]
                 new_vars = torch.tensor(
                     [self.decode_entire_chrom(chrom) for chrom in new_chroms],
                     dtype=torch.float32)

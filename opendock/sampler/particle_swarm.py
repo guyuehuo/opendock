@@ -102,6 +102,7 @@ class ParticleSwarmOptimizer(BaseSampler):
 
 
         self.minimization_ratio = kwargs.pop('minimization_ratio', 1. / 3.)
+        self.batch_minimize = kwargs.pop('batch_minimize', False)
 
         # make boundary points
         self.bounds = []
@@ -256,16 +257,19 @@ class ParticleSwarmOptimizer(BaseSampler):
                         dtype=torch.float32)
                     base_lig = self._decode_positions(base_pos)
                     mutated = self._mutate_batch([base_lig], n=len(subset))
-                    rows = []
-                    for k in range(len(subset)):
-                        r = mutated[k:k+1].detach().clone().requires_grad_(True)
-                        try:
-                            rmin, _ = self._minimize([r], None, is_ligand=True,
-                                                     is_receptor=False)
-                            rows.append(rmin[0].detach().reshape(1, -1))
-                        except RuntimeError:
-                            rows.append(mutated[k:k+1].detach())
-                    minimized = torch.cat(rows, dim=0)
+                    if self.batch_minimize:
+                        minimized = self._minimize_batch([mutated])[0]
+                    else:
+                        rows = []
+                        for k in range(len(subset)):
+                            r = mutated[k:k+1].detach().clone().requires_grad_(True)
+                            try:
+                                rmin, _ = self._minimize([r], None, is_ligand=True,
+                                                         is_receptor=False)
+                                rows.append(rmin[0].detach().reshape(1, -1))
+                            except RuntimeError:
+                                rows.append(mutated[k:k+1].detach())
+                        minimized = torch.cat(rows, dim=0)
                     new_scores = self._batch_score([minimized])[:, 0].detach().cpu().numpy()
                     new_pos = self._decode_positions(
                         torch.cat([minimized[:, :3],
