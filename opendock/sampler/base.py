@@ -736,4 +736,4 @@ class BaseSampler(object):
             return 999.99
         else:
             return self._score(self.ligand.cnfrs_, self.receptor.cnfrs_) \
-                .detach().numpy().ravel()[0]
+                .detach().cpu().numpy().ravel()[0]

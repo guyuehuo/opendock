@@ -81,7 +81,8 @@ def set_seed(seed):
     torch.manual_seed(seed)
 
 
-def build_objects(code, source, mode, cfg, prep_dir, conditions, clip_default):
+def build_objects(code, source, mode, cfg, prep_dir, conditions, clip_default,
+                  device="cpu"):
     meta = load_meta(os.path.join(prep_dir, code, "meta.json"))
     center, half = docking_center_and_half(meta, mode, conditions)
 
@@ -106,23 +107,25 @@ def build_objects(code, source, mode, cfg, prep_dir, conditions, clip_default):
     ligand.ligand_center[0][1] = center[1]
     ligand.ligand_center[0][2] = center[2]
 
-    sf = VinaSF(receptor=receptor, ligand=ligand)
+    sf = VinaSF(receptor=receptor, ligand=ligand, device=device)
     return ligand, receptor, sf, center, half
 
 
 def run_one_job(code, source, mode, cfg_name, cfg, prep_dir, run_dir,
                 conditions, num_modes, cluster_cutoff, steps_scale=1.0,
-                bound_value=None):
+                bound_value=None, n_bit=None, device="cpu"):
     cond = condition_id(source, mode, cfg_name)
     if bound_value is not None:
         cond = f"{cond}-bv{bound_value:g}"
+    if n_bit is not None:
+        cond = f"{cond}-nb{n_bit}"
     cond_dir = ensure_dir(os.path.join(run_dir, code))
     out_pdbqt = os.path.join(cond_dir, f"{cond}.pdbqt")
     scores_csv = os.path.join(run_dir, "scores.csv")
 
     ligand, receptor, sf, center, half = \
         build_objects(code, source, mode, cfg_name, prep_dir, conditions,
-                      float(conditions["box"]["clip_default"]))
+                      float(conditions["box"]["clip_default"]), device=device)
 
     sampler_cls = SAMPLERS[cfg["sampler"]]
     minimizer = resolve_minimizer(cfg.get("minimizer", "none"))
@@ -133,6 +136,8 @@ def run_one_job(code, source, mode, cfg_name, cfg, prep_dir, run_dir,
         kwargs["n_pop"] = int(cfg.get("n_pop", 100))
         if bound_value is not None:
             kwargs["bound_value"] = bound_value
+        if n_bit is not None:
+            kwargs["n_bit"] = n_bit
 
     n_steps = int(float(cfg["steps_per_ha"]) * ligand.number_of_heavy_atoms
                   * steps_scale)
@@ -225,6 +230,11 @@ def main():
     parser.add_argument("--bound-value", type=float, default=None,
                         help="override the GA angular search half-range (rad) "
                              "for rotation/torsion variables (torsion step size)")
+    parser.add_argument("--n-bit", type=int, default=None,
+                        help="GA binary resolution (bits per variable); "
+                             "higher = finer torsion resolution at full range")
+    parser.add_argument("--device", default="cpu", choices=["cpu", "cuda"],
+                        help="scoring device for the VinaSF")
     parser.add_argument("--num-modes", type=int, default=None)
     parser.add_argument("--threads", type=int, default=1)
     parser.add_argument("--seed", type=int, default=2026)
@@ -246,11 +256,14 @@ def main():
         cond = condition_id(source, mode, cfg_name)
         if args.bound_value is not None:
             cond = f"{cond}-bv{args.bound_value:g}"
+        if args.n_bit is not None:
+            cond = f"{cond}-nb{args.n_bit}"
         try:
             return run_one_job(code, source, mode, cfg_name, cfg, prep_dir,
                                run_dir, conditions, num_modes, cluster_cutoff,
                                steps_scale=args.steps_scale,
-                               bound_value=args.bound_value)
+                               bound_value=args.bound_value,
+                               n_bit=args.n_bit, device=args.device)
         except Exception as exc:
             log(f"{code} {cond}: FAILED - {exc}")
             mark_failed(run_dir, code, cond, traceback.format_exc())
@@ -265,6 +278,8 @@ def main():
         cond = condition_id(args.source, args.mode, args.cfg)
         if args.bound_value is not None:
             cond = f"{cond}-bv{args.bound_value:g}"
+        if args.n_bit is not None:
+            cond = f"{cond}-nb{args.n_bit}"
         if args.resume and job_state(run_dir, args.code, cond) != "pending":
             log(f"{args.code} {cond}: already done/failed, skipping")
         else:

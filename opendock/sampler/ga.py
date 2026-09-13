@@ -90,7 +90,12 @@ class GeneticAlgorithmSampler(BaseSampler):
         self._init_variables = self._cnfrs2variables(self.ligand.cnfrs_,
                                                      self.receptor.cnfrs_)
         self.n_var = int(len(self._init_variables))
-        self.n_bit = kwargs.pop("n_bit", [8, ] * self.n_var)
+        self.n_bit = kwargs.pop("n_bit", 8)
+        if isinstance(self.n_bit, (int, float)):
+            self.n_bit = [int(self.n_bit), ] * self.n_var
+        elif len(self.n_bit) != self.n_var:
+            raise ValueError(f"n_bit length {len(self.n_bit)} != n_var "
+                             f"{self.n_var}")
 
         self.initialized_ = False
         self.ligand_is_flexible = False
@@ -579,7 +584,7 @@ class GeneticAlgorithmSampler(BaseSampler):
             return -999.99
         else:
             return self._score(self.ligand.cnfrs_, \
-                               self.receptor.cnfrs_).detach().numpy().ravel()[0] * -1.0
+                               self.receptor.cnfrs_).detach().cpu().numpy().ravel()[0] * -1.0
 
     def get_best_chrom(self):
         """

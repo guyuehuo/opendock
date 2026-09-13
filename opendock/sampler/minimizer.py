@@ -303,7 +303,7 @@ class MinimizerSampler(BaseSampler):
                                                      for x in self.receptor.cnfrs_])
                 
             _score = self._score(self.ligand.cnfrs_, self.receptor.cnfrs_)
-            _score = _score.detach().numpy().ravel()[0]
+            _score = _score.detach().cpu().numpy().ravel()[0]
             self.ligand_scores_history_.append(_score)
 
             print(f"[INFO] #{self.index_} {self.__class__.__name__} score {_score}")

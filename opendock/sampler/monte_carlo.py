@@ -67,7 +67,7 @@ class MonteCarloSampler(BaseSampler):
                                               minimize=minimize)
         t2=time.time()
         # calculate score
-        score = self._score(_lig_cnfrs, _rec_cnfrs).detach().numpy()
+        score = self._score(_lig_cnfrs, _rec_cnfrs).detach().cpu().numpy()
         t3=time.time()
         # delta score
         for i in range(len(score)):
@@ -133,7 +133,7 @@ class MonteCarloSampler(BaseSampler):
         _score = self._score(self.ligand.cnfrs_, self.receptor.cnfrs_)
         #print('_score',_score)
         for i in range(self.ntasks):
-          self.history_[i].append([_score.detach().numpy()[i][0], 1., 1.])
+          self.history_[i].append([_score.detach().cpu().numpy()[i][0], 1., 1.])
         self.best= self.history_[-1][-1]
         self.best_cnfrs_ = [self.ligand.cnfrs_, self.receptor.cnfrs_]
 
