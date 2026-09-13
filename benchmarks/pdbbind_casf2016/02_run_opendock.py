@@ -195,7 +195,7 @@ def run_one_job(code, source, mode, cfg_name, cfg, prep_dir, run_dir,
                 conditions, num_modes, cluster_cutoff, steps_scale=1.0,
                 bound_value=None, n_bit=None, device="cpu", mc_tasks=None,
                 anneal=False, bound_min=None, compile=False, n_conformers=None,
-                batch_minimize=True):
+                batch_minimize=True, min_steps=None, min_lr=None):
     cond = condition_id(source, mode, cfg_name)
     if bound_value is not None:
         cond = f"{cond}-bv{bound_value:g}"
@@ -209,6 +209,10 @@ def run_one_job(code, source, mode, cfg_name, cfg, prep_dir, run_dir,
         cond = f"{cond}-nc{n_conformers}"
     if not batch_minimize:
         cond = f"{cond}-serialmin"
+    if min_steps is not None:
+        cond = f"{cond}-ms{min_steps}"
+    if min_lr is not None:
+        cond = f"{cond}-mlr{min_lr:g}"
     cond_dir = ensure_dir(os.path.join(run_dir, code))
     out_pdbqt = os.path.join(cond_dir, f"{cond}.pdbqt")
     scores_csv = os.path.join(run_dir, "scores.csv")
@@ -240,6 +244,10 @@ def run_one_job(code, source, mode, cfg_name, cfg, prep_dir, run_dir,
                   box_size=[float(x) for x in half],
                   minimizer=minimizer)
     kwargs["batch_minimize"] = batch_minimize
+    if min_steps is not None:
+        kwargs["minimize_nsteps"] = int(min_steps)
+    if min_lr is not None:
+        kwargs["minimize_lr"] = float(min_lr)
     if cfg["sampler"] == "ga":
         kwargs["n_pop"] = int(cfg.get("n_pop", 100))
         if bound_value is not None:
@@ -356,6 +364,10 @@ def main():
     parser.add_argument("--n-conformers", type=int, default=None,
                         help="number of RDKit conformers to dock (ensemble); "
                              "default reads meta.n_rdkit_conformers")
+    parser.add_argument("--min-steps", type=int, default=None,
+                        help="minimizer steps per pose (default 5)")
+    parser.add_argument("--min-lr", type=float, default=None,
+                        help="minimizer learning rate (default 0.1)")
     parser.add_argument("--num-modes", type=int, default=None)
     parser.add_argument("--threads", type=int, default=1)
     parser.add_argument("--seed", type=int, default=2026)
@@ -385,6 +397,10 @@ def main():
                 cond = f"{cond}-bm{args.bound_min:g}"
         if args.n_conformers is not None:
             cond = f"{cond}-nc{args.n_conformers}"
+        if args.min_steps is not None:
+            cond = f"{cond}-ms{args.min_steps}"
+        if args.min_lr is not None:
+            cond = f"{cond}-mlr{args.min_lr:g}"
         try:
             return run_one_job(code, source, mode, cfg_name, cfg, prep_dir,
                                run_dir, conditions, num_modes, cluster_cutoff,
@@ -395,7 +411,8 @@ def main():
                                anneal=args.anneal, bound_min=args.bound_min,
                                compile=args.compile,
                                n_conformers=args.n_conformers,
-                               batch_minimize=args.batch_minimize)
+                               batch_minimize=args.batch_minimize,
+                               min_steps=args.min_steps, min_lr=args.min_lr)
         except Exception as exc:
             log(f"{code} {cond}: FAILED - {exc}")
             mark_failed(run_dir, code, cond, traceback.format_exc())
@@ -418,6 +435,10 @@ def main():
                 cond = f"{cond}-bm{args.bound_min:g}"
         if args.n_conformers is not None:
             cond = f"{cond}-nc{args.n_conformers}"
+        if args.min_steps is not None:
+            cond = f"{cond}-ms{args.min_steps}"
+        if args.min_lr is not None:
+            cond = f"{cond}-mlr{args.min_lr:g}"
         if args.resume and job_state(run_dir, args.code, cond) != "pending":
             log(f"{args.code} {cond}: already done/failed, skipping")
         else:

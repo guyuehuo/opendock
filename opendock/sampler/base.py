@@ -49,6 +49,8 @@ class BaseSampler(object):
         self.ligand_is_flexible_ = False
         self.receptor_is_flexible_ = False
         self.minimizer = kwargs.pop('minimizer', None)
+        self.minimize_nsteps = kwargs.pop('minimize_nsteps', 5)
+        self.minimize_lr = kwargs.pop('minimize_lr', 0.1)
         self.output_fpath = kwargs.pop('output_fpath', 'output.pdb')
         self.box_center = kwargs.pop('box_center', None)
         self.box_size = kwargs.pop('box_size', None)
@@ -176,7 +178,7 @@ class BaseSampler(object):
 
     def _minimize(self, x_ligand=None, x_receptor=None,
                   is_ligand=True, is_receptor=False,
-                  lr=0.1, nsteps=5):
+                  lr=None, nsteps=None):
         """
         Minimize the cnfrs if required.  The conformations stay on the CPU (the
         geometry rebuild is a small serial loop that is fastest on the CPU);
@@ -184,7 +186,8 @@ class BaseSampler(object):
         still accelerates the distance-matrix and energy kernels, and autograd
         flows back to the CPU leaf.
         """
-        lr = 0.1
+        lr = self.minimize_lr if lr is None else lr
+        nsteps = self.minimize_nsteps if nsteps is None else nsteps
 
         if is_ligand and not is_receptor:
             def _sf(x):
@@ -212,7 +215,7 @@ class BaseSampler(object):
                                        nsteps=nsteps)
             return [new_cnfrs[0]], new_cnfrs[1:]
 
-    def _minimize_batch(self, ligand_cnfrs, lr=0.1, nsteps=5):
+    def _minimize_batch(self, ligand_cnfrs, lr=None, nsteps=None):
         """Minimize a batch of poses together with Adam.
 
         This replaces ``N`` separate single-pose minimizer runs with one
@@ -222,6 +225,8 @@ class BaseSampler(object):
         than the per-pose LBFGS default, because Adam scales to the batched
         gradient while LBFGS must be run pose-by-pose.
         """
+        lr = self.minimize_lr if lr is None else lr
+        nsteps = self.minimize_nsteps if nsteps is None else nsteps
         x = ligand_cnfrs[0].detach().clone().requires_grad_(True)
         opt = torch.optim.Adam([x], lr=lr)
         for _ in range(nsteps):
