@@ -72,11 +72,15 @@ def argument():
     
 def worker(cpu_core_index,args,ligand, receptor, sf, init_lig_cnfrs, xyz_center, box_sizes, minimizer, sampler, num_samples, results_cnfrs, results_scores, process_id):
         os.sched_setaffinity(0, [cpu_core_index])  # Set CPU affinity for the current process,Suitable for Linux systems
+        # Each worker is pinned to one core, so force torch to use a single
+        # thread -- otherwise its OMP pool would oversubscribe that one core.
+        torch.set_num_threads(1)
         ligand.cnfrs_, receptor.cnfrs_ = sampler._random_move(init_lig_cnfrs, receptor.init_cnfrs)
         sampler = samplers[args.sampler][0](ligand, receptor, sf, 
                                          box_center=xyz_center, 
                                          box_size=box_sizes, 
                                          minimizer=minimizers[minimizer],
+                                         verbose=False,
                                          )
         print(f"[INFO] {args.sampler} Round #{process_id}")
         sampler.sampling(num_samples)
