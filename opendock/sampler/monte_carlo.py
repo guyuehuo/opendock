@@ -30,6 +30,7 @@ class MonteCarloSampler(BaseSampler):
         self.random_start = kwargs.pop('random_start', False)
         self.early_stop_tolerance = kwargs.pop("early_stop_tolerance", 300)
         self.ntasks=kwargs.pop("ntasks", 1)
+        self.batch_minimize = kwargs.pop("batch_minimize", False)
         self.index_ = 0
         self.best_cnfrs_ = [None, None]
         self.history_ = [[] for _ in range(self.ntasks)]
@@ -91,16 +92,19 @@ class MonteCarloSampler(BaseSampler):
             else:
                 _rec_cnfrs = None
             if minimize and self.minimizer is not None:
-                rows = []
-                for i in range(self.ntasks):
-                    r = _lig_cnfrs[0][i:i+1].detach().clone().requires_grad_(True)
-                    try:
-                        rmin, _ = self._minimize([r], None, is_ligand=True,
-                                                 is_receptor=False)
-                        rows.append(rmin[0].detach().reshape(1, -1))
-                    except Exception:
-                        rows.append(_lig_cnfrs[0][i:i+1].detach())
-                _lig_cnfrs = [torch.cat(rows, dim=0)]
+                if self.batch_minimize and self.receptor.cnfrs_ is None:
+                    _lig_cnfrs = self._minimize_batch(_lig_cnfrs)
+                else:
+                    rows = []
+                    for i in range(self.ntasks):
+                        r = _lig_cnfrs[0][i:i+1].detach().clone().requires_grad_(True)
+                        try:
+                            rmin, _ = self._minimize([r], None, is_ligand=True,
+                                                     is_receptor=False)
+                            rows.append(rmin[0].detach().reshape(1, -1))
+                        except Exception:
+                            rows.append(_lig_cnfrs[0][i:i+1].detach())
+                    _lig_cnfrs = [torch.cat(rows, dim=0)]
             score = self._batch_score(_lig_cnfrs, _rec_cnfrs).detach().cpu().numpy()
         else:
             _lig_cnfrs, _rec_cnfrs = self._mutate(self.ligand.cnfrs_,

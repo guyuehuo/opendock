@@ -111,6 +111,32 @@ class BaseCluster(object):
                               cutoff=2.0, reference=None,
                               receptor_cnfrs_list=None):
         _new_cnfr_list, _new_scores, _new_rec_cnfrs_list = [], [], []
+
+        # Ligand pose clustering: decode every candidate in one batched
+        # cnfr2xyz call instead of one decode per pose (the history can hold
+        # thousands of poses, so this is a large win).
+        if self.ligand.cnfrs_ is not None and len(cnfrs_list):
+            try:
+                batch = torch.cat([c.reshape(1, -1) for c in cnfrs_list], dim=0)
+                ref = reference.reshape(1, -1)
+                xyz = self.ligand.cnfr2xyz([batch])           # [N, M, 3]
+                xyz_ref = self.ligand.cnfr2xyz([ref])          # [1, M, 3]
+                N = xyz.shape[0]
+                M = xyz.shape[1]
+                # Replicate xyz_rmsd_to_reference exactly (which reshapes the
+                # coordinates [M,3] -> [3,M], i.e. a scrambled mean distance).
+                diff = (xyz.reshape(N, 3, M) - xyz_ref.reshape(1, 3, M)) ** 2
+                rmsd = torch.sqrt(diff.sum(dim=1)).mean(dim=1)  # [N]
+                keep = rmsd > cutoff
+                idx = keep.nonzero(as_tuple=True)[0].tolist()
+                _new_cnfr_list = [cnfrs_list[i] for i in idx]
+                _new_scores = [scores[i] for i in idx]
+                if receptor_cnfrs_list is not None and len(receptor_cnfrs_list):
+                    _new_rec_cnfrs_list = [receptor_cnfrs_list[i] for i in idx]
+                return _new_cnfr_list, _new_scores, _new_rec_cnfrs_list
+            except Exception:
+                pass  # fall back to the per-pose loop below
+
         for i, (cnfr, score) in enumerate(zip(cnfrs_list, scores)):
             if self.ligand.cnfrs_ is not None:
               _rmsd = cnfr_rmsd_to_reference([cnfr, ], [reference, ], self.ligand)
