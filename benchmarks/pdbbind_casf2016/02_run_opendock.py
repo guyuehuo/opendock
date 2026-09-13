@@ -113,7 +113,7 @@ def build_objects(code, source, mode, cfg, prep_dir, conditions, clip_default,
 
 def run_one_job(code, source, mode, cfg_name, cfg, prep_dir, run_dir,
                 conditions, num_modes, cluster_cutoff, steps_scale=1.0,
-                bound_value=None, n_bit=None, device="cpu"):
+                bound_value=None, n_bit=None, device="cpu", mc_tasks=None):
     cond = condition_id(source, mode, cfg_name)
     if bound_value is not None:
         cond = f"{cond}-bv{bound_value:g}"
@@ -138,6 +138,11 @@ def run_one_job(code, source, mode, cfg_name, cfg, prep_dir, run_dir,
             kwargs["bound_value"] = bound_value
         if n_bit is not None:
             kwargs["n_bit"] = n_bit
+    if cfg["sampler"] == "mc":
+        if mc_tasks is not None:
+            kwargs["ntasks"] = int(mc_tasks)
+        elif device.startswith("cuda"):
+            kwargs["ntasks"] = 32
 
     n_steps = int(float(cfg["steps_per_ha"]) * ligand.number_of_heavy_atoms
                   * steps_scale)
@@ -235,6 +240,8 @@ def main():
                              "higher = finer torsion resolution at full range")
     parser.add_argument("--device", default="cpu",
                         help="scoring device for VinaSF (cpu, cuda, cuda:0..N)")
+    parser.add_argument("--mc-tasks", type=int, default=None,
+                        help="MC batch size (ntasks); default auto = 32 on cuda")
     parser.add_argument("--num-modes", type=int, default=None)
     parser.add_argument("--threads", type=int, default=1)
     parser.add_argument("--seed", type=int, default=2026)
@@ -263,7 +270,8 @@ def main():
                                run_dir, conditions, num_modes, cluster_cutoff,
                                steps_scale=args.steps_scale,
                                bound_value=args.bound_value,
-                               n_bit=args.n_bit, device=args.device)
+                               n_bit=args.n_bit, device=args.device,
+                               mc_tasks=args.mc_tasks)
         except Exception as exc:
             log(f"{code} {cond}: FAILED - {exc}")
             mark_failed(run_dir, code, cond, traceback.format_exc())
