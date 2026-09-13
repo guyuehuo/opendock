@@ -42,6 +42,10 @@ class LigandConformation(Ligand):
         self._detach_torsion_axis = False
         self._static_geometry_ready = False
 
+        # Precompute the pose-independent geometry once (bond/relative vectors),
+        # so the decoder is a pure tensor function (safe for torch.compile).
+        self._prepare_static_geometry()
+
     def _update_root_coords(self):
 
         """
@@ -206,8 +210,6 @@ class LigandConformation(Ligand):
         cnfr = cnfr_tensor[0]
         n = cnfr.shape[0]
         dev = cnfr.device
-
-        self._prepare_static_geometry()
 
         init = self.init_lig_heavy_atoms_xyz[0].to(dev)
         center = self.ligand_center.to(dev).reshape(-1, 3)

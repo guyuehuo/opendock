@@ -27,6 +27,7 @@ class VinaSF(BaseScoringFunction):
                  receptor=None,
                  ligand=None,
                  device=None,
+                 compile=False,
                  ):
         # inheritant from base class
         super(VinaSF, self).__init__(receptor=receptor, ligand=ligand,
@@ -56,6 +57,47 @@ class VinaSF(BaseScoringFunction):
         #self.prepare_intra_information()
         # self.flag=0
         #
+        self._compiled = False
+        if compile:
+            self._enable_compile()
+
+    def _enable_compile(self):
+        """Fuse the scoring + geometry kernels with torch.compile.
+
+        This removes the per-op autograd dispatch overhead (the dominant cost
+        for small ligands), at the price of a one-time tracing cost on the
+        first call.  Best for long-running docks; off by default.
+        """
+        if self._compiled:
+            return
+        try:
+            import torch
+        except ImportError:
+            return
+
+        # torch.compile's donated-buffer optimization is incompatible with
+        # LBFGS's retain_graph=True backward; disable it so the minimizer works.
+        try:
+            from torch._functorch import config as _fc_config
+            _fc_config.donated_buffer = False
+        except Exception:
+            pass
+
+        self.generate_pldist_mtrx = torch.compile(
+            self.generate_pldist_mtrx, dynamic=True, fullgraph=False)
+        self._inter_dense = torch.compile(self._inter_dense, dynamic=True,
+                                          fullgraph=False)
+        self._intra_dense = torch.compile(self._intra_dense, dynamic=True,
+                                          fullgraph=False)
+
+        if (self.ligand is not None
+                and not getattr(self.ligand, "_cnfr2xyz_compiled", False)):
+            self.ligand.cnfr2xyz = torch.compile(
+                self.ligand.cnfr2xyz, dynamic=True, fullgraph=False)
+            self.ligand._cnfr2xyz_compiled = True
+
+        self._compiled = True
+
 
     def cal_inter_repulsion(self, dist, vdw_sum):
         """

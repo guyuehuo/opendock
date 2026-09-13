@@ -82,7 +82,7 @@ def set_seed(seed):
 
 
 def build_objects(code, source, mode, cfg, prep_dir, conditions, clip_default,
-                  device="cpu"):
+                  device="cpu", compile=False):
     meta = load_meta(os.path.join(prep_dir, code, "meta.json"))
     center, half = docking_center_and_half(meta, mode, conditions)
 
@@ -107,14 +107,15 @@ def build_objects(code, source, mode, cfg, prep_dir, conditions, clip_default,
     ligand.ligand_center[0][1] = center[1]
     ligand.ligand_center[0][2] = center[2]
 
-    sf = VinaSF(receptor=receptor, ligand=ligand, device=device)
+    sf = VinaSF(receptor=receptor, ligand=ligand, device=device,
+                compile=compile)
     return ligand, receptor, sf, center, half
 
 
 def run_one_job(code, source, mode, cfg_name, cfg, prep_dir, run_dir,
                 conditions, num_modes, cluster_cutoff, steps_scale=1.0,
                 bound_value=None, n_bit=None, device="cpu", mc_tasks=None,
-                anneal=False, bound_min=None):
+                anneal=False, bound_min=None, compile=False):
     cond = condition_id(source, mode, cfg_name)
     if bound_value is not None:
         cond = f"{cond}-bv{bound_value:g}"
@@ -130,7 +131,8 @@ def run_one_job(code, source, mode, cfg_name, cfg, prep_dir, run_dir,
 
     ligand, receptor, sf, center, half = \
         build_objects(code, source, mode, cfg_name, prep_dir, conditions,
-                      float(conditions["box"]["clip_default"]), device=device)
+                      float(conditions["box"]["clip_default"]), device=device,
+                      compile=compile)
 
     sampler_cls = SAMPLERS[cfg["sampler"]]
     minimizer = resolve_minimizer(cfg.get("minimizer", "none"))
@@ -255,6 +257,9 @@ def main():
                         help="scoring device for VinaSF (cpu, cuda, cuda:0..N)")
     parser.add_argument("--mc-tasks", type=int, default=None,
                         help="MC batch size (ntasks); default auto = 32 on cuda")
+    parser.add_argument("--compile", action="store_true",
+                        help="torch.compile the scoring/geometry kernels "
+                             "(one-time tracing cost, big speedup on long runs)")
     parser.add_argument("--num-modes", type=int, default=None)
     parser.add_argument("--threads", type=int, default=1)
     parser.add_argument("--seed", type=int, default=2026)
@@ -289,7 +294,8 @@ def main():
                                bound_value=args.bound_value,
                                n_bit=args.n_bit, device=args.device,
                                mc_tasks=args.mc_tasks,
-                               anneal=args.anneal, bound_min=args.bound_min)
+                               anneal=args.anneal, bound_min=args.bound_min,
+                               compile=args.compile)
         except Exception as exc:
             log(f"{code} {cond}: FAILED - {exc}")
             mark_failed(run_dir, code, cond, traceback.format_exc())
