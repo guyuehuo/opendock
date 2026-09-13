@@ -219,6 +219,9 @@ def run_one_job(code, source, mode, cfg_name, cfg, prep_dir, run_dir,
         lig_pdbqts = [os.path.join(prep_dir, code, "lig_rdkit.pdbqt")] + \
                      [os.path.join(prep_dir, code, f"lig_rdkit_{i}.pdbqt")
                       for i in range(1, n_conf)]
+        # keep only conformer files that actually exist (small rigid ligands
+        # may have collapsed to a single conformer after RMSD pruning)
+        lig_pdbqts = [p for p in lig_pdbqts if os.path.exists(p)]
     else:
         lig_pdbqts = [os.path.join(prep_dir, code, f"lig_{source}.pdbqt")]
 
