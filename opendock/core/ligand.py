@@ -4,6 +4,7 @@ import pandas as pd
 import torch
 import itertools
 import sys
+import os
 from opendock.core.utils import ATOMTYPE_MAPPING, \
     COVALENT_RADII_DICT, VDW_RADII_DICT
 
@@ -63,6 +64,7 @@ class Ligand(object):
         self.all_root_frame_heavy_atoms_index_list = []
         self.number_of_all_frames = 0
         self.atom_bonds=[]
+        self.ring_pucker = None
         self.intra_interacting_pairs=[]
         self.intra_interacting_matrix=[]
        
@@ -91,13 +93,14 @@ class Ligand(object):
         self.generate_frame_heavy_atoms_matrix()
         self.cal_active_torsion()
 
+        self.get_intra_atom_bonds()
+        self.get_intra_interacting_pairs()
+        self.detect_ring_pucker()
+
         self.init_conformation_tentor()
         self.ligand_parsed_ = True
         #print("self.torsion_bond_index",self.torsion_bond_index)
         #print("self.torsion_bond_index_matrix",self.torsion_bond_index_matrix[1,9])
-        self.get_intra_atom_bonds()
-        #exit()
-        self.get_intra_interacting_pairs()
         #self.prepare_intra_information()
 
         return self
@@ -212,6 +215,58 @@ class Ligand(object):
         #print("self.intra_interacting_matrix",self.intra_interacting_matrix)
         #print("self.intra_interacting_matrix", self.intra_interacting_matrix.shape)
 
+
+    def detect_ring_pucker(self):
+        """Detect the largest ring and set up a diameter-rotation DOF.
+
+        Finds a cycle in the covalent bond graph, picks two "opposite" atoms
+        (a, b) as the rotation axis, and the fragment atoms between them (along
+        the shorter path) as the atoms rotated around that axis. A single extra
+        torsion can then flip the ring pucker (e.g. chair <-> boat) while
+        preserving every bond length and the ring closure.
+        """
+        self.ring_pucker = None
+        if os.environ.get("OPENDOCK_RING_PUCKER", "1") == "0":
+            return None
+        n = self.number_of_heavy_atoms
+        adj = {i: set(self.atom_bonds.get(i, [])) for i in range(n)}
+
+        def find_cycle():
+            for start in range(n):
+                parent = {start: None}
+                visited = {start}
+                stack = [(start, iter(sorted(adj[start])))]
+                while stack:
+                    node, it = stack[-1]
+                    advanced = False
+                    for nb in it:
+                        if nb not in visited:
+                            visited.add(nb)
+                            parent[nb] = node
+                            stack.append((nb, iter(sorted(adj[nb]))))
+                            advanced = True
+                            break
+                        elif nb != parent.get(node):
+                            cycle = [nb]
+                            cur = node
+                            while cur is not None and cur != nb:
+                                cycle.append(cur)
+                                cur = parent.get(cur)
+                            if cur == nb:
+                                return cycle
+                    if not advanced:
+                        stack.pop()
+            return None
+
+        cycle = find_cycle()
+        if cycle is None or len(cycle) < 5:
+            return None
+        m = len(cycle)
+        a = cycle[0]
+        b = cycle[m // 2]
+        fragment = cycle[1:m // 2]
+        self.ring_pucker = (int(a), int(b), [int(x) for x in fragment])
+        return self.ring_pucker
 
     def _get_poses_fpath(self):
 
@@ -582,8 +637,12 @@ class Ligand(object):
         xyz = self.init_lig_heavy_atoms_xyz[:, 0]
         number_of_frames = self.number_of_frames
 
-        _other_vector = torch.zeros(self.number_of_poses, number_of_frames + 3)
-        # shape (1, 3 + 3 + k)
+        # one extra DOF for the ring pucker (diameter rotation), if any
+        n_extra = 1 if self.ring_pucker is not None else 0
+
+        _other_vector = torch.zeros(self.number_of_poses,
+                                    number_of_frames + 3 + n_extra)
+        # shape (1, 3 + 3 + k [+ 1])
         self.init_cnfrs = torch.cat((xyz, _other_vector), axis=1)
 
         self.cnfrs_ = [torch.cat((xyz, _other_vector), axis=1).clone().requires_grad_(), ]
