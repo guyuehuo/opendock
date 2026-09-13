@@ -36,6 +36,12 @@ class LigandConformation(Ligand):
 
         self.number_of_cnfr_tensor = 0
 
+        # Optional autograd shortcut: detach the torsion rotation axis so the
+        # gradient only flows through the torsion angle (not the axis direction).
+        # Default False (exact gradient); set True to shrink the backward graph.
+        self._detach_torsion_axis = False
+        self._static_geometry_ready = False
+
     def _update_root_coords(self):
 
         """
@@ -135,42 +141,127 @@ class LigandConformation(Ligand):
     
         return self
 
+    def _prepare_static_geometry(self):
+        """Precompute pose-independent geometry for the vectorized decoder.
+
+        The ligand is a kinematic tree (root frame + ``number_of_frames``
+        branches).  The bond vectors and atom-to-rotor relative vectors only
+        depend on the initial coordinates, so they are computed once here and
+        reused by :meth:`cnfr2xyz` (which only recomputes the rotations).
+        """
+        if getattr(self, "_static_geometry_ready", False):
+            return
+
+        init = self.init_lig_heavy_atoms_xyz[0].detach()
+        M = self.number_of_heavy_atoms
+        k = self.number_of_frames
+
+        atom_frame = torch.zeros(M, dtype=torch.long)
+        for fi, atoms in enumerate(self.frame_heavy_atoms_index_list):
+            for a in atoms:
+                atom_frame[a] = fi + 1
+
+        root = self.root_heavy_atom_index
+        self._root_first = int(root[0])
+        others = root[1:]
+        self._root_others = (torch.tensor(others, dtype=torch.long)
+                             if others else torch.zeros(0, dtype=torch.long))
+        self._root_rel = (init[self._root_others] - init[root[0]]
+                          if len(self._root_others) else torch.zeros(0, 3))
+
+        bond_vecs = []
+        parent_frame = []
+        frame_other_atoms = []
+        frame_rel = []
+        for i in range(k):
+            rotorX, rotorY = self.torsion_bond_index[i]
+            bond_vecs.append(init[rotorY] - init[rotorX])
+            parent_frame.append(int(atom_frame[rotorX]))
+            atoms = self.frame_heavy_atoms_index_list[i]
+            oth = [a for a in atoms if a != rotorY]
+            oth_t = (torch.tensor(oth, dtype=torch.long)
+                     if oth else torch.zeros(0, dtype=torch.long))
+            frame_other_atoms.append(oth_t)
+            frame_rel.append(init[oth_t] - init[rotorY]
+                             if len(oth_t) else torch.zeros(0, 3))
+
+        self._bond_vecs = (torch.stack(bond_vecs, dim=0)
+                           if k else torch.zeros(0, 3))
+        self._parent_frame = parent_frame
+        self._frame_other_atoms = frame_other_atoms
+        self._frame_rel = frame_rel
+        self._static_geometry_ready = True
+
     def cnfr2xyz(self, cnfr_tensor: torch.Tensor = None) -> torch.Tensor:
         """
-        Convert Conformation Vector (6+k) into XYZ.
+        Convert Conformation Vector (6+k) into XYZ (vectorized over poses).
+
         Args:
-            cnfr: The 6+ K vector to be decoded. list of torch.Tensor
+            cnfr: The 6+K vector to be decoded. list of torch.Tensor
 
         Returns:
-            pose_heavy_atoms_coords: The coordinates of heavy atoms for the ligand decoded from this vector.
-            shape [N, M, 3], where N is the number of cnfr, and M is the number of atoms in this ligand.
+            pose_heavy_atoms_coords: shape [N, M, 3], where N is the number of
+            cnfr and M is the number of heavy atoms in this ligand.
         """
-        # input cnfr_tensor: list of torch.Tensor
-        self.number_of_cnfr_tensor = len(cnfr_tensor[0])
-        self.pose_heavy_atoms_coords = [0] * self.number_of_heavy_atoms
+        cnfr = cnfr_tensor[0]
+        n = cnfr.shape[0]
+        dev = cnfr.device
 
-        # Keep the reference geometry on the same device as the input cnfr so
-        # the decoded coordinates can be built on CPU or GPU transparently.
-        _dev = cnfr_tensor[0].device
-        _orig_center = self.ligand_center
-        _orig_init_ha = self.init_heavy_atoms_coords
-        self.ligand_center = self.ligand_center.to(_dev)
-        self.init_heavy_atoms_coords = self.init_heavy_atoms_coords.to(_dev)
+        self._prepare_static_geometry()
 
-        self.cnfr_tensor = cnfr_tensor[0]
-        # self.cnfr_tensor = cnfr_tensor
-        #print('cnfrs:',self.cnfr_tensor)
-        
-        self._update_root_coords()
+        init = self.init_lig_heavy_atoms_xyz[0].to(dev)
+        center = self.ligand_center.to(dev).reshape(-1, 3)
 
-        for i in range(1, 1 + self.number_of_frames):
-            self._update_frame_coords(i)
+        R_root = rotation_matrix(cnfr[:, 3], cnfr[:, 4], cnfr[:, 5])
+        self.root_rotation_matrix = R_root
 
-        self.pose_heavy_atoms_coords = torch.cat(self.pose_heavy_atoms_coords, axis=1)\
-            .reshape(len(self.cnfr_tensor), -1, 3)
+        pos = torch.empty(n, self.number_of_heavy_atoms, 3, device=dev,
+                          dtype=cnfr.dtype)
 
-        self.ligand_center = _orig_center
-        self.init_heavy_atoms_coords = _orig_init_ha
+        # F[frame] = accumulated (torsion @ root) rotation for that frame;
+        # F[0] is the root rotation.  Atom/bond vectors are static, so a single
+        # batched matmul per frame is enough (instead of root + torsion each).
+        frame_rot = [None] * (self.number_of_frames + 1)
+        frame_rot[0] = R_root
+
+        # root first atom
+        first = cnfr[:, :3]
+        pos[:, self._root_first] = center + torch.bmm(
+            R_root, (first - center).unsqueeze(-1)).squeeze(-1)
+
+        # other root atoms
+        if len(self._root_others):
+            idx = self._root_others.to(dev)
+            rel = torch.bmm(R_root,
+                            self._root_rel.to(dev).t().unsqueeze(0).expand(n, 3, -1)).permute(0, 2, 1)
+            pos[:, idx] = pos[:, self._root_first].unsqueeze(1) + rel
+
+        # torsion frames (sequential along the tree, batched over poses/atoms)
+        for i in range(self.number_of_frames):
+            rotorX, rotorY = self.torsion_bond_index[i]
+            p = self._parent_frame[i]
+
+            bond = self._bond_vecs[i].to(dev)
+            bond = torch.bmm(frame_rot[p], bond.reshape(1, 3, 1).expand(n, 3, 1)).squeeze(-1)
+            pos_rotorY = pos[:, rotorX] + bond
+            pos[:, rotorY] = pos_rotorY
+
+            axis = F.normalize(pos_rotorY - pos[:, rotorX], p=2, dim=1)
+            if self._detach_torsion_axis:
+                axis = axis.detach()
+            torsion_R = rodrigues(axis, cnfr[:, 6 + i])
+            frame_rot[i + 1] = torch.bmm(torsion_R, frame_rot[p])
+
+            others = self._frame_other_atoms[i]
+            if len(others):
+                idx = others.to(dev)
+                rel = self._frame_rel[i].to(dev)
+                rel = torch.bmm(frame_rot[i + 1], rel.t().unsqueeze(0).expand(n, 3, -1)).permute(0, 2, 1)
+                pos[:, idx] = pos_rotorY.unsqueeze(1) + rel
+
+        self.pose_heavy_atoms_coords = pos
+        self.cnfr_tensor = cnfr
+        self.number_of_cnfr_tensor = len(cnfr_tensor)
 
         return self.pose_heavy_atoms_coords
 
