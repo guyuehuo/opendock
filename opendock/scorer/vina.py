@@ -85,6 +85,8 @@ class VinaSF(BaseScoringFunction):
 
         self.generate_pldist_mtrx = torch.compile(
             self.generate_pldist_mtrx, dynamic=True, fullgraph=False)
+        self.generate_intra_mtrx = torch.compile(
+            self.generate_intra_mtrx, dynamic=True, fullgraph=False)
         self._inter_dense = torch.compile(self._inter_dense, dynamic=True,
                                           fullgraph=False)
         self._intra_dense = torch.compile(self._intra_dense, dynamic=True,

@@ -54,6 +54,14 @@ class BaseScoringFunction(object):
         self.dist = None
         self.intra_dist=None
 
+        # Static intra-interacting pair indices (built once; rebuild in
+        # generate_intra_mtrx only if the ligand is bound lazily).
+        self._intra_pairs = (torch.tensor(ligand.intra_interacting_pairs,
+                                          dtype=torch.long, device=self.device)
+                             if ligand is not None
+                             else torch.zeros(0, 2, dtype=torch.long,
+                                              device=self.device))
+
         # Cached receptor coordinates on the scoring device (refreshed only when
         # the receptor geometry changes; rigid receptors never change).
         self._rec_xyz_dev = None
@@ -112,8 +120,7 @@ class BaseScoringFunction(object):
         return self.dist
     def generate_intra_mtrx(self):
         ligand_coords = self.ligand.pose_heavy_atoms_coords.to(self.device)
-        pairs = torch.tensor(self.ligand.intra_interacting_pairs,
-                             dtype=torch.long, device=self.device)
+        pairs = self._intra_pairs
         if pairs.numel() == 0:
             self.intra_dist = torch.zeros(ligand_coords.size(0), 0,
                                           device=self.device)
