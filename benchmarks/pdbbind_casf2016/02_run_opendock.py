@@ -233,8 +233,8 @@ def main():
     parser.add_argument("--n-bit", type=int, default=None,
                         help="GA binary resolution (bits per variable); "
                              "higher = finer torsion resolution at full range")
-    parser.add_argument("--device", default="cpu", choices=["cpu", "cuda"],
-                        help="scoring device for the VinaSF")
+    parser.add_argument("--device", default="cpu",
+                        help="scoring device for VinaSF (cpu, cuda, cuda:0..N)")
     parser.add_argument("--num-modes", type=int, default=None)
     parser.add_argument("--threads", type=int, default=1)
     parser.add_argument("--seed", type=int, default=2026)
