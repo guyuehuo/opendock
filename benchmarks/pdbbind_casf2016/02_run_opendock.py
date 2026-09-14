@@ -198,7 +198,7 @@ def run_one_job(code, source, mode, cfg_name, cfg, prep_dir, run_dir,
                 batch_minimize=True, min_steps=None, min_lr=None, n_pop=None,
                 torsion_max=None, ring_pucker=True,
                 p_c=None, p_m=None, tournament_k=None, minimization_ratio=None,
-                elite_ratio=None):
+                elite_ratio=None, n_islands=None, migration_interval=5):
     os.environ["OPENDOCK_RING_PUCKER"] = "1" if ring_pucker else "0"
     cond = condition_id(source, mode, cfg_name)
     if bound_value is not None:
@@ -235,6 +235,10 @@ def run_one_job(code, source, mode, cfg_name, cfg, prep_dir, run_dir,
         cond = f"{cond}-mr{minimization_ratio:g}"
     if elite_ratio is not None:
         cond = f"{cond}-er{elite_ratio:g}"
+    if n_islands is not None and n_islands > 1:
+        cond = f"{cond}-is{n_islands}"
+        if migration_interval != 5:
+            cond = f"{cond}-mi{migration_interval}"
     if steps_scale != 1.0:
         cond = f"{cond}-ss{steps_scale:g}"
     cond_dir = ensure_dir(os.path.join(run_dir, code))
@@ -306,17 +310,45 @@ def run_one_job(code, source, mode, cfg_name, cfg, prep_dir, run_dir,
 
     # dock every conformer (each run starts from a different frozen geometry)
     all_triples = []
-    for i, lig_pdbqt in enumerate(lig_pdbqts):
-        if i == 0:
-            lig, sff = ligand, sf
-        else:
-            lig, sff = build_ligand_sf(lig_pdbqt, receptor, center,
-                                       device=device, compile=compile)
-        log(f"{code} {cond}: docking conformer {i}/{len(lig_pdbqts)}")
-        cs, cc = _dock_one(lig, receptor, sff, center, half, cfg, sampler_cls,
-                           minimizer, kwargs, n_steps, num_modes, cluster_cutoff)
-        for s, c in zip(cs, cc):
-            all_triples.append((s, c, lig))
+    if n_islands is not None and n_islands > 1:
+        # island-model GA: one population spanning all conformers, partitioned
+        # into islands with periodic migration
+        from opendock.sampler.island_ga import IslandGA
+        ligands, sfs_list = [], []
+        for i, lig_pdbqt in enumerate(lig_pdbqts):
+            if i == 0:
+                lig, sff = ligand, sf
+            else:
+                lig, sff = build_ligand_sf(lig_pdbqt, receptor, center,
+                                           device=device, compile=compile)
+            ligands.append(lig)
+            sfs_list.append(sff)
+        total_pop = int(kwargs.get("n_pop", 200)) * len(ligands)
+        log(f"{code} {cond}: island-model GA ({n_islands} islands, "
+            f"pop={total_pop}) over {len(ligands)} conformers")
+        iga = IslandGA(ligands, receptor, sfs_list, box_center=list(center),
+                       box_size=[float(x) for x in half],
+                       n_pop=total_pop, n_gen=40, n_islands=n_islands,
+                       migration_interval=migration_interval, seed=2026)
+        iga.sampling()
+        for v in iga.pop:
+            ci = min(max(int(round(v[-1])), 0), len(ligands) - 1)
+            s = iga._decode_score(v)[0]
+            cnfr = torch.tensor(v[:-1].reshape(1, -1), dtype=torch.float32)
+            all_triples.append((s, cnfr, ligands[ci]))
+    else:
+        for i, lig_pdbqt in enumerate(lig_pdbqts):
+            if i == 0:
+                lig, sff = ligand, sf
+            else:
+                lig, sff = build_ligand_sf(lig_pdbqt, receptor, center,
+                                           device=device, compile=compile)
+            log(f"{code} {cond}: docking conformer {i}/{len(lig_pdbqts)}")
+            cs, cc = _dock_one(lig, receptor, sff, center, half, cfg,
+                               sampler_cls, minimizer, kwargs, n_steps,
+                               num_modes, cluster_cutoff)
+            for s, c in zip(cs, cc):
+                all_triples.append((s, c, lig))
 
     if not all_triples:
         log(f"{code} {cond}: WARNING no poses sampled, writing empty output")
@@ -424,6 +456,11 @@ def main():
                         help="GA fraction of chromosomes minimized (default 0.2)")
     parser.add_argument("--elite-ratio", type=float, default=None,
                         help="GA elitism fraction carried over (default 0.0)")
+    parser.add_argument("--n-islands", type=int, default=None,
+                        help="island-model GA: number of sub-populations "
+                             "(default off = separate per-conformer docking)")
+    parser.add_argument("--migration-interval", type=int, default=5,
+                        help="island-model GA: migration every N generations")
     parser.add_argument("--num-modes", type=int, default=None)
     parser.add_argument("--threads", type=int, default=1)
     parser.add_argument("--seed", type=int, default=2026)
@@ -475,6 +512,10 @@ def main():
             cond = f"{cond}-mr{args.minimization_ratio:g}"
         if args.elite_ratio is not None:
             cond = f"{cond}-er{args.elite_ratio:g}"
+        if args.n_islands is not None and args.n_islands > 1:
+            cond = f"{cond}-is{args.n_islands}"
+            if args.migration_interval != 5:
+                cond = f"{cond}-mi{args.migration_interval}"
         if args.steps_scale != 1.0:
             cond = f"{cond}-ss{args.steps_scale:g}"
         try:
@@ -495,7 +536,9 @@ def main():
                                p_c=args.p_c, p_m=args.p_m,
                                tournament_k=args.tournament_k,
                                minimization_ratio=args.minimization_ratio,
-                               elite_ratio=args.elite_ratio)
+                               elite_ratio=args.elite_ratio,
+                               n_islands=args.n_islands,
+                               migration_interval=args.migration_interval)
         except Exception as exc:
             log(f"{code} {cond}: FAILED - {exc}")
             mark_failed(run_dir, code, cond, traceback.format_exc())
@@ -540,6 +583,10 @@ def main():
             cond = f"{cond}-mr{args.minimization_ratio:g}"
         if args.elite_ratio is not None:
             cond = f"{cond}-er{args.elite_ratio:g}"
+        if args.n_islands is not None and args.n_islands > 1:
+            cond = f"{cond}-is{args.n_islands}"
+            if args.migration_interval != 5:
+                cond = f"{cond}-mi{args.migration_interval}"
         if args.steps_scale != 1.0:
             cond = f"{cond}-ss{args.steps_scale:g}"
         if args.resume and job_state(run_dir, args.code, cond) != "pending":
