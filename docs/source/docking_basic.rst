@@ -54,7 +54,7 @@ you can generate a configuration file by running the prepare_configs.py file,whi
     ``refer`` usually indicates a reference ligand which is used to define the docking box center.
 
 4. A simple example of running opendock
---------------------
+---------------------------------------
 
 Create a simple Monte Carlo based sampling strategy with Vinascore for scoring. 
 In this example, the ligand is parsed by the ``LigandConformation`` class, and the receptor 
@@ -159,7 +159,7 @@ If only the representative docking poses are required for output, a clustering i
                          )
 
 5. Rescore the docking poses
---------------------
+----------------------------
 If you need to rescore the docking poses, a scorer should be defined, and the docking poses (encoded by ``LigandConformation`` object) shoud be provided. 
 
 .. note::

@@ -87,6 +87,7 @@ The modeling code is as follows:
                                             )
     #sampling
     ……
+
 The modeling results with and without constraints are as follows,where gray represents the native conformation, and yellow and pink represent the
 conformations after docking with OpenDock.:
 

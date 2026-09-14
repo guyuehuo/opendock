@@ -2,12 +2,12 @@
 
 # -- Project information
 
-project = 'opendock-readthedocs'
-copyright = '2021, Graziella'
-author = 'Huqiuyue'
+project = 'OpenDock'
+copyright = '2021-2026, OpenDock contributors'
+author = 'Zechen Wang, Liangzhen Zheng, Qiuyue Hu'
 
-release = '0.1'
-version = '0.1.0'
+release = '1.1.2'
+version = '1.1.2'
 
 # -- General configuration
 
@@ -25,7 +25,7 @@ intersphinx_mapping = {
 }
 intersphinx_disabled_domains = ['std']
 
-templates_path = ['_templates']
+templates_path = []
 html_static_path = ['_static']
 html_logo = '_static/logo.png'
 

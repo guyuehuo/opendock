@@ -1,7 +1,7 @@
 .. _performance_optimization:
 
 Performance optimization notes
-=============================
+==============================
 
 This page records the efforts made to speed up the docking pipeline on CPU,
 CUDA, and a CPU/GPU hybrid.  All optimizations are CPU-compatible (the default
@@ -54,18 +54,18 @@ Optimizations
 Summary of measured results
 ---------------------------
 
-======================  ============
-optimization            speedup
-======================  ============
-batched scoring         26–108×
-``torch.compile``       6.3× GPU / 3.5× CPU
-batched-Adam minimize   MC 30× / GA 12.8× / PSO 6.7×
-vectorized ``cnfr2xyz`` 2.3–4.4×
-vectorized clustering   200×
-pocket-local minimize   2.2× CPU
-static intra pairs      ~30% of minimize
-warm-start              ~40% (3 steps ≈ cold 5 steps)
-======================  ============
+=======================  =============================
+optimization             speedup
+=======================  =============================
+batched scoring          26–108×
+``torch.compile``        6.3× GPU / 3.5× CPU
+batched-Adam minimize    MC 30× / GA 12.8× / PSO 6.7×
+vectorized ``cnfr2xyz``  2.3–4.4×
+vectorized clustering    200×
+pocket-local minimize    2.2× CPU
+static intra pairs       ~30% of minimize
+warm-start               ~40% (3 steps ≈ cold 5 steps)
+=======================  =============================
 
 See the repository file ``docs/performance_optimization.md`` for the full
 write-up with per-complex numbers, default parameters, and remaining

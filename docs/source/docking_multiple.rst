@@ -9,7 +9,7 @@ and can also support methods such as genetic algorithms and particle swarm optim
 of small molecules.
 
 1. Using multiple sampling strategies
-------------------------------------
+-------------------------------------
 In the following example, a ``GeneticAlgorithmSampler`` is used for sampling. Similarly, 
 the ligand and receptor objects are required. Here, 100 chromosomes are created and the 
 scoring function is ``VinaSF`` class. 

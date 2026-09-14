@@ -1,13 +1,5 @@
-.. .. image:: ../picture/logo.png
-..    :alt: opendock logo
-..    :scale: 50%
-..    :align: middle
-
-.. .. raw:: html
-
-..    <span style="vertical-align:middle;">Welcome to OpenDock's documentation!</span>
 Welcome to OpenDock's documentation!
-===================================
+====================================
 OpenDock is a versitile protein-ligand docking framework with diverse scoring functions and sampling strategies. 
 
 Aim 
@@ -39,6 +31,7 @@ from `github.com/guyuehuo/opendock <https://github.com/guyuehuo/opendock-open>`_
    :caption: Tutorials
 
    framework
+   usage
    docking_requirements
    docking_basic
    docking_multiple
