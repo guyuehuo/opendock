@@ -216,6 +216,35 @@ class Ligand(object):
         #print("self.intra_interacting_matrix", self.intra_interacting_matrix.shape)
 
 
+    def _ring_is_planar(self, cycle):
+        """Heuristic: is a ring aromatic/conjugated and therefore planar?
+
+        Aromatic rings (e.g. benzene) must stay planar, so they should not get
+        a pucker degree of freedom.  Uses the AutoDock4 atom types (aromatic
+        carbons are typed "A", aliphatic carbons "C") and falls back to a
+        geometric coplanarity check on the input coordinates.
+        """
+        n = self.number_of_heavy_atoms
+        ad4 = getattr(self, "lig_heavy_atoms_ad4_types", None) or []
+        if len(ad4) == n:
+            types = [ad4[i] for i in cycle]
+            # aromatic: at least one aromatic carbon and no aliphatic carbon
+            if "A" in types and "C" not in types:
+                return True
+
+        # geometric fallback: all ring atoms lie in a common plane
+        try:
+            pts = self.init_lig_heavy_atoms_xyz[0].detach().numpy()[list(cycle)]
+        except Exception:
+            return False
+        if pts.shape[0] < 3:
+            return False
+        center = pts.mean(axis=0)
+        _, _, vt = np.linalg.svd(pts - center, full_matrices=False)
+        normal = vt[-1]
+        dev = np.abs((pts - center) @ normal).max()
+        return bool(dev < 0.10)
+
     def detect_ring_pucker(self):
         """Detect rings and set up a diameter-rotation DOF per ring.
 
@@ -224,6 +253,9 @@ class Ligand(object):
         the shorter path) as the atoms rotated around that axis. One extra
         torsion per ring can then flip its pucker (e.g. chair <-> boat) while
         preserving every bond length and the ring closure.
+
+        Aromatic/planar rings (see :meth:`_ring_is_planar`) are skipped so their
+        planarity is preserved.
         """
         self.ring_puckers = []
         self.ring_pucker = None
@@ -265,12 +297,19 @@ class Ligand(object):
             if cycle is None:
                 break
             m = len(cycle)
-            if m >= 5:
-                a = cycle[0]
-                b = cycle[m // 2]
-                fragment = cycle[1:m // 2]
-                self.ring_puckers.append((int(a), int(b),
-                                          [int(x) for x in fragment]))
+            if m >= 5 and not self._ring_is_planar(cycle):
+                ring = cycle[:-1]
+                R = len(ring)
+                # richer puckering: up to 3 independent diameter-rotations
+                # per ring (R-4 DOF, e.g. 2 for a 6-ring, 3 for a 7-ring)
+                n_diam = max(1, min(R - 4, 3))
+                for off in range(n_diam):
+                    a = ring[off]
+                    b = ring[off + R // 2]
+                    frag = ring[off + 1: off + R // 2]
+                    if frag:
+                        self.ring_puckers.append(
+                            (int(a), int(b), [int(x) for x in frag]))
             # remove this ring's edges so the next ring can be found
             for i in range(m - 1):
                 u, v = cycle[i], cycle[i + 1]
