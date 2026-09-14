@@ -5,7 +5,7 @@ Parallel execution (multi-CPU / multi-GPU)
 
 OpenDock can run the same docking task across multiple CPU cores or multiple
 GPUs by spawning one independent worker per device.  The recommended entry
-point is :mod:`opendock.protocol.general_protocol_multigpu`:
+point is ``opendock.protocol.general_protocol_multigpu``:
 
 .. code-block:: console
 

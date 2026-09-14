@@ -48,7 +48,7 @@ Optimizations
    minimize), re-mutate only out-of-box poses, gated per-step prints, tensor-row
    cnfr updates.
 10. **Vectorized clustering** — batch-decode all candidates (200×).
-11. **Multi-device parallelism** — :mod:`opendock.protocol.general_protocol_multigpu` runs one
+11. **Multi-device parallelism** — ``opendock.protocol.general_protocol_multigpu`` runs one
     worker per CPU core or GPU.
 
 Summary of measured results

@@ -66,7 +66,7 @@ Example (Monte Carlo with 32 chains on a GPU):
 Multi-device parallel execution
 -------------------------------
 
-:mod:`opendock.protocol.general_protocol_multigpu` runs the *same* docking task (any sampler +
+``opendock.protocol.general_protocol_multigpu`` runs the *same* docking task (any sampler +
 minimizer + scorer) across many independent workers — one per CPU core or GPU —
 and pools the sampled poses before clustering:
 
