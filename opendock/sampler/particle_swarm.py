@@ -80,8 +80,8 @@ class ParticleSwarmOptimizer(BaseSampler):
     """
 
     def __init__(self, ligand, receptor, scoring_function,
-                 weight=0.8, cognitive_param=0.5,
-                 social_param=0.4,
+                 weight=0.9, cognitive_param=1.5,
+                 social_param=1.5,
                  max_iter=100, **kwargs):
 
         super(ParticleSwarmOptimizer, self).__init__(ligand, receptor, scoring_function)
@@ -127,6 +127,8 @@ class ParticleSwarmOptimizer(BaseSampler):
         self.lb = [x[0] for x in self.bounds]
         self.ub = [x[1] for x in self.bounds]
         self.weight = weight
+        self.init_weight = weight
+        self.w_min = kwargs.pop('w_min', 0.4)
         self.init_cognitive_param = cognitive_param
         self.init_social_param = social_param
         self.cognitive_param = cognitive_param
@@ -228,6 +230,9 @@ class ParticleSwarmOptimizer(BaseSampler):
 
         for _step in range(self.max_iter):
             self.kt_ = (self.max_iter - _step) / self.max_iter
+            # linear inertia-weight decay (explore early, exploit late)
+            self.weight = self.init_weight * (1.0 - _step / self.max_iter) + \
+                self.w_min * (_step / self.max_iter)
             # self.cognitive_param = self._make_periodic_weight(self.max_iter,
             #                                                   _step, self.init_cognitive_param,
             #                                                   random.randint(6, 10))
@@ -343,7 +348,13 @@ class ParticleSwarmOptimizer(BaseSampler):
                     * (self.global_best_position - particle.position)
                 particle.velocity = self.weight * particle.velocity + \
                     cognitive_velocity + social_velocity
-                particle.position += particle.velocity
+                # velocity clamping (20% of the search range per component)
+                v_max = 0.2 * (np.asarray(self.ub) - np.asarray(self.lb))
+                particle.velocity = np.clip(particle.velocity, -v_max, v_max)
+                # position update + clamping to bounds
+                particle.position = np.clip(
+                    particle.position + particle.velocity,
+                    np.asarray(self.lb), np.asarray(self.ub))
 
             # save history
             _lig_cnfrs, _rec_cnfrs_ = self._variables2cnfrs(self.global_best_position)
