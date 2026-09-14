@@ -13,11 +13,11 @@ def readme():
 
 
 setup(name='opendock',
-      version='0.0.1',
+      version='1.1.2',
       long_description=readme(),
       description='Zelixir Open-Docking Framework.',
       url='',
-      author='Qiuyue Hu, Zechen Wang, Liangzhen Zheng',
+      author='Qiuyue Hu, Zechen Wang, Yanjie Wei and Liangzhen Zheng',
       author_email='zhenglz@outlook.com',
       license='MIT',
       packages=['opendock.core', 'opendock.scorer', 

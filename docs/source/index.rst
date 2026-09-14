@@ -11,7 +11,7 @@ Availability
 ------------
 
 All **source code** is available under the `MIT License <https://opensource.org/licenses/MIT>`_ 
-from `github.com/guyuehuo/opendock <https://github.com/guyuehuo/opendock-open>`_
+from `github.com/guyuehuo/opendock <https://github.com/guyuehuo/opendock>`_
 
 
 .. toctree::
@@ -36,11 +36,20 @@ from `github.com/guyuehuo/opendock <https://github.com/guyuehuo/opendock-open>`_
    docking_basic
    docking_multiple
    docking_constrained
-   add_custom_costr.rst
+   add_custom_costr
    side-chain_optimization
    cyclo_peptide_docking
    acceleration
    multi-CPU
    sampler
+   scoring
+   constraints
    external_sf
    performance_optimization
+
+.. toctree::
+   :maxdepth: 2
+   :hidden:
+   :caption: Benchmarks
+
+   benchmark

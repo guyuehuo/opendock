@@ -63,7 +63,8 @@ half-extent in Angstrom (OpenDock convention).
 Command line
 ------------
 
-The module is runnable with ``python -m`` and has three subcommands.
+The module is runnable with ``python -m`` and has five subcommands:
+``prep``, ``dock``, ``prep-ensemble``, ``dock-ensemble`` and ``run``.
 
 Prepare a backbone-frozen ligand PDBQT:
 
@@ -94,6 +95,113 @@ Run preparation and docking in one shot:
 ``run`` writes ``out/peptide_frozen.pdbqt`` and ``out/poses.pdbqt``.  Use
 ``--mgltools DIR`` (or the ``MGLTOOLS_HOME`` environment variable) when
 MGLTools is not on ``PATH``.
+
+Conformer ensembles
+-------------------
+
+For flexible peptides, docking a single rigid macrocycle geometry can be
+limiting.  OpenDock can generate a **backbone-clustered conformer ensemble** and
+dock every conformer, then keep a diverse set of poses.
+
+.. code-block:: python
+
+    from opendock.protocol.cyclo_peptide_docking import (
+        prepare_peptide_ensemble, dock_ensemble)
+
+    ensemble = prepare_peptide_ensemble(
+        smiles="C[C@@H]1NC(=O)...", out_dir="peptide_ensemble",
+        n_conformers=100, n_clusters=20, seed=2026)
+
+    scores, poses = dock_ensemble(
+        ensemble, "receptor.pdbqt",
+        center=[-5.32, 3.83, -3.46], size=[25, 20, 28],
+        keep=20, rmsd_cutoff=2.0, cfg="mc-lbfgs",
+        out_pdbqt="ensemble_poses.pdbqt")
+
+``prepare_peptide_ensemble`` writes an ``ensemble.json`` manifest plus one
+frozen PDBQT per medoid.  RDKit conformers are generated with ETKDGv3, optimised
+with MMFF (UFF fallback) and clustered by backbone (Kabsch) RMSD; if the input
+already contains 3D models they are used as provided.
+
+.. code-block:: bash
+
+    $ python -m opendock.protocol.cyclo_peptide_docking prep-ensemble \
+        --smiles "C[C@@H]1NC(=O)..." --out-dir peptide_ensemble \
+        --n-conformers 100 --n-clusters 20
+
+    $ python -m opendock.protocol.cyclo_peptide_docking dock-ensemble \
+        --ensemble peptide_ensemble/ensemble.json \
+        --receptor receptor.pdbqt \
+        --center -5.32 3.83 -3.46 --size 25 20 28 \
+        --keep 20 --rmsd-cutoff 2.0 --cfg mc-lbfgs \
+        --out ensemble_poses.pdbqt
+
+``dock-ensemble`` docks each conformer with :func:`dock_peptide`, pools the
+poses and greedily keeps up to ``--keep`` poses that differ by at least
+``--rmsd-cutoff`` Å (receptor-frame heavy-atom RMSD).  Each kept pose carries a
+``REMARK Conformer <n>`` line.
+
+Restrained peptide docking
+--------------------------
+
+Known interactions can be turned into a composite restraint.
+:func:`~opendock.protocol.cyclo_peptide_docking.build_cyclo_peptide_components`
+builds :class:`~opendock.scorer.composite.CompositeSF` components from distance
+pairs, epitope residues and angles, and they are passed to ``dock_peptide`` via
+``scorer_components``:
+
+.. code-block:: python
+
+    from opendock.protocol.cyclo_peptide_docking import (
+        build_cyclo_peptide_components, dock_peptide)
+
+    components = build_cyclo_peptide_components(
+        receptor, ligand,
+        distance_pairs=[
+            {"target_residues": ["A:78"], "ligand_residues": ["L:6"],
+             "dmin": 4.0, "exponent": 2.0}],
+        epitope=["A:78"],
+        angles=[{"A": {"mol": "receptor", "residues": ["A:78"]},
+                 "B": {"mol": "receptor", "residues": ["A:79"]},
+                 "C": {"mol": "ligand", "residues": ["L:6"]},
+                 "constraint": "wall", "bounds": [1.5, 2.0]}])
+
+    scores, cnfrs = dock_peptide(
+        "pep.pdbqt", "receptor.pdbqt",
+        center=[0, 0, 0], size=[15, 15, 15],
+        scorer_components=components, components_out="components.json",
+        decomposition_out="decomposition.json")
+
+See :doc:`constraints` for the full component reference.
+
+Worked example (bundled demo)
+-----------------------------
+
+A small ALA-PHE-LYS tri-peptide and a receptor are bundled under
+``benchmarks/peptide_docking/example/``.  From the repository root:
+
+.. code-block:: bash
+
+    $ SMILES="N[C@@H](C)C(=O)N[C@@H](Cc1ccccc1)C(=O)N[C@@H](CCCCN)C(=O)O"
+    $ python -m opendock.protocol.cyclo_peptide_docking run \
+        --smiles "$SMILES" \
+        --receptor benchmarks/peptide_docking/example/receptor.pdbqt \
+        --center -5.32 3.83 -3.46 --size 25 20 28 \
+        --cfg mc-lbfgs --steps-per-ha 6 --steps-scale 0.25 \
+        --num-modes 5 --out-dir demo_out
+
+This writes ``demo_out/peptide_frozen.pdbqt`` and ``demo_out/poses.pdbqt``.  The
+demo exists to prove the plumbing; it is not a benchmark.
+
+Output and REMARKs
+------------------
+
+``dock_peptide`` writes the clustered, rescored poses to ``--out`` and returns
+``(scores, cnfrs)`` best-first.  When ``energy_remarks=True`` (default) each
+pose carries a per-residue energy decomposition as ``REMARK`` lines
+(``REMARK InterTotal``, ``REMARK TargetResidue``, ``REMARK LigandResidue``), and
+the original ligand residue/chain/atom names are preserved.  ``dock_ensemble``
+adds ``REMARK Conformer <n>`` per pose.
 
 Caveats
 -------

@@ -7,6 +7,10 @@ The purpose of setting intermolecular constraints in molecular docking is to res
 In OpenDock, inter-molecular constraints can be implemented using the Constraint class.
 This Constraint can be considered an extension of a force field function, allowing for the control of molecular motion through the adjustment of constraint positions and strengths using harmonic functions and corresponding force constants.
 
+See :doc:`constraints` for the complete reference of constraint modes
+(``harmonic``, ``wall``, ``upper``, ``lower``), the constraint classes, composite
+restraints and their parameters.
+
 1. Atom selection for distance constraint 
 -------------------------------------------
 Before we really start to define a distance constraint, the key atoms for restriction should be selected.
@@ -110,9 +114,8 @@ you can generate a distance matrix (between the alpha carbon of the residues in 
 
 In the following example,you can import a distance matrix from outside as a constraint.
 
-.. code-block:: bash
+.. code-block:: python
 
-    #waiting for updates
     from opendock.scorer.constraints import DistanceConstraintSF,DistanceMatrixConstraintSF
     from opendock.scorer.hybrid import HybridSF
     from opendock.core.asl import AtomSelection

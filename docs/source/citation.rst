@@ -4,7 +4,9 @@ Citations
 OpenDock
 -------------
 
-OpenDock is a scientific software that is described in academics publications. Please cite these papers when you used OpenDock in your work:
+OpenDock is developed by Qiuyue Hu, Zechen Wang, Yanjie Wei and Liangzhen
+Zheng. It is a scientific software that is described in academic publications.
+Please cite these papers when you use OpenDock in your work:
 
 .. code-block:: bash
 

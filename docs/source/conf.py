@@ -4,7 +4,7 @@
 
 project = 'OpenDock'
 copyright = '2021-2026, OpenDock contributors'
-author = 'Zechen Wang, Liangzhen Zheng, Qiuyue Hu'
+author = 'Qiuyue Hu, Zechen Wang, Yanjie Wei and Liangzhen Zheng'
 
 release = '1.1.2'
 version = '1.1.2'
