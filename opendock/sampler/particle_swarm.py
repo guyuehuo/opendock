@@ -125,6 +125,10 @@ class ParticleSwarmOptimizer(BaseSampler):
         self.size = kwargs.pop('population_size', 100)
         self.n_pools = kwargs.pop('n_pools', 1)
         self.local_social_param = kwargs.pop('local_social_param', None)
+        self.ligands = kwargs.pop('ligands', None)
+        self.sfs = kwargs.pop('sfs', None)
+        if self.ligands is not None:
+            self.n_pools = max(self.n_pools, len(self.ligands))
         # print("self.bounds",self.bounds)
         self.lb = [x[0] for x in self.bounds]
         self.ub = [x[1] for x in self.bounds]
@@ -142,6 +146,8 @@ class ParticleSwarmOptimizer(BaseSampler):
         self._initialize_variables()
         self.global_best_position = np.zeros(self.dim)
         self.global_best_fitness = float('inf')
+        self.global_best_ligand_idx = 0
+        self.ligand_cnfrs_ligand_idx_ = []
 
         # new set
         # self.nsteps_ = kwargs.pop('nsteps', (ligand.number_of_frames + 1) * 100)
@@ -234,6 +240,28 @@ class ParticleSwarmOptimizer(BaseSampler):
         return torch.where(out.to(scores.device),
                            torch.full_like(scores, 999.99), scores)
 
+    def _pool_ligand_sf(self, pool_idx):
+        """Return (ligand, scorer) for a pool (conformer-per-pool when a list
+        of ligands was provided, else the single shared ligand)."""
+        if self.ligands is not None:
+            return self.ligands[pool_idx % len(self.ligands)], \
+                self.sfs[pool_idx % len(self.sfs)]
+        return self.ligand, self.scoring_function
+
+    def _score_pool(self, pool, lig, sf):
+        """Score one pool's particles with its own ligand/scorer."""
+        pos_matrix = torch.tensor(np.stack([p.position for p in pool]),
+                                  dtype=torch.float32)
+        lig_cnfr = self._decode_positions(pos_matrix)
+        pose = lig.cnfr2xyz([lig_cnfr])
+        scores = (sf.scoring() + self._soft_box_score())[:, 0]
+        if self._soft_box_enabled():
+            return scores.detach().cpu().numpy()
+        out = self._out_of_box_check_coords(pose.detach())
+        return torch.where(out.to(scores.device),
+                           torch.full_like(scores, 999.99),
+                           scores).detach().cpu().numpy()
+
 
     def sampling(self, nsteps=None) -> tuple:
         # initialize variables
@@ -260,60 +288,70 @@ class ParticleSwarmOptimizer(BaseSampler):
             #        particle.position=self.global_best_position*1.0
             #        particle.fitness= self.global_best_fitness*1.0
             # print("self.swarm[0].fitness",self.swarm[0].fitness)
-            # ---- batch score the swarm (rigid receptor) ----
+            # ---- score the swarm (per-pool conformer if provided) ----
             if self.receptor.cnfrs_ is None:
-                pos_matrix = torch.tensor(
-                    np.stack([p.position for p in self.swarm]), dtype=torch.float32)
-                swarm_scores = self._batch_score_positions(pos_matrix).detach().cpu().numpy()
-                for i, particle in enumerate(self.swarm):
-                    particle.fitness = float(swarm_scores[i])
+                for pool_idx, pool in enumerate(self.pools):
+                    lig, sf = self._pool_ligand_sf(pool_idx)
+                    pool_scores = self._score_pool(pool, lig, sf)
+                    for i, particle in enumerate(pool):
+                        particle.fitness = float(pool_scores[i])
             else:
                 for particle in self.swarm:
                     particle.fitness = self.objective_func(particle.position)
 
-            # ---- minimize subset ----
+            # ---- minimize subset (per pool, with its own conformer) ----
             if self.minimizer is not None and self.receptor.cnfrs_ is None:
-                subset = [i for i in range(self.size)
-                          if random.random() < self.minimization_ratio]
-                if subset:
-                    base_pos = torch.tensor(
-                        np.stack([self.swarm[i].position for i in subset]),
-                        dtype=torch.float32)
-                    base_lig = self._decode_positions(base_pos)
-                    mutated = self._mutate_batch([base_lig], n=len(subset))
-                    if self.batch_minimize:
-                        minimized = self._minimize_batch([mutated])[0]
-                    else:
-                        rows = []
-                        for k in range(len(subset)):
-                            r = mutated[k:k+1].detach().clone().requires_grad_(True)
-                            try:
-                                rmin, _ = self._minimize([r], None, is_ligand=True,
-                                                         is_receptor=False)
-                                rows.append(rmin[0].detach().reshape(1, -1))
-                            except RuntimeError:
-                                rows.append(mutated[k:k+1].detach())
-                        minimized = torch.cat(rows, dim=0)
-                    new_scores = self._batch_score([minimized])[:, 0].detach().cpu().numpy()
-                    new_pos = self._decode_positions(
-                        torch.cat([minimized[:, :3],
-                                   torch.remainder(minimized[:, 3:] + np.pi,
-                                                   2 * np.pi) - np.pi], dim=1))
-                    for idx, i in enumerate(subset):
-                        particle = self.swarm[i]
-                        particle.cnfrs_history.append(
-                            torch.Tensor(base_lig[idx].detach().numpy()).reshape((1, -1)))
-                        particle.scores_history.append(particle.fitness)
-                        _fitness = float(new_scores[idx])
-                        if _fitness - particle.fitness < 0:
-                            particle.position = new_pos[idx].detach().numpy()
-                            particle.best_position = particle.position * 1.0
-                            particle.best_fitness = _fitness
-                            particle.fitness = _fitness
-                            self.ligand_cnfrs_history_.append(
-                                torch.Tensor(minimized[idx].detach().numpy()).reshape((1, -1)))
-                            self.ligand_scores_history_.append(_fitness)
-                            self.receptor_cnfrs_history_.append(None)
+                for pool_idx, pool in enumerate(self.pools):
+                    lig, sf = self._pool_ligand_sf(pool_idx)
+                    subset_particles = [p for p in pool
+                                        if random.random() < self.minimization_ratio]
+                    if not subset_particles:
+                        continue
+                    saved_lig, saved_sf = self.ligand, self.scoring_function
+                    self.ligand, self.scoring_function = lig, sf
+                    try:
+                        base_pos = torch.tensor(
+                            np.stack([p.position for p in subset_particles]),
+                            dtype=torch.float32)
+                        base_lig = self._decode_positions(base_pos)
+                        mutated = self._mutate_batch([base_lig],
+                                                     n=len(subset_particles))
+                        if self.batch_minimize:
+                            minimized = self._minimize_batch([mutated])[0]
+                        else:
+                            rows = []
+                            for k in range(len(subset_particles)):
+                                r = mutated[k:k+1].detach().clone().requires_grad_(True)
+                                try:
+                                    rmin, _ = self._minimize([r], None, is_ligand=True,
+                                                             is_receptor=False)
+                                    rows.append(rmin[0].detach().reshape(1, -1))
+                                except RuntimeError:
+                                    rows.append(mutated[k:k+1].detach())
+                            minimized = torch.cat(rows, dim=0)
+                        new_scores = self._batch_score([minimized])[:, 0].detach().cpu().numpy()
+                        new_pos = self._decode_positions(
+                            torch.cat([minimized[:, :3],
+                                       torch.remainder(minimized[:, 3:] + np.pi,
+                                                       2 * np.pi) - np.pi], dim=1))
+                        for idx, particle in enumerate(subset_particles):
+                            particle.cnfrs_history.append(
+                                torch.Tensor(base_lig[idx].detach().numpy()).reshape((1, -1)))
+                            particle.scores_history.append(particle.fitness)
+                            _fitness = float(new_scores[idx])
+                            if _fitness - particle.fitness < 0:
+                                particle.position = new_pos[idx].detach().numpy()
+                                particle.best_position = particle.position * 1.0
+                                particle.best_fitness = _fitness
+                                particle.fitness = _fitness
+                                self.ligand_cnfrs_history_.append(
+                                    torch.Tensor(minimized[idx].detach().numpy()).reshape((1, -1)))
+                                self.ligand_scores_history_.append(_fitness)
+                                self.ligand_cnfrs_ligand_idx_.append(
+                                    pool_idx % len(self.ligands) if self.ligands else 0)
+                                self.receptor_cnfrs_history_.append(None)
+                    finally:
+                        self.ligand, self.scoring_function = saved_lig, saved_sf
             elif self.minimizer is not None:
                 for particle in self.swarm:
                     if random.random() < self.minimization_ratio:
@@ -345,12 +383,13 @@ class ParticleSwarmOptimizer(BaseSampler):
                             print("[WARNING] Running minimization failed, ignore ...")
 
             # ---- global best + per-pool (local) best update ----
-            for particle in self.swarm:
-                if particle.fitness < self.global_best_fitness:
-                    self.global_best_fitness = particle.fitness
-                    self.global_best_position = particle.position * 1.0
             for pool_idx, pool in enumerate(self.pools):
                 for particle in pool:
+                    if particle.fitness < self.global_best_fitness:
+                        self.global_best_fitness = particle.fitness
+                        self.global_best_position = particle.position * 1.0
+                        self.global_best_ligand_idx = (
+                            pool_idx % len(self.ligands) if self.ligands else 0)
                     if particle.fitness < self.pool_best_fitness[pool_idx]:
                         self.pool_best_fitness[pool_idx] = particle.fitness
                         self.pool_best_positions[pool_idx] = particle.position * 1.0
@@ -388,6 +427,7 @@ class ParticleSwarmOptimizer(BaseSampler):
             _lig_cnfrs, _rec_cnfrs_ = self._variables2cnfrs(self.global_best_position)
             self.ligand_cnfrs_history_.append(torch.Tensor(_lig_cnfrs[0].detach().numpy()))
             self.ligand_scores_history_.append(self.global_best_fitness)
+            self.ligand_cnfrs_ligand_idx_.append(self.global_best_ligand_idx)
 
             if self.receptor.cnfrs_ is not None:
                 self.receptor_cnfrs_history_.append([[torch.Tensor(x.detach().numpy())

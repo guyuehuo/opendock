@@ -223,6 +223,35 @@ def _dock_conformer_island(ligands, receptor, sfs, center, half, cfg,
     return triples
 
 
+def _dock_conformer_pso(ligands, receptor, sfs, center, half, cfg,
+                        sampler_cls, minimizer, kwargs, n_steps,
+                        social_param, local_social_param):
+    """Multi-swarm PSO where each pool docks a different conformer. Returns
+    (score, cnfr, ligand) triples."""
+    for lig, sf in zip(ligands, sfs):
+        rs = sampler_cls(lig, receptor, sf, **dict(kwargs))
+        lig.cnfrs_, receptor.cnfrs_ = rs._random_move(
+            [torch.Tensor(lig.init_cnfrs.detach().numpy())], receptor.init_cnfrs)
+
+    pso_kwargs = dict(kwargs)
+    pso_kwargs["n_pools"] = len(ligands)
+    pso_kwargs["ligands"] = ligands
+    pso_kwargs["sfs"] = sfs
+    if social_param is not None:
+        pso_kwargs["social_param"] = float(social_param)
+    if local_social_param is not None:
+        pso_kwargs["local_social_param"] = float(local_social_param)
+
+    pso = sampler_cls(ligands[0], receptor, sfs[0], **pso_kwargs)
+    pso.sampling(n_steps)
+
+    triples = []
+    for s, c, li in zip(pso.ligand_scores_history_, pso.ligand_cnfrs_history_,
+                        pso.ligand_cnfrs_ligand_idx_):
+        triples.append((s, c, ligands[li]))
+    return triples
+
+
 def _write_pose_file(out_pdbqt, triples, receptor):
     """Write a multi-model PDBQT from ``(score, cnfr, ligand)`` triples.
 
@@ -267,7 +296,8 @@ def run_one_job(code, source, mode, cfg_name, cfg, prep_dir, run_dir,
                 island_binary=None, conformer_island=None,
                 pso_pop=None, pso_weight=None, pso_cognitive=None,
                 pso_social=None, pso_constriction=False,
-                pso_pools=None, pso_local_social=None):
+                pso_pools=None, pso_local_social=None,
+                conformer_pso=False):
     os.environ["OPENDOCK_RING_PUCKER"] = "1" if ring_pucker else "0"
     cond = condition_id(source, mode, cfg_name)
     if bound_value is not None:
@@ -326,6 +356,8 @@ def run_one_job(code, source, mode, cfg_name, cfg, prep_dir, run_dir,
         cond = f"{cond}-psopool{pso_pools}"
     if pso_local_social is not None:
         cond = f"{cond}-psols{pso_local_social:g}"
+    if conformer_pso:
+        cond = f"{cond}-confpso"
     if steps_scale != 1.0:
         cond = f"{cond}-ss{steps_scale:g}"
     cond_dir = ensure_dir(os.path.join(run_dir, code))
@@ -412,7 +444,23 @@ def run_one_job(code, source, mode, cfg_name, cfg, prep_dir, run_dir,
 
     # dock every conformer (each run starts from a different frozen geometry)
     all_triples = []
-    if conformer_island is not None and conformer_island > 1:
+    if conformer_pso:
+        # multi-swarm PSO where each pool docks a different conformer
+        ligands, sfs_list = [], []
+        for i, lig_pdbqt in enumerate(lig_pdbqts):
+            if i == 0:
+                lig, sff = ligand, sf
+            else:
+                lig, sff = build_ligand_sf(lig_pdbqt, receptor, center,
+                                           device=device, compile=compile)
+            ligands.append(lig)
+            sfs_list.append(sff)
+        log(f"{code} {cond}: conformer-pool PSO over {len(ligands)} conformers")
+        all_triples = _dock_conformer_pso(ligands, receptor, sfs_list, center,
+                                          half, cfg, sampler_cls, minimizer,
+                                          kwargs, n_steps, pso_social,
+                                          pso_local_social)
+    elif conformer_island is not None and conformer_island > 1:
         # island model where each island docks a different conformer
         ligands, sfs_list = [], []
         for i, lig_pdbqt in enumerate(lig_pdbqts):
@@ -609,6 +657,8 @@ def main():
                         help="multi-swarm PSO: number of sub-swarms (default 1)")
     parser.add_argument("--pso-local-social", type=float, default=None,
                         help="multi-swarm PSO: local pool social coefficient")
+    parser.add_argument("--conformer-pso", action="store_true",
+                        help="PSO where each pool docks a different conformer")
     parser.add_argument("--num-modes", type=int, default=None)
     parser.add_argument("--threads", type=int, default=1)
     parser.add_argument("--seed", type=int, default=2026)
@@ -682,6 +732,8 @@ def main():
             cond = f"{cond}-psopool{args.pso_pools}"
         if args.pso_local_social is not None:
             cond = f"{cond}-psols{args.pso_local_social:g}"
+        if args.conformer_pso:
+            cond = f"{cond}-confpso"
         if args.steps_scale != 1.0:
             cond = f"{cond}-ss{args.steps_scale:g}"
         try:
@@ -713,7 +765,8 @@ def main():
                                pso_social=args.pso_social,
                                pso_constriction=args.pso_constriction,
                                pso_pools=args.pso_pools,
-                               pso_local_social=args.pso_local_social)
+                               pso_local_social=args.pso_local_social,
+                               conformer_pso=args.conformer_pso)
         except Exception as exc:
             log(f"{code} {cond}: FAILED - {exc}")
             mark_failed(run_dir, code, cond, traceback.format_exc())
@@ -780,6 +833,8 @@ def main():
             cond = f"{cond}-psopool{args.pso_pools}"
         if args.pso_local_social is not None:
             cond = f"{cond}-psols{args.pso_local_social:g}"
+        if args.conformer_pso:
+            cond = f"{cond}-confpso"
         if args.steps_scale != 1.0:
             cond = f"{cond}-ss{args.steps_scale:g}"
         if args.resume and job_state(run_dir, args.code, cond) != "pending":
