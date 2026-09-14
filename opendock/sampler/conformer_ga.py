@@ -33,7 +33,9 @@ class ConformerIndexGA(BaseSampler):
         self.n_conf = len(ligands)
         self.k = ligands[0].number_of_frames
         self.n_ring = len(getattr(ligands[0], "ring_puckers", None) or [])
-        self.n_var = 6 + self.k + self.n_ring + 1  # last = conformer index
+        self.n_angle = (ligands[0].number_of_frames
+                        if getattr(ligands[0], "angle_dof_enabled", False) else 0)
+        self.n_var = 6 + self.k + self.n_ring + self.n_angle + 1  # last = conf idx
         self.n_pop = int(n_pop)
         self.n_gen = int(n_gen)
         self.mutation_rate = mutation_rate
@@ -50,6 +52,7 @@ class ConformerIndexGA(BaseSampler):
             [-np.pi, -np.pi, -np.pi],    # rotation
             [-np.pi] * self.k,           # torsions
             [-np.pi] * self.n_ring,      # ring puckers
+            [-np.pi] * self.n_angle,     # valence angles
             [0.0],                       # conformer index
         ])
         self.ub = np.concatenate([
@@ -57,6 +60,7 @@ class ConformerIndexGA(BaseSampler):
             [np.pi, np.pi, np.pi],
             [np.pi] * self.k,
             [np.pi] * self.n_ring,
+            [np.pi] * self.n_angle,
             [self.n_conf - 1.0],
         ])
 

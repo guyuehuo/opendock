@@ -177,6 +177,8 @@ class LigandConformation(Ligand):
         parent_frame = []
         frame_other_atoms = []
         frame_rel = []
+        angle_axes = []
+        root_set = set(self.root_heavy_atom_index)
         for i in range(k):
             rotorX, rotorY = self.torsion_bond_index[i]
             bond_vecs.append(init[rotorY] - init[rotorX])
@@ -189,11 +191,34 @@ class LigandConformation(Ligand):
             frame_rel.append(init[oth_t] - init[rotorY]
                              if len(oth_t) else torch.zeros(0, 3))
 
+            # valence-angle reference axis: perpendicular to the parent-bond /
+            # child-bond plane, in the input geometry (rotated by the parent
+            # frame at decode time)
+            p = int(atom_frame[rotorX])
+            if p == 0:
+                G = None
+                for nb in self.atom_bonds.get(rotorX, []):
+                    if nb in root_set and nb != rotorY:
+                        G = nb
+                        break
+            else:
+                G = self.torsion_bond_index[p - 1][0]
+            if G is None:
+                angle_axes.append(torch.zeros(3))
+                continue
+            parent_bond = init[rotorX] - init[G]
+            child_bond = init[rotorY] - init[rotorX]
+            axis = torch.linalg.cross(parent_bond, child_bond)
+            nrm = torch.norm(axis)
+            angle_axes.append(axis / nrm if nrm > 1e-8 else torch.zeros(3))
+
         self._bond_vecs = (torch.stack(bond_vecs, dim=0)
                            if k else torch.zeros(0, 3))
         self._parent_frame = parent_frame
         self._frame_other_atoms = frame_other_atoms
         self._frame_rel = frame_rel
+        self._angle_axes = (torch.stack(angle_axes, dim=0)
+                            if k else torch.zeros(0, 3))
         self._static_geometry_ready = True
 
     def cnfr2xyz(self, cnfr_tensor: torch.Tensor = None) -> torch.Tensor:
@@ -226,6 +251,11 @@ class LigandConformation(Ligand):
         frame_rot = [None] * (self.number_of_frames + 1)
         frame_rot[0] = R_root
 
+        angle_enabled = getattr(self, "angle_dof_enabled", False)
+        angle_scale = getattr(self, "angle_dof_scale", 0.26)
+        n_ring = len(getattr(self, "ring_puckers", None) or [])
+        angle_base = 6 + self.number_of_frames + n_ring
+
         # root first atom
         first = cnfr[:, :3]
         pos[:, self._root_first] = center + torch.bmm(
@@ -245,6 +275,18 @@ class LigandConformation(Ligand):
 
             bond = self._bond_vecs[i].to(dev)
             bond = torch.bmm(frame_rot[p], bond.reshape(1, 3, 1).expand(n, 3, 1)).squeeze(-1)
+
+            # valence-angle DOF: bend the child bond around the parent-plane
+            # axis (bounded by tanh so the angle stays near equilibrium)
+            if angle_enabled:
+                angle_axis = self._angle_axes[i].to(dev)
+                angle_axis = torch.bmm(
+                    frame_rot[p],
+                    angle_axis.reshape(1, 3, 1).expand(n, 3, 1)).squeeze(-1)
+                angle_val = angle_scale * torch.tanh(cnfr[:, angle_base + i])
+                angle_R = rodrigues(angle_axis, angle_val)
+                bond = torch.bmm(angle_R, bond.unsqueeze(-1)).squeeze(-1)
+
             pos_rotorY = pos[:, rotorX] + bond
             pos[:, rotorY] = pos_rotorY
 
@@ -252,7 +294,11 @@ class LigandConformation(Ligand):
             if self._detach_torsion_axis:
                 axis = axis.detach()
             torsion_R = rodrigues(axis, cnfr[:, 6 + i])
-            frame_rot[i + 1] = torch.bmm(torsion_R, frame_rot[p])
+            if angle_enabled:
+                frame_rot[i + 1] = torch.bmm(torsion_R,
+                                             torch.bmm(angle_R, frame_rot[p]))
+            else:
+                frame_rot[i + 1] = torch.bmm(torsion_R, frame_rot[p])
 
             others = self._frame_other_atoms[i]
             if len(others):

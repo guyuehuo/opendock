@@ -65,6 +65,9 @@ class Ligand(object):
         self.number_of_all_frames = 0
         self.atom_bonds=[]
         self.ring_pucker = None
+        self.ring_puckers = []
+        self.angle_dof_enabled = os.environ.get("OPENDOCK_ANGLE_DOF", "1") != "0"
+        self.angle_dof_scale = float(os.environ.get("OPENDOCK_ANGLE_SCALE", "0.26"))
         self.intra_interacting_pairs=[]
         self.intra_interacting_matrix=[]
        
@@ -691,12 +694,14 @@ class Ligand(object):
         number_of_frames = self.number_of_frames
 
         # one extra DOF per ring pucker (diameter rotation), if any
-        n_extra = len(self.ring_puckers) if getattr(self, "ring_puckers", None) \
+        n_ring = len(self.ring_puckers) if getattr(self, "ring_puckers", None) \
             else 0
+        # one valence-angle DOF per rotatable bond (bounded flex)
+        n_angle = number_of_frames if self.angle_dof_enabled else 0
 
         _other_vector = torch.zeros(self.number_of_poses,
-                                    number_of_frames + 3 + n_extra)
-        # shape (1, 3 + 3 + k [+ 1])
+                                    number_of_frames + 3 + n_ring + n_angle)
+        # shape (1, 3 + 3 + k + n_ring + n_angle)
         self.init_cnfrs = torch.cat((xyz, _other_vector), axis=1)
 
         self.cnfrs_ = [torch.cat((xyz, _other_vector), axis=1).clone().requires_grad_(), ]
