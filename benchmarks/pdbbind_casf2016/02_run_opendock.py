@@ -196,7 +196,9 @@ def run_one_job(code, source, mode, cfg_name, cfg, prep_dir, run_dir,
                 bound_value=None, n_bit=None, device="cpu", mc_tasks=None,
                 anneal=False, bound_min=None, compile=False, n_conformers=None,
                 batch_minimize=True, min_steps=None, min_lr=None, n_pop=None,
-                torsion_max=None, ring_pucker=True):
+                torsion_max=None, ring_pucker=True,
+                p_c=None, p_m=None, tournament_k=None, minimization_ratio=None,
+                elite_ratio=None):
     os.environ["OPENDOCK_RING_PUCKER"] = "1" if ring_pucker else "0"
     cond = condition_id(source, mode, cfg_name)
     if bound_value is not None:
@@ -223,6 +225,16 @@ def run_one_job(code, source, mode, cfg_name, cfg, prep_dir, run_dir,
         cond = f"{cond}-tm{torsion_max:g}"
     if not ring_pucker:
         cond = f"{cond}-rp0"
+    if p_c is not None:
+        cond = f"{cond}-pc{p_c:g}"
+    if p_m is not None:
+        cond = f"{cond}-pm{p_m:g}"
+    if tournament_k is not None:
+        cond = f"{cond}-tk{tournament_k}"
+    if minimization_ratio is not None:
+        cond = f"{cond}-mr{minimization_ratio:g}"
+    if elite_ratio is not None:
+        cond = f"{cond}-er{elite_ratio:g}"
     if steps_scale != 1.0:
         cond = f"{cond}-ss{steps_scale:g}"
     cond_dir = ensure_dir(os.path.join(run_dir, code))
@@ -271,6 +283,16 @@ def run_one_job(code, source, mode, cfg_name, cfg, prep_dir, run_dir,
             kwargs["anneal"] = True
         if bound_min is not None:
             kwargs["bound_min"] = bound_min
+        if p_c is not None:
+            kwargs["p_c"] = float(p_c)
+        if p_m is not None:
+            kwargs["p_m"] = float(p_m)
+        if tournament_k is not None:
+            kwargs["tournament_k"] = int(tournament_k)
+        if minimization_ratio is not None:
+            kwargs["minimization_ratio"] = float(minimization_ratio)
+        if elite_ratio is not None:
+            kwargs["elite_ratio"] = float(elite_ratio)
     if cfg["sampler"] == "mc":
         if mc_tasks is not None:
             kwargs["ntasks"] = int(mc_tasks)
@@ -392,6 +414,16 @@ def main():
                         default=True,
                         help="add the ring-pucker DOF to the ligand vector "
                              "(default on; --no-ring-pucker to disable)")
+    parser.add_argument("--p-c", type=float, default=None,
+                        help="GA crossover probability (default 0.5)")
+    parser.add_argument("--p-m", type=float, default=None,
+                        help="GA mutation probability (default 0.01)")
+    parser.add_argument("--tournament-k", type=int, default=None,
+                        help="GA tournament size (default 3)")
+    parser.add_argument("--minimization-ratio", type=float, default=None,
+                        help="GA fraction of chromosomes minimized (default 0.2)")
+    parser.add_argument("--elite-ratio", type=float, default=None,
+                        help="GA elitism fraction carried over (default 0.0)")
     parser.add_argument("--num-modes", type=int, default=None)
     parser.add_argument("--threads", type=int, default=1)
     parser.add_argument("--seed", type=int, default=2026)
@@ -433,6 +465,16 @@ def main():
             cond = f"{cond}-tm{args.torsion_max:g}"
         if not args.ring_pucker:
             cond = f"{cond}-rp0"
+        if args.p_c is not None:
+            cond = f"{cond}-pc{args.p_c:g}"
+        if args.p_m is not None:
+            cond = f"{cond}-pm{args.p_m:g}"
+        if args.tournament_k is not None:
+            cond = f"{cond}-tk{args.tournament_k}"
+        if args.minimization_ratio is not None:
+            cond = f"{cond}-mr{args.minimization_ratio:g}"
+        if args.elite_ratio is not None:
+            cond = f"{cond}-er{args.elite_ratio:g}"
         if args.steps_scale != 1.0:
             cond = f"{cond}-ss{args.steps_scale:g}"
         try:
@@ -449,7 +491,11 @@ def main():
                                min_steps=args.min_steps, min_lr=args.min_lr,
                                n_pop=args.n_pop,
                                torsion_max=args.torsion_max,
-                               ring_pucker=args.ring_pucker)
+                               ring_pucker=args.ring_pucker,
+                               p_c=args.p_c, p_m=args.p_m,
+                               tournament_k=args.tournament_k,
+                               minimization_ratio=args.minimization_ratio,
+                               elite_ratio=args.elite_ratio)
         except Exception as exc:
             log(f"{code} {cond}: FAILED - {exc}")
             mark_failed(run_dir, code, cond, traceback.format_exc())
@@ -484,6 +530,16 @@ def main():
             cond = f"{cond}-tm{args.torsion_max:g}"
         if not args.ring_pucker:
             cond = f"{cond}-rp0"
+        if args.p_c is not None:
+            cond = f"{cond}-pc{args.p_c:g}"
+        if args.p_m is not None:
+            cond = f"{cond}-pm{args.p_m:g}"
+        if args.tournament_k is not None:
+            cond = f"{cond}-tk{args.tournament_k}"
+        if args.minimization_ratio is not None:
+            cond = f"{cond}-mr{args.minimization_ratio:g}"
+        if args.elite_ratio is not None:
+            cond = f"{cond}-er{args.elite_ratio:g}"
         if args.steps_scale != 1.0:
             cond = f"{cond}-ss{args.steps_scale:g}"
         if args.resume and job_state(run_dir, args.code, cond) != "pending":

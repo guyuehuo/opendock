@@ -217,25 +217,26 @@ class Ligand(object):
 
 
     def detect_ring_pucker(self):
-        """Detect the largest ring and set up a diameter-rotation DOF.
+        """Detect rings and set up a diameter-rotation DOF per ring.
 
-        Finds a cycle in the covalent bond graph, picks two "opposite" atoms
-        (a, b) as the rotation axis, and the fragment atoms between them (along
-        the shorter path) as the atoms rotated around that axis. A single extra
-        torsion can then flip the ring pucker (e.g. chair <-> boat) while
+        For every cycle in the covalent bond graph, picks two "opposite" atoms
+        (a, b) as the rotation axis and the fragment atoms between them (along
+        the shorter path) as the atoms rotated around that axis. One extra
+        torsion per ring can then flip its pucker (e.g. chair <-> boat) while
         preserving every bond length and the ring closure.
         """
+        self.ring_puckers = []
         self.ring_pucker = None
         if os.environ.get("OPENDOCK_RING_PUCKER", "1") == "0":
             return None
         n = self.number_of_heavy_atoms
         adj = {i: set(self.atom_bonds.get(i, [])) for i in range(n)}
 
-        def find_cycle():
+        def find_cycle(adj):
             for start in range(n):
                 parent = {start: None}
                 visited = {start}
-                stack = [(start, iter(sorted(adj[start])))]
+                stack = [(start, iter(sorted(adj.get(start, []))))]
                 while stack:
                     node, it = stack[-1]
                     advanced = False
@@ -243,7 +244,7 @@ class Ligand(object):
                         if nb not in visited:
                             visited.add(nb)
                             parent[nb] = node
-                            stack.append((nb, iter(sorted(adj[nb]))))
+                            stack.append((nb, iter(sorted(adj.get(nb, [])))))
                             advanced = True
                             break
                         elif nb != parent.get(node):
@@ -258,15 +259,28 @@ class Ligand(object):
                         stack.pop()
             return None
 
-        cycle = find_cycle()
-        if cycle is None or len(cycle) < 5:
-            return None
-        m = len(cycle)
-        a = cycle[0]
-        b = cycle[m // 2]
-        fragment = cycle[1:m // 2]
-        self.ring_pucker = (int(a), int(b), [int(x) for x in fragment])
-        return self.ring_pucker
+        # find multiple rings by removing each found ring's edges
+        while True:
+            cycle = find_cycle(adj)
+            if cycle is None:
+                break
+            m = len(cycle)
+            if m >= 5:
+                a = cycle[0]
+                b = cycle[m // 2]
+                fragment = cycle[1:m // 2]
+                self.ring_puckers.append((int(a), int(b),
+                                          [int(x) for x in fragment]))
+            # remove this ring's edges so the next ring can be found
+            for i in range(m - 1):
+                u, v = cycle[i], cycle[i + 1]
+                adj[u].discard(v)
+                adj[v].discard(u)
+
+        if self.ring_puckers:
+            self.ring_pucker = self.ring_puckers[0]
+            return self.ring_puckers
+        return None
 
     def _get_poses_fpath(self):
 
@@ -637,8 +651,9 @@ class Ligand(object):
         xyz = self.init_lig_heavy_atoms_xyz[:, 0]
         number_of_frames = self.number_of_frames
 
-        # one extra DOF for the ring pucker (diameter rotation), if any
-        n_extra = 1 if self.ring_pucker is not None else 0
+        # one extra DOF per ring pucker (diameter rotation), if any
+        n_extra = len(self.ring_puckers) if getattr(self, "ring_puckers", None) \
+            else 0
 
         _other_vector = torch.zeros(self.number_of_poses,
                                     number_of_frames + 3 + n_extra)

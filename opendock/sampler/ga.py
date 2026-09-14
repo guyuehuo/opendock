@@ -86,6 +86,7 @@ class GeneticAlgorithmSampler(BaseSampler):
         # --------------------------------------------------
         self.p_c = kwargs.pop("p_c", 0.5)
         self.p_m = kwargs.pop("p_m", 0.01)
+        self.elite_ratio = kwargs.pop("elite_ratio", 0.0)
         # --------------------------------------------------
         # The "k" parameter in tournament selection
         # --------------------------------------------------
@@ -649,6 +650,15 @@ class GeneticAlgorithmSampler(BaseSampler):
             # --------------------------------------------
             # replacing the population
             # --------------------------------------------
+            # elitism: carry the best chromosomes over to the next generation
+            if self.elite_ratio > 0:
+                n_elite = int(self.elite_ratio * self.n_pop)
+                if n_elite > 0:
+                    elite_idx = np.argsort(self.fit_vals)[::-1][:n_elite]
+                    worst_idx = np.argsort(self.fit_vals)[:n_elite]
+                    for k, ei in enumerate(elite_idx):
+                        self.chrom_pop2[worst_idx[k]] = \
+                            self.chrom_pop[ei].copy()
             self.chrom_pop = self.chrom_pop2.copy()  # 6.1.1
 
             # --------------------------------------------

@@ -261,17 +261,18 @@ class LigandConformation(Ligand):
                 rel = torch.bmm(frame_rot[i + 1], rel.t().unsqueeze(0).expand(n, 3, -1)).permute(0, 2, 1)
                 pos[:, idx] = pos_rotorY.unsqueeze(1) + rel
 
-        # ring pucker: rotate the fragment around the diameter axis (a-b)
-        if getattr(self, "ring_pucker", None) is not None:
-            a, b, fragment = self.ring_pucker
-            if len(fragment):
-                axis = F.normalize(pos[:, b] - pos[:, a], p=2, dim=1)
-                theta = cnfr[:, 6 + self.number_of_frames]
-                R = rodrigues(axis, theta)
-                frag = torch.tensor(fragment, dtype=torch.long, device=dev)
-                rel = pos[:, frag] - pos[:, a].unsqueeze(1)
-                rel = torch.bmm(R, rel.transpose(1, 2)).transpose(1, 2)
-                pos[:, frag] = pos[:, a].unsqueeze(1) + rel
+        # ring pucker: rotate each ring's fragment around its diameter axis
+        ring_puckers = getattr(self, "ring_puckers", None) or []
+        for ri, (a, b, fragment) in enumerate(ring_puckers):
+            if not fragment:
+                continue
+            axis = F.normalize(pos[:, b] - pos[:, a], p=2, dim=1)
+            theta = cnfr[:, 6 + self.number_of_frames + ri]
+            R = rodrigues(axis, theta)
+            frag = torch.tensor(fragment, dtype=torch.long, device=dev)
+            rel = pos[:, frag] - pos[:, a].unsqueeze(1)
+            rel = torch.bmm(R, rel.transpose(1, 2)).transpose(1, 2)
+            pos[:, frag] = pos[:, a].unsqueeze(1) + rel
 
         self.pose_heavy_atoms_coords = pos
         self.cnfr_tensor = cnfr
