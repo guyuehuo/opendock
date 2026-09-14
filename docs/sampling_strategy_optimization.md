@@ -220,7 +220,7 @@ n_conformers = 3          # RDKit MMFF ensemble, docked separately
 n_pop        = 200
 steps_scale  = 0.5
 ring_pucker  = on         # per-non-planar-ring diameter-rotation DOF
-angle_dof    = on         # bounded valence-angle flex (scale 0.26 rad)
+angle_dof    = off        # valence-angle flex disabled by default (net-neutral)
 min_steps    = 3          # batched-Adam
 device       = cuda       # + torch.compile (default on)
 ```
@@ -239,6 +239,10 @@ start of this work, and ~96% for crystal input).
 - MC torsion-range tuning (MC is fundamentally weak here).
 - GA operator rates (p_c/p_m/tournament/elite/minimization-ratio).
 - More minimization steps.
+- **Angle-diverse input conformers** (random valence-angle distortion as input
+  for separate GA/PSO populations) — hurts GA (50%→20%), and large distortion
+  (±46°) breaks molecular topology (`NaN` RMSD); moderate (±17°) can't bridge
+  the 45–51° frozen-angle gap. (see §13.4)
 
 ## 13. Remaining levers (not yet exhausted)
 
@@ -249,9 +253,13 @@ start of this work, and ~96% for crystal input).
    component of the frozen-geometry error.
 3. **ML rescoring** (RTMScore / DeepRMSD / zPoseRanker) — fixes the ~20% Vina
    ranking failures.
-4. **Angle-diverse input conformers** (each GA/PSO population starts from a
-   different angle state) — implemented as conformer generation, being
-   benchmarked.
+4. **Angle-diverse input conformers** — *tested, negative result.* Generating
+   conformers with random valence-angle distortion and docking each as a
+   separate GA/PSO population does **not** help: GA drops 50%→20% top-1, and the
+   distortion needed to bridge the 45–51° frozen-angle gap (±46°) breaks the
+   molecular topology (poses become `NaN`/non-isomorphic in RMSD evaluation),
+   while a safe ±17° is too small to matter. Blind angle sampling is the wrong
+   tool; the gap needs *receptor-guided* conformer generation.
 
 ---
 
@@ -265,4 +273,5 @@ start of this work, and ~96% for crystal input).
 | `be0259a` | valence-angle DOF (bounded flex) |
 | `3d3fcf0` | multi-swarm PSO (local pool best + global best) |
 | `a42639f` | island-model on binary GA (negative result, kept for reference) |
+| `f364b47` | disable valence-angle DOF by default (net-neutral / hurts GA) |
 | `259b2a1`/`a954bf2` | expose minimize steps/lr + GA n_pop |
