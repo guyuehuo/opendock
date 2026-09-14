@@ -264,7 +264,9 @@ def run_one_job(code, source, mode, cfg_name, cfg, prep_dir, run_dir,
                 torsion_max=None, ring_pucker=True,
                 p_c=None, p_m=None, tournament_k=None, minimization_ratio=None,
                 elite_ratio=None, n_islands=None, migration_interval=5,
-                island_binary=None, conformer_island=None):
+                island_binary=None, conformer_island=None,
+                pso_pop=None, pso_weight=None, pso_cognitive=None,
+                pso_social=None):
     os.environ["OPENDOCK_RING_PUCKER"] = "1" if ring_pucker else "0"
     cond = condition_id(source, mode, cfg_name)
     if bound_value is not None:
@@ -309,6 +311,14 @@ def run_one_job(code, source, mode, cfg_name, cfg, prep_dir, run_dir,
         cond = f"{cond}-ib{island_binary}"
     if conformer_island is not None and conformer_island > 1:
         cond = f"{cond}-ci{conformer_island}"
+    if pso_pop is not None:
+        cond = f"{cond}-psop{pso_pop}"
+    if pso_weight is not None:
+        cond = f"{cond}-psow{pso_weight:g}"
+    if pso_cognitive is not None:
+        cond = f"{cond}-psoc{pso_cognitive:g}"
+    if pso_social is not None:
+        cond = f"{cond}-psos{pso_social:g}"
     if steps_scale != 1.0:
         cond = f"{cond}-ss{steps_scale:g}"
     cond_dir = ensure_dir(os.path.join(run_dir, code))
@@ -374,6 +384,15 @@ def run_one_job(code, source, mode, cfg_name, cfg, prep_dir, run_dir,
             kwargs["ntasks"] = 32
         if torsion_max is not None:
             kwargs["torsion_max"] = float(torsion_max)
+    if cfg["sampler"] == "pso":
+        if pso_pop is not None:
+            kwargs["population_size"] = int(pso_pop)
+        if pso_weight is not None:
+            kwargs["weight"] = float(pso_weight)
+        if pso_cognitive is not None:
+            kwargs["cognitive_param"] = float(pso_cognitive)
+        if pso_social is not None:
+            kwargs["social_param"] = float(pso_social)
 
     n_steps = int(float(cfg["steps_per_ha"]) * ligand.number_of_heavy_atoms
                   * steps_scale)
@@ -563,6 +582,14 @@ def main():
     parser.add_argument("--conformer-island", type=int, default=None,
                         help="island model where each island docks a different "
                              "conformer (number of islands)")
+    parser.add_argument("--pso-pop", type=int, default=None,
+                        help="PSO swarm size (default 100)")
+    parser.add_argument("--pso-weight", type=float, default=None,
+                        help="PSO inertia weight (default 0.8)")
+    parser.add_argument("--pso-cognitive", type=float, default=None,
+                        help="PSO cognitive coefficient (default 0.5)")
+    parser.add_argument("--pso-social", type=float, default=None,
+                        help="PSO social coefficient (default 0.4)")
     parser.add_argument("--num-modes", type=int, default=None)
     parser.add_argument("--threads", type=int, default=1)
     parser.add_argument("--seed", type=int, default=2026)
@@ -622,6 +649,14 @@ def main():
             cond = f"{cond}-ib{args.island_binary}"
         if args.conformer_island is not None and args.conformer_island > 1:
             cond = f"{cond}-ci{args.conformer_island}"
+        if args.pso_pop is not None:
+            cond = f"{cond}-psop{args.pso_pop}"
+        if args.pso_weight is not None:
+            cond = f"{cond}-psow{args.pso_weight:g}"
+        if args.pso_cognitive is not None:
+            cond = f"{cond}-psoc{args.pso_cognitive:g}"
+        if args.pso_social is not None:
+            cond = f"{cond}-psos{args.pso_social:g}"
         if args.steps_scale != 1.0:
             cond = f"{cond}-ss{args.steps_scale:g}"
         try:
@@ -646,7 +681,11 @@ def main():
                                n_islands=args.n_islands,
                                migration_interval=args.migration_interval,
                                island_binary=args.island_binary,
-                               conformer_island=args.conformer_island)
+                               conformer_island=args.conformer_island,
+                               pso_pop=args.pso_pop,
+                               pso_weight=args.pso_weight,
+                               pso_cognitive=args.pso_cognitive,
+                               pso_social=args.pso_social)
         except Exception as exc:
             log(f"{code} {cond}: FAILED - {exc}")
             mark_failed(run_dir, code, cond, traceback.format_exc())
@@ -699,6 +738,14 @@ def main():
             cond = f"{cond}-ib{args.island_binary}"
         if args.conformer_island is not None and args.conformer_island > 1:
             cond = f"{cond}-ci{args.conformer_island}"
+        if args.pso_pop is not None:
+            cond = f"{cond}-psop{args.pso_pop}"
+        if args.pso_weight is not None:
+            cond = f"{cond}-psow{args.pso_weight:g}"
+        if args.pso_cognitive is not None:
+            cond = f"{cond}-psoc{args.pso_cognitive:g}"
+        if args.pso_social is not None:
+            cond = f"{cond}-psos{args.pso_social:g}"
         if args.steps_scale != 1.0:
             cond = f"{cond}-ss{args.steps_scale:g}"
         if args.resume and job_state(run_dir, args.code, cond) != "pending":

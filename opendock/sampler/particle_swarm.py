@@ -331,14 +331,18 @@ class ParticleSwarmOptimizer(BaseSampler):
                     self.global_best_fitness = particle.fitness
                     self.global_best_position = particle.position * 1.0
 
-            # ---- best-position + velocity update ----
+            # ---- best-position + velocity update (full PSO: inertia +
+            #      cognitive + social) ----
             for particle in self.swarm:
                 if particle.fitness < particle.best_fitness:
                     particle.best_position = particle.position * 1.0
                     particle.best_fitness = particle.fitness
+                cognitive_velocity = self.cognitive_param * random.uniform(0, 1) \
+                    * (particle.best_position - particle.position)
                 social_velocity = self.social_param * random.uniform(0, 1) \
-                                  * (self.global_best_position - particle.position)
-                particle.velocity = social_velocity
+                    * (self.global_best_position - particle.position)
+                particle.velocity = self.weight * particle.velocity + \
+                    cognitive_velocity + social_velocity
                 particle.position += particle.velocity
 
             # save history
