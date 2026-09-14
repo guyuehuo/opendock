@@ -66,7 +66,7 @@ class Ligand(object):
         self.atom_bonds=[]
         self.ring_pucker = None
         self.ring_puckers = []
-        self.angle_dof_enabled = os.environ.get("OPENDOCK_ANGLE_DOF", "1") != "0"
+        self.angle_dof_enabled = os.environ.get("OPENDOCK_ANGLE_DOF", "0") != "0"
         self.angle_dof_scale = float(os.environ.get("OPENDOCK_ANGLE_SCALE", "0.26"))
         self.intra_interacting_pairs=[]
         self.intra_interacting_matrix=[]

@@ -297,7 +297,7 @@ def run_one_job(code, source, mode, cfg_name, cfg, prep_dir, run_dir,
                 pso_pop=None, pso_weight=None, pso_cognitive=None,
                 pso_social=None, pso_constriction=False,
                 pso_pools=None, pso_local_social=None,
-                conformer_pso=False, angle_dof=True, angle_scale=0.26):
+                conformer_pso=False, angle_dof=False, angle_scale=0.26):
     os.environ["OPENDOCK_RING_PUCKER"] = "1" if ring_pucker else "0"
     os.environ["OPENDOCK_ANGLE_DOF"] = "1" if angle_dof else "0"
     os.environ["OPENDOCK_ANGLE_SCALE"] = str(angle_scale)
@@ -360,10 +360,10 @@ def run_one_job(code, source, mode, cfg_name, cfg, prep_dir, run_dir,
         cond = f"{cond}-psols{pso_local_social:g}"
     if conformer_pso:
         cond = f"{cond}-confpso"
-    if not angle_dof:
-        cond = f"{cond}-noang"
-    elif angle_scale != 0.26:
-        cond = f"{cond}-asc{angle_scale:g}"
+    if angle_dof:
+        cond = f"{cond}-ang"
+        if angle_scale != 0.26:
+            cond = f"{cond}-asc{angle_scale:g}"
     if steps_scale != 1.0:
         cond = f"{cond}-ss{steps_scale:g}"
     cond_dir = ensure_dir(os.path.join(run_dir, code))
@@ -666,8 +666,8 @@ def main():
     parser.add_argument("--conformer-pso", action="store_true",
                         help="PSO where each pool docks a different conformer")
     parser.add_argument("--angle-dof", action=argparse.BooleanOptionalAction,
-                        default=True,
-                        help="valence-angle DOF (default on; --no-angle-dof)")
+                        default=False,
+                        help="valence-angle DOF (default off; --angle-dof to enable)")
     parser.add_argument("--angle-scale", type=float, default=0.26,
                         help="max valence-angle flex in radians (default 0.26)")
     parser.add_argument("--num-modes", type=int, default=None)
@@ -745,10 +745,10 @@ def main():
             cond = f"{cond}-psols{args.pso_local_social:g}"
         if args.conformer_pso:
             cond = f"{cond}-confpso"
-        if not args.angle_dof:
-            cond = f"{cond}-noang"
-        elif args.angle_scale != 0.26:
-            cond = f"{cond}-asc{args.angle_scale:g}"
+        if args.angle_dof:
+            cond = f"{cond}-ang"
+            if args.angle_scale != 0.26:
+                cond = f"{cond}-asc{args.angle_scale:g}"
         if args.steps_scale != 1.0:
             cond = f"{cond}-ss{args.steps_scale:g}"
         try:
@@ -852,10 +852,10 @@ def main():
             cond = f"{cond}-psols{args.pso_local_social:g}"
         if args.conformer_pso:
             cond = f"{cond}-confpso"
-        if not args.angle_dof:
-            cond = f"{cond}-noang"
-        elif args.angle_scale != 0.26:
-            cond = f"{cond}-asc{args.angle_scale:g}"
+        if args.angle_dof:
+            cond = f"{cond}-ang"
+            if args.angle_scale != 0.26:
+                cond = f"{cond}-asc{args.angle_scale:g}"
         if args.steps_scale != 1.0:
             cond = f"{cond}-ss{args.steps_scale:g}"
         if args.resume and job_state(run_dir, args.code, cond) != "pending":
