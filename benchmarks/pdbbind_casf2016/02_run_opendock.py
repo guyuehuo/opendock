@@ -193,6 +193,36 @@ def _dock_one_island(ligand, receptor, sf, center, half, cfg, sampler_cls,
     return cluster_scores, cluster_cnfrs
 
 
+def _dock_conformer_island(ligands, receptor, sfs, center, half, cfg,
+                           sampler_cls, minimizer, kwargs, n_steps, n_islands,
+                           migration_interval):
+    """Island model where each island docks a different conformer. Returns
+    (score, cnfr, ligand) triples from every island's history."""
+    from opendock.sampler.island_binary_ga import ConformerIslandGA
+
+    for lig, sf in zip(ligands, sfs):
+        rs = sampler_cls(lig, receptor, sf, **dict(kwargs))
+        lig.cnfrs_, receptor.cnfrs_ = rs._random_move(
+            [torch.Tensor(lig.init_cnfrs.detach().numpy())], receptor.init_cnfrs)
+
+    island_kwargs = dict(kwargs)
+    island_pop = max(2, int(kwargs.get("n_pop", 100)) // n_islands)
+    island_pop -= island_pop % 2
+    island_kwargs["n_pop"] = island_pop
+
+    cga = ConformerIslandGA(ligands, receptor, sfs, n_islands=n_islands,
+                            migration_interval=migration_interval,
+                            n_gen=n_steps, seed=2026, **island_kwargs)
+    cga.sampling()
+
+    triples = []
+    for i, ga in enumerate(cga.islands):
+        lig = ligands[i % len(ligands)]
+        for s, c in zip(ga.ligand_scores_history_, ga.ligand_cnfrs_history_):
+            triples.append((s, c, lig))
+    return triples
+
+
 def _write_pose_file(out_pdbqt, triples, receptor):
     """Write a multi-model PDBQT from ``(score, cnfr, ligand)`` triples.
 
@@ -234,7 +264,7 @@ def run_one_job(code, source, mode, cfg_name, cfg, prep_dir, run_dir,
                 torsion_max=None, ring_pucker=True,
                 p_c=None, p_m=None, tournament_k=None, minimization_ratio=None,
                 elite_ratio=None, n_islands=None, migration_interval=5,
-                island_binary=None):
+                island_binary=None, conformer_island=None):
     os.environ["OPENDOCK_RING_PUCKER"] = "1" if ring_pucker else "0"
     cond = condition_id(source, mode, cfg_name)
     if bound_value is not None:
@@ -277,6 +307,8 @@ def run_one_job(code, source, mode, cfg_name, cfg, prep_dir, run_dir,
             cond = f"{cond}-mi{migration_interval}"
     if island_binary is not None and island_binary > 1:
         cond = f"{cond}-ib{island_binary}"
+    if conformer_island is not None and conformer_island > 1:
+        cond = f"{cond}-ci{conformer_island}"
     if steps_scale != 1.0:
         cond = f"{cond}-ss{steps_scale:g}"
     cond_dir = ensure_dir(os.path.join(run_dir, code))
@@ -348,7 +380,25 @@ def run_one_job(code, source, mode, cfg_name, cfg, prep_dir, run_dir,
 
     # dock every conformer (each run starts from a different frozen geometry)
     all_triples = []
-    if n_islands is not None and n_islands > 1:
+    if conformer_island is not None and conformer_island > 1:
+        # island model where each island docks a different conformer
+        ligands, sfs_list = [], []
+        for i, lig_pdbqt in enumerate(lig_pdbqts):
+            if i == 0:
+                lig, sff = ligand, sf
+            else:
+                lig, sff = build_ligand_sf(lig_pdbqt, receptor, center,
+                                           device=device, compile=compile)
+            ligands.append(lig)
+            sfs_list.append(sff)
+        log(f"{code} {cond}: conformer-island GA ({conformer_island} islands) "
+            f"over {len(ligands)} conformers")
+        all_triples = _dock_conformer_island(ligands, receptor, sfs_list,
+                                             center, half, cfg, sampler_cls,
+                                             minimizer, kwargs, n_steps,
+                                             conformer_island,
+                                             migration_interval)
+    elif n_islands is not None and n_islands > 1:
         # island-model GA: one population spanning all conformers, partitioned
         # into islands with periodic migration
         from opendock.sampler.island_ga import IslandGA
@@ -510,6 +560,9 @@ def main():
     parser.add_argument("--island-binary", type=int, default=None,
                         help="island-model on the binary GA: number of "
                              "sub-populations (default off)")
+    parser.add_argument("--conformer-island", type=int, default=None,
+                        help="island model where each island docks a different "
+                             "conformer (number of islands)")
     parser.add_argument("--num-modes", type=int, default=None)
     parser.add_argument("--threads", type=int, default=1)
     parser.add_argument("--seed", type=int, default=2026)
@@ -567,6 +620,8 @@ def main():
                 cond = f"{cond}-mi{args.migration_interval}"
         if args.island_binary is not None and args.island_binary > 1:
             cond = f"{cond}-ib{args.island_binary}"
+        if args.conformer_island is not None and args.conformer_island > 1:
+            cond = f"{cond}-ci{args.conformer_island}"
         if args.steps_scale != 1.0:
             cond = f"{cond}-ss{args.steps_scale:g}"
         try:
@@ -590,7 +645,8 @@ def main():
                                elite_ratio=args.elite_ratio,
                                n_islands=args.n_islands,
                                migration_interval=args.migration_interval,
-                               island_binary=args.island_binary)
+                               island_binary=args.island_binary,
+                               conformer_island=args.conformer_island)
         except Exception as exc:
             log(f"{code} {cond}: FAILED - {exc}")
             mark_failed(run_dir, code, cond, traceback.format_exc())
@@ -641,6 +697,8 @@ def main():
                 cond = f"{cond}-mi{args.migration_interval}"
         if args.island_binary is not None and args.island_binary > 1:
             cond = f"{cond}-ib{args.island_binary}"
+        if args.conformer_island is not None and args.conformer_island > 1:
+            cond = f"{cond}-ci{args.conformer_island}"
         if args.steps_scale != 1.0:
             cond = f"{cond}-ss{args.steps_scale:g}"
         if args.resume and job_state(run_dir, args.code, cond) != "pending":

@@ -61,3 +61,36 @@ class IslandBinaryGA:
             self.ligand_cnfrs_history_.extend(ga.ligand_cnfrs_history_)
             self.ligand_scores_history_.extend(ga.ligand_scores_history_)
         return self
+
+
+class ConformerIslandGA(IslandBinaryGA):
+    """Island model where each island docks a *different* ligand conformer.
+
+    Island ``i`` uses conformer ``i % n_conformers`` (its own frozen geometry),
+    so the islands occupy heterogeneous niches of the search space. Migration
+    copies the best full chromosome between islands (ring topology); the
+    rigid-body part (xyz + rotation) is globally meaningful, while the
+    torsion/ring part is re-optimized by the receiving island's geometry.
+    """
+    def __init__(self, ligands, receptor, scoring_functions, n_islands=4,
+                 migration_interval=5, migration_size=1, n_gen=50, seed=2026,
+                 **ga_kwargs):
+        self.ligands = ligands
+        self.sfs = scoring_functions
+        self.n_islands = int(n_islands)
+        self.migration_interval = int(migration_interval)
+        self.migration_size = int(migration_size)
+        self.n_gen = int(n_gen)
+        self.seed = seed
+        self.islands = []
+        for i in range(self.n_islands):
+            lig = ligands[i % len(ligands)]
+            sf = scoring_functions[i % len(ligands)]
+            s = seed + i * 7919
+            random.seed(s)
+            np.random.seed(s)
+            ga = GeneticAlgorithmSampler(lig, receptor, sf,
+                                         np_random_seed=s, **ga_kwargs)
+            self.islands.append(ga)
+        self.ligand_cnfrs_history_ = []
+        self.ligand_scores_history_ = []
