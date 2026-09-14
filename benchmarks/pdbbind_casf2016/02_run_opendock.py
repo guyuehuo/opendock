@@ -158,6 +158,41 @@ def _dock_one(ligand, receptor, sf, center, half, cfg, sampler_cls,
     return cluster_scores, cluster_cnfrs
 
 
+def _dock_one_island(ligand, receptor, sf, center, half, cfg, sampler_cls,
+                     minimizer, kwargs, n_steps, num_modes, cluster_cutoff,
+                     n_islands, migration_interval):
+    """Dock one conformer with the island-model binary GA (sub-populations +
+    migration). Returns (cluster_scores, cluster_cnfrs)."""
+    from opendock.sampler.island_binary_ga import IslandBinaryGA
+    init_lig_cnfrs = [torch.Tensor(ligand.init_cnfrs.detach().numpy())]
+    init_rec_cnfrs = receptor.init_cnfrs
+
+    random_sampler = sampler_cls(ligand, receptor, sf, **dict(kwargs))
+    ligand.cnfrs_, receptor.cnfrs_ = random_sampler._random_move(init_lig_cnfrs,
+                                                                 init_rec_cnfrs)
+
+    island_kwargs = dict(kwargs)
+    island_pop = max(2, int(kwargs.get("n_pop", 100)) // n_islands)
+    island_pop -= island_pop % 2  # GA crossover assumes an even population
+    island_kwargs["n_pop"] = island_pop
+    iga = IslandBinaryGA(ligand, receptor, sf, n_islands=n_islands,
+                         migration_interval=migration_interval,
+                         n_gen=n_steps, seed=2026, **island_kwargs)
+    iga.sampling()
+
+    pairs = list(zip(iga.ligand_scores_history_, iga.ligand_cnfrs_history_))
+    pairs = sorted(pairs, key=lambda p: p[0])
+    if not pairs:
+        return [], []
+
+    scores = [p[0] for p in pairs]
+    cnfrs = [p[1] for p in pairs]
+    cluster = BaseCluster(cnfrs, None, scores, ligand, cutoff=cluster_cutoff)
+    cluster_scores, cluster_cnfrs, _ = cluster.clustering(num_modes=num_modes,
+                                                          energy_cutoff=1e3)
+    return cluster_scores, cluster_cnfrs
+
+
 def _write_pose_file(out_pdbqt, triples, receptor):
     """Write a multi-model PDBQT from ``(score, cnfr, ligand)`` triples.
 
@@ -198,7 +233,8 @@ def run_one_job(code, source, mode, cfg_name, cfg, prep_dir, run_dir,
                 batch_minimize=True, min_steps=None, min_lr=None, n_pop=None,
                 torsion_max=None, ring_pucker=True,
                 p_c=None, p_m=None, tournament_k=None, minimization_ratio=None,
-                elite_ratio=None, n_islands=None, migration_interval=5):
+                elite_ratio=None, n_islands=None, migration_interval=5,
+                island_binary=None):
     os.environ["OPENDOCK_RING_PUCKER"] = "1" if ring_pucker else "0"
     cond = condition_id(source, mode, cfg_name)
     if bound_value is not None:
@@ -239,6 +275,8 @@ def run_one_job(code, source, mode, cfg_name, cfg, prep_dir, run_dir,
         cond = f"{cond}-is{n_islands}"
         if migration_interval != 5:
             cond = f"{cond}-mi{migration_interval}"
+    if island_binary is not None and island_binary > 1:
+        cond = f"{cond}-ib{island_binary}"
     if steps_scale != 1.0:
         cond = f"{cond}-ss{steps_scale:g}"
     cond_dir = ensure_dir(os.path.join(run_dir, code))
@@ -343,10 +381,18 @@ def run_one_job(code, source, mode, cfg_name, cfg, prep_dir, run_dir,
             else:
                 lig, sff = build_ligand_sf(lig_pdbqt, receptor, center,
                                            device=device, compile=compile)
-            log(f"{code} {cond}: docking conformer {i}/{len(lig_pdbqts)}")
-            cs, cc = _dock_one(lig, receptor, sff, center, half, cfg,
-                               sampler_cls, minimizer, kwargs, n_steps,
-                               num_modes, cluster_cutoff)
+            if island_binary is not None and island_binary > 1:
+                log(f"{code} {cond}: island-binary GA ({island_binary} "
+                    f"islands) conformer {i}/{len(lig_pdbqts)}")
+                cs, cc = _dock_one_island(lig, receptor, sff, center, half,
+                                          cfg, sampler_cls, minimizer, kwargs,
+                                          n_steps, num_modes, cluster_cutoff,
+                                          island_binary, migration_interval)
+            else:
+                log(f"{code} {cond}: docking conformer {i}/{len(lig_pdbqts)}")
+                cs, cc = _dock_one(lig, receptor, sff, center, half, cfg,
+                                   sampler_cls, minimizer, kwargs, n_steps,
+                                   num_modes, cluster_cutoff)
             for s, c in zip(cs, cc):
                 all_triples.append((s, c, lig))
 
@@ -461,6 +507,9 @@ def main():
                              "(default off = separate per-conformer docking)")
     parser.add_argument("--migration-interval", type=int, default=5,
                         help="island-model GA: migration every N generations")
+    parser.add_argument("--island-binary", type=int, default=None,
+                        help="island-model on the binary GA: number of "
+                             "sub-populations (default off)")
     parser.add_argument("--num-modes", type=int, default=None)
     parser.add_argument("--threads", type=int, default=1)
     parser.add_argument("--seed", type=int, default=2026)
@@ -516,6 +565,8 @@ def main():
             cond = f"{cond}-is{args.n_islands}"
             if args.migration_interval != 5:
                 cond = f"{cond}-mi{args.migration_interval}"
+        if args.island_binary is not None and args.island_binary > 1:
+            cond = f"{cond}-ib{args.island_binary}"
         if args.steps_scale != 1.0:
             cond = f"{cond}-ss{args.steps_scale:g}"
         try:
@@ -538,7 +589,8 @@ def main():
                                minimization_ratio=args.minimization_ratio,
                                elite_ratio=args.elite_ratio,
                                n_islands=args.n_islands,
-                               migration_interval=args.migration_interval)
+                               migration_interval=args.migration_interval,
+                               island_binary=args.island_binary)
         except Exception as exc:
             log(f"{code} {cond}: FAILED - {exc}")
             mark_failed(run_dir, code, cond, traceback.format_exc())
@@ -587,6 +639,8 @@ def main():
             cond = f"{cond}-is{args.n_islands}"
             if args.migration_interval != 5:
                 cond = f"{cond}-mi{args.migration_interval}"
+        if args.island_binary is not None and args.island_binary > 1:
+            cond = f"{cond}-ib{args.island_binary}"
         if args.steps_scale != 1.0:
             cond = f"{cond}-ss{args.steps_scale:g}"
         if args.resume and job_state(run_dir, args.code, cond) != "pending":
