@@ -266,7 +266,7 @@ def run_one_job(code, source, mode, cfg_name, cfg, prep_dir, run_dir,
                 elite_ratio=None, n_islands=None, migration_interval=5,
                 island_binary=None, conformer_island=None,
                 pso_pop=None, pso_weight=None, pso_cognitive=None,
-                pso_social=None):
+                pso_social=None, pso_constriction=False):
     os.environ["OPENDOCK_RING_PUCKER"] = "1" if ring_pucker else "0"
     cond = condition_id(source, mode, cfg_name)
     if bound_value is not None:
@@ -319,6 +319,8 @@ def run_one_job(code, source, mode, cfg_name, cfg, prep_dir, run_dir,
         cond = f"{cond}-psoc{pso_cognitive:g}"
     if pso_social is not None:
         cond = f"{cond}-psos{pso_social:g}"
+    if pso_constriction:
+        cond = f"{cond}-psocx"
     if steps_scale != 1.0:
         cond = f"{cond}-ss{steps_scale:g}"
     cond_dir = ensure_dir(os.path.join(run_dir, code))
@@ -393,6 +395,8 @@ def run_one_job(code, source, mode, cfg_name, cfg, prep_dir, run_dir,
             kwargs["cognitive_param"] = float(pso_cognitive)
         if pso_social is not None:
             kwargs["social_param"] = float(pso_social)
+        if pso_constriction:
+            kwargs["constriction"] = True
 
     n_steps = int(float(cfg["steps_per_ha"]) * ligand.number_of_heavy_atoms
                   * steps_scale)
@@ -590,6 +594,8 @@ def main():
                         help="PSO cognitive coefficient (default 0.5)")
     parser.add_argument("--pso-social", type=float, default=None,
                         help="PSO social coefficient (default 0.4)")
+    parser.add_argument("--pso-constriction", action="store_true",
+                        help="use Clerc constriction factor in PSO velocity")
     parser.add_argument("--num-modes", type=int, default=None)
     parser.add_argument("--threads", type=int, default=1)
     parser.add_argument("--seed", type=int, default=2026)
@@ -657,6 +663,8 @@ def main():
             cond = f"{cond}-psoc{args.pso_cognitive:g}"
         if args.pso_social is not None:
             cond = f"{cond}-psos{args.pso_social:g}"
+        if args.pso_constriction:
+            cond = f"{cond}-psocx"
         if args.steps_scale != 1.0:
             cond = f"{cond}-ss{args.steps_scale:g}"
         try:
@@ -685,7 +693,8 @@ def main():
                                pso_pop=args.pso_pop,
                                pso_weight=args.pso_weight,
                                pso_cognitive=args.pso_cognitive,
-                               pso_social=args.pso_social)
+                               pso_social=args.pso_social,
+                               pso_constriction=args.pso_constriction)
         except Exception as exc:
             log(f"{code} {cond}: FAILED - {exc}")
             mark_failed(run_dir, code, cond, traceback.format_exc())
@@ -746,6 +755,8 @@ def main():
             cond = f"{cond}-psoc{args.pso_cognitive:g}"
         if args.pso_social is not None:
             cond = f"{cond}-psos{args.pso_social:g}"
+        if args.pso_constriction:
+            cond = f"{cond}-psocx"
         if args.steps_scale != 1.0:
             cond = f"{cond}-ss{args.steps_scale:g}"
         if args.resume and job_state(run_dir, args.code, cond) != "pending":

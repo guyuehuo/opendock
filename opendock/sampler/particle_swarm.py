@@ -129,6 +129,7 @@ class ParticleSwarmOptimizer(BaseSampler):
         self.weight = weight
         self.init_weight = weight
         self.w_min = kwargs.pop('w_min', 0.4)
+        self.constriction = kwargs.pop('constriction', False)
         self.init_cognitive_param = cognitive_param
         self.init_social_param = social_param
         self.cognitive_param = cognitive_param
@@ -346,8 +347,15 @@ class ParticleSwarmOptimizer(BaseSampler):
                     * (particle.best_position - particle.position)
                 social_velocity = self.social_param * random.uniform(0, 1) \
                     * (self.global_best_position - particle.position)
-                particle.velocity = self.weight * particle.velocity + \
-                    cognitive_velocity + social_velocity
+                if self.constriction:
+                    # Clerc type-1'' constriction (guaranteed-convergence PSO)
+                    chi = 0.7298
+                    particle.velocity = chi * (particle.velocity +
+                                               cognitive_velocity +
+                                               social_velocity)
+                else:
+                    particle.velocity = self.weight * particle.velocity + \
+                        cognitive_velocity + social_velocity
                 # velocity clamping (20% of the search range per component)
                 v_max = 0.2 * (np.asarray(self.ub) - np.asarray(self.lb))
                 particle.velocity = np.clip(particle.velocity, -v_max, v_max)
