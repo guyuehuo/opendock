@@ -266,7 +266,8 @@ def run_one_job(code, source, mode, cfg_name, cfg, prep_dir, run_dir,
                 elite_ratio=None, n_islands=None, migration_interval=5,
                 island_binary=None, conformer_island=None,
                 pso_pop=None, pso_weight=None, pso_cognitive=None,
-                pso_social=None, pso_constriction=False):
+                pso_social=None, pso_constriction=False,
+                pso_pools=None, pso_local_social=None):
     os.environ["OPENDOCK_RING_PUCKER"] = "1" if ring_pucker else "0"
     cond = condition_id(source, mode, cfg_name)
     if bound_value is not None:
@@ -321,6 +322,10 @@ def run_one_job(code, source, mode, cfg_name, cfg, prep_dir, run_dir,
         cond = f"{cond}-psos{pso_social:g}"
     if pso_constriction:
         cond = f"{cond}-psocx"
+    if pso_pools is not None:
+        cond = f"{cond}-psopool{pso_pools}"
+    if pso_local_social is not None:
+        cond = f"{cond}-psols{pso_local_social:g}"
     if steps_scale != 1.0:
         cond = f"{cond}-ss{steps_scale:g}"
     cond_dir = ensure_dir(os.path.join(run_dir, code))
@@ -397,6 +402,10 @@ def run_one_job(code, source, mode, cfg_name, cfg, prep_dir, run_dir,
             kwargs["social_param"] = float(pso_social)
         if pso_constriction:
             kwargs["constriction"] = True
+        if pso_pools is not None:
+            kwargs["n_pools"] = int(pso_pools)
+        if pso_local_social is not None:
+            kwargs["local_social_param"] = float(pso_local_social)
 
     n_steps = int(float(cfg["steps_per_ha"]) * ligand.number_of_heavy_atoms
                   * steps_scale)
@@ -596,6 +605,10 @@ def main():
                         help="PSO social coefficient (default 0.4)")
     parser.add_argument("--pso-constriction", action="store_true",
                         help="use Clerc constriction factor in PSO velocity")
+    parser.add_argument("--pso-pools", type=int, default=None,
+                        help="multi-swarm PSO: number of sub-swarms (default 1)")
+    parser.add_argument("--pso-local-social", type=float, default=None,
+                        help="multi-swarm PSO: local pool social coefficient")
     parser.add_argument("--num-modes", type=int, default=None)
     parser.add_argument("--threads", type=int, default=1)
     parser.add_argument("--seed", type=int, default=2026)
@@ -665,6 +678,10 @@ def main():
             cond = f"{cond}-psos{args.pso_social:g}"
         if args.pso_constriction:
             cond = f"{cond}-psocx"
+        if args.pso_pools is not None:
+            cond = f"{cond}-psopool{args.pso_pools}"
+        if args.pso_local_social is not None:
+            cond = f"{cond}-psols{args.pso_local_social:g}"
         if args.steps_scale != 1.0:
             cond = f"{cond}-ss{args.steps_scale:g}"
         try:
@@ -694,7 +711,9 @@ def main():
                                pso_weight=args.pso_weight,
                                pso_cognitive=args.pso_cognitive,
                                pso_social=args.pso_social,
-                               pso_constriction=args.pso_constriction)
+                               pso_constriction=args.pso_constriction,
+                               pso_pools=args.pso_pools,
+                               pso_local_social=args.pso_local_social)
         except Exception as exc:
             log(f"{code} {cond}: FAILED - {exc}")
             mark_failed(run_dir, code, cond, traceback.format_exc())
@@ -757,6 +776,10 @@ def main():
             cond = f"{cond}-psos{args.pso_social:g}"
         if args.pso_constriction:
             cond = f"{cond}-psocx"
+        if args.pso_pools is not None:
+            cond = f"{cond}-psopool{args.pso_pools}"
+        if args.pso_local_social is not None:
+            cond = f"{cond}-psols{args.pso_local_social:g}"
         if args.steps_scale != 1.0:
             cond = f"{cond}-ss{args.steps_scale:g}"
         if args.resume and job_state(run_dir, args.code, cond) != "pending":

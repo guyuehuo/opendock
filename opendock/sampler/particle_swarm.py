@@ -123,6 +123,8 @@ class ParticleSwarmOptimizer(BaseSampler):
             self.bounds += [[np.pi * -1.0, np.pi], ] * num_freedoms
 
         self.size = kwargs.pop('population_size', 100)
+        self.n_pools = kwargs.pop('n_pools', 1)
+        self.local_social_param = kwargs.pop('local_social_param', None)
         # print("self.bounds",self.bounds)
         self.lb = [x[0] for x in self.bounds]
         self.ub = [x[1] for x in self.bounds]
@@ -169,6 +171,17 @@ class ParticleSwarmOptimizer(BaseSampler):
 
         self.swarm = [init_particle, ] + [Particle(self.dim, self.lb, self.ub) \
                       for _ in range(self.size - 1)]
+
+        # partition the swarm into pools (sub-swarms) for multi-swarm PSO
+        pool_size = max(1, self.size // self.n_pools)
+        self.pools = []
+        for i in range(self.n_pools):
+            pool = self.swarm[i * pool_size:(i + 1) * pool_size]
+            if pool:
+                self.pools.append(pool)
+        self.n_pools = len(self.pools)
+        self.pool_best_positions = [np.zeros(self.dim) for _ in range(self.n_pools)]
+        self.pool_best_fitness = [float('inf')] * self.n_pools
 
         # self.swarm = [init_particle] * self.size
         # for i in range(self.size):
@@ -331,38 +344,45 @@ class ParticleSwarmOptimizer(BaseSampler):
                             _fitness = 999.99
                             print("[WARNING] Running minimization failed, ignore ...")
 
-            # ---- global best update ----
+            # ---- global best + per-pool (local) best update ----
             for particle in self.swarm:
                 if particle.fitness < self.global_best_fitness:
                     self.global_best_fitness = particle.fitness
                     self.global_best_position = particle.position * 1.0
+            for pool_idx, pool in enumerate(self.pools):
+                for particle in pool:
+                    if particle.fitness < self.pool_best_fitness[pool_idx]:
+                        self.pool_best_fitness[pool_idx] = particle.fitness
+                        self.pool_best_positions[pool_idx] = particle.position * 1.0
 
-            # ---- best-position + velocity update (full PSO: inertia +
-            #      cognitive + social) ----
-            for particle in self.swarm:
-                if particle.fitness < particle.best_fitness:
-                    particle.best_position = particle.position * 1.0
-                    particle.best_fitness = particle.fitness
-                cognitive_velocity = self.cognitive_param * random.uniform(0, 1) \
-                    * (particle.best_position - particle.position)
-                social_velocity = self.social_param * random.uniform(0, 1) \
-                    * (self.global_best_position - particle.position)
-                if self.constriction:
-                    # Clerc type-1'' constriction (guaranteed-convergence PSO)
-                    chi = 0.7298
-                    particle.velocity = chi * (particle.velocity +
-                                               cognitive_velocity +
-                                               social_velocity)
-                else:
-                    particle.velocity = self.weight * particle.velocity + \
-                        cognitive_velocity + social_velocity
-                # velocity clamping (20% of the search range per component)
-                v_max = 0.2 * (np.asarray(self.ub) - np.asarray(self.lb))
-                particle.velocity = np.clip(particle.velocity, -v_max, v_max)
-                # position update + clamping to bounds
-                particle.position = np.clip(
-                    particle.position + particle.velocity,
-                    np.asarray(self.lb), np.asarray(self.ub))
+            # ---- best-position + velocity update (cognitive + local-pool
+            #      social + global social) ----
+            local_social = (self.local_social_param if self.local_social_param
+                            is not None else self.social_param)
+            for pool_idx, pool in enumerate(self.pools):
+                for particle in pool:
+                    if particle.fitness < particle.best_fitness:
+                        particle.best_position = particle.position * 1.0
+                        particle.best_fitness = particle.fitness
+                    cognitive_velocity = self.cognitive_param * random.uniform(0, 1) \
+                        * (particle.best_position - particle.position)
+                    pool_velocity = local_social * random.uniform(0, 1) \
+                        * (self.pool_best_positions[pool_idx] - particle.position)
+                    global_velocity = self.social_param * random.uniform(0, 1) \
+                        * (self.global_best_position - particle.position)
+                    velocity = cognitive_velocity + pool_velocity + global_velocity
+                    if self.constriction:
+                        chi = 0.7298
+                        particle.velocity = chi * (particle.velocity + velocity)
+                    else:
+                        particle.velocity = self.weight * particle.velocity + velocity
+                    # velocity clamping (20% of the search range per component)
+                    v_max = 0.2 * (np.asarray(self.ub) - np.asarray(self.lb))
+                    particle.velocity = np.clip(particle.velocity, -v_max, v_max)
+                    # position update + clamping to bounds
+                    particle.position = np.clip(
+                        particle.position + particle.velocity,
+                        np.asarray(self.lb), np.asarray(self.ub))
 
             # save history
             _lig_cnfrs, _rec_cnfrs_ = self._variables2cnfrs(self.global_best_position)
