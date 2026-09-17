@@ -22,6 +22,7 @@
   ],
   "box": {
     "pocket_half_extent": 10.0,
+    "blind_half_extent": 50.0,
     "blind_margin": 10.0,
     "clip_default": 20.0,
     "clip_blind_factor": 1.5

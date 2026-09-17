@@ -81,8 +81,10 @@ def save_meta(meta, meta_fpath):
 def docking_center_and_half(meta, mode, conditions):
     """Return ``(center, half)`` for a docking condition.
 
-    - ``pocket``: box around the crystal ligand COM, half extent from config.
-    - ``blind``:  box spanning the protein bounding box plus a margin.
+    - ``pocket``: box around the crystal ligand COM, half extent from config
+      (20 A box).
+    - ``blind``:  box centred on the protein COM with a large fixed half extent
+      from config (100 A box).
     """
     box_cfg = conditions["box"]
     if mode == "pocket":
@@ -90,7 +92,7 @@ def docking_center_and_half(meta, mode, conditions):
         half = [float(box_cfg["pocket_half_extent"])] * 3
     elif mode == "blind":
         center = [float(x) for x in meta["protein_center"]]
-        half = [float(x) for x in meta["protein_half_extent_plus_margin"]]
+        half = [float(box_cfg["blind_half_extent"])] * 3
     else:
         raise ValueError(f"unknown docking mode: {mode}")
     return center, half
