@@ -750,7 +750,14 @@ class VinaSF(BaseScoringFunction):
         r = cutoff + self._lig_max_radius() + margin
         d = torch.norm(self._rec_xyz_dev - centroid, dim=1)
         idx = (d <= r).nonzero(as_tuple=True)[0]
-        self._active_rec_indices = idx.to(self.device)
+        if idx.numel() == 0:
+            # Diverged ligand pose far from every receptor atom: an empty
+            # subset would zero out the inter term and crash the dense
+            # distance-matrix reshape (view(-1, N, 1) with N == 0).  Fall
+            # back to full-receptor scoring instead.
+            self._active_rec_indices = None
+        else:
+            self._active_rec_indices = idx.to(self.device)
 
     def clear_pocket_subset(self):
         self._active_rec_indices = None
