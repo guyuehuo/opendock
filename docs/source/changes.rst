@@ -55,19 +55,12 @@ Peptide and ensemble docking
     clustering to medoids) and ensemble docking with greedy pose selection.
   - Pose output preserves ligand residue/chain/atom names and writes per-residue
     energy decomposition as ``REMARK`` lines.
-  - RDKit conformer ensemble docking added to the CASF-2016 benchmark.
-
-Benchmark
-~~~~~~~~~
-
-  - CASF-2016 docking-power benchmark against standalone idock (165-complex
-    slice; crystal/RDKit starts; pocket/blind modes; MC/GA/PSO with and without
-    L-BFGS).  See :doc:`benchmark`.
+  - RDKit conformer ensemble docking.
 
 Documentation
 ~~~~~~~~~~~~~
 
-  - New ``acceleration``, ``performance_optimization``, ``benchmark``,
+  - New ``acceleration``, ``performance_optimization``,
     ``constraints`` and ``scoring_functions`` pages; the ``cyclo_peptide_docking``
     page gained ensemble, restraint and worked-example sections; ``multi-CPU``
     was rewritten as parallel execution (multi-CPU / multi-GPU).
