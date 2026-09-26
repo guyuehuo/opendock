@@ -16,9 +16,15 @@ standard ```samplers``` are implemented:
     
     MonteCarloSampler
     GeneticAlgorithmSampler
-    BayersianOptimizerSampler
+    BayesianOptimizationSampler
+    ReplicaExchangeMCSampler
     ParticleSwarmOptimizer
     MinimizerSampler
+
+On the PDBbind CASF-2016 core set the **genetic algorithm** is the most
+accurate sampler; the default protocol (`general_protocol.py`, `ga_vina.py`)
+uses a population of 200 with batched-Adam minimisation (30 steps). See
+`docs/source/benchmark.rst` for the full sampler comparison.
 
 For both ```samplers```, the main method is ```sampling```, which 
 defines number of steps. The sampling history is stored in the object (```ligand_scores_history_```, 

@@ -191,7 +191,17 @@ class DeepRmsdSF(BaseScoringFunction):
         #print("cost time in scaler features:", time.time() - t)
 
         # predict the RMSD
-        self.model_object = torch.load(self.model_fpath)
+        # The bundled checkpoint is a full module pickled from a training
+        # script's ``__main__`` (not a state_dict), so it needs both
+        # ``weights_only=False`` and a ``__main__.CNN`` alias on torch>=2.6.
+        if getattr(self, "model_object", None) is None:
+            import __main__
+            if not hasattr(__main__, "CNN"):
+                setattr(__main__, "CNN", CNN)
+            self.model_object = torch.load(self.model_fpath,
+                                           map_location="cpu",
+                                           weights_only=False)
+        self.model_object.eval()
         #t = time.time()
         self.pred_rmsd = self.model_object(self.features_matrix)
         #print("cost time in pred rmsd:", time.time() - t)
