@@ -1,5 +1,24 @@
 # Changelog
 
+## v1.1.3
+
+### Accuracy benchmark and default protocol
+
+- PDBbind **CASF-2016** docking-accuracy study (GA/PSO/MC/REMC/BO, Vina,
+  RDKit de-novo starts) documented in `docs/source/benchmark.rst`.
+- **GA + Adam + Vina is now the default protocol**: `general_protocol` uses
+  `--sampler ga`, `n_pop=200`, `minimize-steps=30` (5 generations/heavy atom);
+  `ga_vina` matches. RDKit top-1 ≤2 Å reaches **60.1%** (crystal 60.6%), and
+  **66.3%** with DeepRMSD re-ranking.
+- Fixed the CASF-2016 RMSD evaluator (graph-isomorphism atom matching) —
+  re-evaluation alone raised the RDKit GA baseline from 31.5% to 40.6%.
+- New samplers: **REMC** (`--remc-*`) and a rewritten benchmark-compatible
+  **Bayesian optimization** (`--bo-*`).
+- `DeepRmsdSF` loads on PyTorch ≥ 2.6.
+- Benchmark harness: `06_exp_runner.py`, `07_exp_eval.py`, `08_rerank_eval.py`,
+  `09_blend_eval.py`; `--final-min-steps`, `--cluster-cutoff`;
+  `regenerate_conformers.py --prep-dir`.
+
 ## v1.1.2
 
 ### Performance and acceleration

@@ -9,14 +9,14 @@ from opendock.sampler.ga import GeneticAlgorithmSampler
 try:
     from opendock.sampler.bayesian import BayesianOptimizationSampler
     samplers = {
-        "ga": [GeneticAlgorithmSampler, 10],
+        "ga": [GeneticAlgorithmSampler, 5],
         "bo": [BayesianOptimizationSampler, 20],
         "mc": [MonteCarloSampler, 100],
         "pso": [ParticleSwarmOptimizer, 10],
     }
 except ImportError:
     samplers = {
-        "ga": [GeneticAlgorithmSampler, 10],
+        "ga": [GeneticAlgorithmSampler, 5],
         "mc": [MonteCarloSampler, 100],
         "pso": [ParticleSwarmOptimizer, 10],
     }
@@ -62,8 +62,9 @@ def argument():
                         help="Configuration file.")
     parser.add_argument("--scorer", default="vina", type=str, 
                         help="The scoring functhon name.")
-    parser.add_argument("--sampler", default="mc", type=str, 
-                        help="The sampler method (mc/ga/pso/bo).")
+    parser.add_argument("--sampler", default="ga", type=str,
+                        help="The sampler method (ga/mc/pso/bo); default ga, "
+                             "the best-performing sampler on CASF-2016.")
     parser.add_argument("--minimizer", default="adam", type=str, 
                         help="The minimization method (adam/lbfgs/sgd/none).")
     parser.add_argument("--device", default="auto", type=str,
@@ -76,7 +77,10 @@ def argument():
                         help="MC batch size (chain count); default 32 on cuda "
                              "else 1.")
     parser.add_argument("--minimize-steps", type=int, default=None,
-                        help="Batched-Adam steps per minimize (default 3).")
+                        help="Batched-Adam steps per minimize (default 30 for "
+                             "ga, 3 otherwise).")
+    parser.add_argument("--n-pop", type=int, default=None,
+                        help="GA population size (default 200).")
     args = parser.parse_args()
 
     if len(sys.argv) < 2:
@@ -101,8 +105,15 @@ def _sampler_kwargs(args, xyz_center, box_sizes):
     if args.sampler == "mc":
         kwargs["ntasks"] = (args.ntasks if args.ntasks is not None
                             else (32 if args.device.startswith("cuda") else 1))
+    if args.sampler == "ga":
+        # best-performing GA settings on the CASF-2016 core set (see
+        # docs/source/benchmark.rst): a large, diverse population with
+        # well-converged Adam minimisation.
+        kwargs["n_pop"] = int(args.n_pop) if args.n_pop is not None else 200
     if args.minimize_steps is not None:
         kwargs["minimize_nsteps"] = int(args.minimize_steps)
+    elif args.sampler == "ga":
+        kwargs["minimize_nsteps"] = 30
     return kwargs
 
 

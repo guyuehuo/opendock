@@ -42,7 +42,8 @@ from `github.com/guyuehuo/opendock <https://github.com/guyuehuo/opendock>`_
    acceleration
    multi-CPU
    sampler
-    scoring
-    constraints
-    external_sf
-    performance_optimization
+   scoring
+   constraints
+   external_sf
+   performance_optimization
+   benchmark

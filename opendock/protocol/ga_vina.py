@@ -20,6 +20,12 @@ def argument():
     parser.add_argument("--compile", action=argparse.BooleanOptionalAction,
                         default=True,
                         help="torch.compile the scoring/geometry kernels.")
+    parser.add_argument("--n-pop", type=int, default=200,
+                        help="GA population size (default 200, best on "
+                             "CASF-2016).")
+    parser.add_argument("--minimize-steps", type=int, default=30,
+                        help="Batched-Adam steps per minimize (default 30; "
+                             "more steps improve pose convergence and accuracy).")
 
     args = parser.parse_args()
 
@@ -62,14 +68,12 @@ def main():
         ligand.cnfrs_, receptor.cnfrs_ = ligand.init_cnfrs, receptor.init_cnfrs
         # define sampler
         #print("Cnfrs: ",ligand.cnfrs_, receptor.cnfrs_)
-        ga = GeneticAlgorithmSampler(ligand, receptor, sf, 
-                                     box_center=xyz_center, 
-                                     box_size=box_sizes, 
-                                     minimizer=lbfgs_minimizer,
-                                     minimization_ratio=0.1,
-                                     n_pop=100, 
-                                     p_c = 0.3,
-                                     p_m = 0.05,
+        ga = GeneticAlgorithmSampler(ligand, receptor, sf,
+                                     box_center=xyz_center,
+                                     box_size=box_sizes,
+                                     minimizer=adam_minimizer,
+                                     n_pop=args.n_pop,
+                                     minimize_nsteps=args.minimize_steps,
                                      early_stop_tolerance=10,
                                      verbose=False,
                                     )

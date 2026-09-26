@@ -147,9 +147,55 @@ An example of this ``MonteCarloSampler`` sampler is demonstrated in the followin
     mc._random_move(ligand.cnfrs_, receptor.cnfrs_)
     mc.sampling(100)
 
-4. Bayersian Optimization Sampler
+4. Bayesian Optimization Sampler
 ---------------------------------------
-Although we have implemented a Bayersian Optimization Sampler in OpenDock, the performance of it is not verified. 
 
-.. warning::
-    It is not recommended to use this sampler util we run the tests.
+``BayesianOptimizationSampler`` fits a Gaussian-process surrogate to the Vina
+energy over the ligand conformation vector and proposes new poses with a
+UCB-style acquisition inside an adaptive trust region
+(``opendock/sampler/bayesian.py``).  It is benchmarked on the PDBbind
+CASF-2016 core set (see :doc:`benchmark`).
+
+.. note::
+    On the 20–40-dimensional conformation space of typical ligands the GP is
+    sample-starved at practical budgets: it is markedly less accurate than the
+    GA/PSO/REMC samplers.  Use it for low-dimensional problems or as a
+    surrogate-assisted local search, not as the default sampler.
+
+5. Replica-Exchange Monte Carlo Sampler
+---------------------------------------
+
+``ReplicaExchangeMCSampler`` (``opendock/sampler/remc.py``) runs several copies
+of the ligand pose at a geometric ladder of temperatures, applies a Metropolis
+test at each temperature, and periodically swaps configurations of adjacent
+replicas with the standard parallel-tempering acceptance
+``min(1, exp((beta_i - beta_j) * (E_i - E_j)))``.  It is a robust alternative to
+plain Monte Carlo and is competitive with PSO on CASF-2016.
+
+.. code-block:: python
+
+    from opendock.sampler.remc import ReplicaExchangeMCSampler
+
+    remc = ReplicaExchangeMCSampler(ligand, receptor, sf,
+                                    box_center=xyz_center,
+                                    box_size=[20, 20, 20],
+                                    minimizer=adam_minimizer,
+                                    n_replicas=16,
+                                    t_min=0.2, t_max=20.0,
+                                    exchange_interval=5,
+                                    torsion_max=0.1)
+    remc.sampling(5 * ligand.number_of_heavy_atoms)
+
+.. note::
+    The proposal step matters: small torsion steps (``torsion_max≈0.1``) and
+    enough sweeps/replicas are essential; a large step (``0.5``) makes the cold
+    replicas effectively immobile.
+
+Default protocol
+----------------
+
+The settings validated on CASF-2016 are the defaults of
+``opendock/protocol/general_protocol.py`` and ``ga_vina.py``: **GA** with a
+population of 200, batched-Adam minimisation with 30 steps, and 5 generations
+per ligand heavy atom.  See :doc:`benchmark` for the accuracy numbers and the
+parameter study behind them.

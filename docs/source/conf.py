@@ -6,8 +6,8 @@ project = 'OpenDock'
 copyright = '2021-2026, OpenDock contributors'
 author = 'Qiuyue Hu, Zechen Wang, Yanjie Wei and Liangzhen Zheng'
 
-release = '1.1.2'
-version = '1.1.2'
+release = '1.1.3'
+version = '1.1.3'
 
 # -- General configuration
 

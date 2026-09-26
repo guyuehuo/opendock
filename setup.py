@@ -13,7 +13,7 @@ def readme():
 
 
 setup(name='opendock',
-      version='1.1.2',
+      version='1.1.3',
       long_description=readme(),
       description='Zelixir Open-Docking Framework.',
       url='',
