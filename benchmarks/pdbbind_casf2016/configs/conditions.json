@@ -18,7 +18,9 @@
     {"name": "ga-adam", "sampler": "ga", "steps_per_ha": 5, "minimizer": "adam", "n_pop": 100},
     {"name": "ga-nomin", "sampler": "ga", "steps_per_ha": 10, "minimizer": "none", "n_pop": 200},
     {"name": "pso-lbfgs", "sampler": "pso", "steps_per_ha": 50, "minimizer": "lbfgs"},
-    {"name": "pso-nomin", "sampler": "pso", "steps_per_ha": 100, "minimizer": "none"}
+    {"name": "pso-nomin", "sampler": "pso", "steps_per_ha": 100, "minimizer": "none"},
+    {"name": "bo", "sampler": "bo", "steps_per_ha": 4, "minimizer": "adam"},
+    {"name": "remc", "sampler": "remc", "steps_per_ha": 6, "minimizer": "adam"}
   ],
   "box": {
     "pocket_half_extent": 10.0,

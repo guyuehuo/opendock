@@ -1,11 +1,29 @@
 # PDBbind CASF-2016 Docking-Power Benchmark (OpenDock vs idock)
 
-Benchmark of OpenDock (Vina scorer; MC/GA/PSO samplers at several parameter
-settings) and the standalone idock tool for **docking power** on the PDBbind
-CASF-2016 core set (290 complexes), under crystal-ligand vs RDKit-de-novo
-ligand starts and defined-pocket vs blind docking.
+Benchmark of OpenDock (Vina scorer; MC/GA/PSO/REMC/BO samplers at several
+parameter settings) and the standalone idock tool for **docking power** on the
+PDBbind CASF-2016 core set (290 complexes), under crystal-ligand vs
+RDKit-de-novo ligand starts and defined-pocket vs blind docking.
+
+> **Results and the recommended protocol** are summarized in the documentation:
+> `docs/source/benchmark.rst`.  In short, on the 165 prepared complexes the
+> optimized **GA + Adam + Vina** protocol reaches **60.1%** RDKit top-1 ≤ 2 Å
+> (crystal start 60.6%), and **66.3%** with DeepRMSD re-ranking.  These settings
+> are now the defaults of `opendock/protocol/general_protocol.py` and
+> `ga_vina.py`.
 
 Implementation plan: `docs/plans/2026-09-06-pdbbind-casf2016-docking-benchmark.md`.
+
+## Experiment tooling (accuracy optimization)
+
+- `06_exp_runner.py` — run a matrix of configs over a subset, multi-GPU, resumable.
+- `07_exp_eval.py` — top-1 / best-any success on a run directory or experiment.
+- `08_rerank_eval.py` / `09_blend_eval.py` — DeepRMSD pose re-ranking (no re-docking).
+- `regenerate_conformers.py --prep-dir <tree>` — larger RDKit conformer ensembles.
+
+The RMSD evaluator (`03_compute_rmsd.py`) matches pose atoms to the crystal
+reference by **graph isomorphism**, so prepared-PDBQT atom reordering no longer
+produces spurious `NaN` RMSDs.
 
 ## Prerequisites
 

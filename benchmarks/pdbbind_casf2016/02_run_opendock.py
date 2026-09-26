@@ -38,10 +38,12 @@ from benchlib import (CONFIG_DIR, condition_id, default_work_dir,
 from opendock.core.conformation import LigandConformation, ReceptorConformation
 from opendock.core.clustering import BaseCluster
 from opendock.core.io import write_ligand_traj
+from opendock.sampler.bayesian import BayesianOptimizationSampler
 from opendock.sampler.ga import GeneticAlgorithmSampler
 from opendock.sampler.minimizer import adam_minimizer, lbfgs_minimizer, sgd_minimizer
 from opendock.sampler.monte_carlo import MonteCarloSampler
 from opendock.sampler.particle_swarm import ParticleSwarmOptimizer
+from opendock.sampler.remc import ReplicaExchangeMCSampler
 from opendock.scorer.vina import VinaSF
 
 MINIMIZERS = {
@@ -66,6 +68,8 @@ SAMPLERS = {
     "mc": MonteCarloSampler,
     "ga": GeneticAlgorithmSampler,
     "pso": ParticleSwarmOptimizer,
+    "bo": BayesianOptimizationSampler,
+    "remc": ReplicaExchangeMCSampler,
 }
 
 SCORES_HEADER = ["code", "tool", "cfg", "source", "mode", "pose_rank", "score"]
@@ -252,6 +256,31 @@ def _dock_conformer_pso(ligands, receptor, sfs, center, half, cfg,
     return triples
 
 
+def _adam_refine(ligand, sf, cnfr, nsteps=30, lr=0.05):
+    """Refine one pose to a Vina local minimum with manual Adam.
+
+    The GA/PSO history contains poses at mixed convergence levels, so their
+    Vina scores are not directly comparable. Refining every candidate pose to a
+    (near) local minimum before the final ranking makes the comparison fair.
+    Returns the refined conformation vector.
+    """
+    x = torch.tensor(cnfr.detach().numpy() * 1.0, requires_grad=True)
+    beta1, beta2, eps = 0.9, 0.999, 1e-8
+    m = torch.zeros_like(x)
+    v = torch.zeros_like(x)
+    for t in range(1, int(nsteps) + 1):
+        ligand.cnfrs_ = [x]
+        ligand.cnfr2xyz([x])
+        loss = sf.scoring().sum()
+        g = torch.autograd.grad(loss, x)[0]
+        m = beta1 * m + (1 - beta1) * g
+        v = beta2 * v + (1 - beta2) * g * g
+        mhat = m / (1 - beta1 ** t)
+        vhat = v / (1 - beta2 ** t)
+        x = (x - lr * mhat / (vhat.sqrt() + eps)).detach().requires_grad_(True)
+    return x.detach()
+
+
 def _write_pose_file(out_pdbqt, triples, receptor):
     """Write a multi-model PDBQT from ``(score, cnfr, ligand)`` triples.
 
@@ -297,7 +326,10 @@ def run_one_job(code, source, mode, cfg_name, cfg, prep_dir, run_dir,
                 pso_pop=None, pso_weight=None, pso_cognitive=None,
                 pso_social=None, pso_constriction=False,
                 pso_pools=None, pso_local_social=None,
-                conformer_pso=False, angle_dof=False, angle_scale=0.26):
+                conformer_pso=False, angle_dof=False, angle_scale=0.26,
+                final_min_steps=None, bo_kappa=None, bo_init=None,
+                remc_replicas=None, remc_tmin=None, remc_tmax=None,
+                remc_exchange=None):
     os.environ["OPENDOCK_RING_PUCKER"] = "1" if ring_pucker else "0"
     os.environ["OPENDOCK_ANGLE_DOF"] = "1" if angle_dof else "0"
     os.environ["OPENDOCK_ANGLE_SCALE"] = str(angle_scale)
@@ -364,6 +396,22 @@ def run_one_job(code, source, mode, cfg_name, cfg, prep_dir, run_dir,
         cond = f"{cond}-ang"
         if angle_scale != 0.26:
             cond = f"{cond}-asc{angle_scale:g}"
+    if final_min_steps:
+        cond = f"{cond}-fm{final_min_steps}"
+    if abs(cluster_cutoff - 2.0) > 1e-9:
+        cond = f"{cond}-cc{cluster_cutoff:g}"
+    if bo_kappa is not None:
+        cond = f"{cond}-bok{bo_kappa:g}"
+    if bo_init is not None:
+        cond = f"{cond}-boi{bo_init}"
+    if remc_replicas is not None:
+        cond = f"{cond}-rr{remc_replicas}"
+    if remc_tmin is not None:
+        cond = f"{cond}-rmin{remc_tmin:g}"
+    if remc_tmax is not None:
+        cond = f"{cond}-rmax{remc_tmax:g}"
+    if remc_exchange is not None:
+        cond = f"{cond}-rx{remc_exchange}"
     if steps_scale != 1.0:
         cond = f"{cond}-ss{steps_scale:g}"
     cond_dir = ensure_dir(os.path.join(run_dir, code))
@@ -444,6 +492,22 @@ def run_one_job(code, source, mode, cfg_name, cfg, prep_dir, run_dir,
             kwargs["n_pools"] = int(pso_pools)
         if pso_local_social is not None:
             kwargs["local_social_param"] = float(pso_local_social)
+    if cfg["sampler"] in ("bo", "remc") and torsion_max is not None:
+        kwargs["torsion_max"] = float(torsion_max)
+    if cfg["sampler"] == "bo":
+        if bo_kappa is not None:
+            kwargs["kappa"] = float(bo_kappa)
+        if bo_init is not None:
+            kwargs["n_init"] = int(bo_init)
+    if cfg["sampler"] == "remc":
+        if remc_replicas is not None:
+            kwargs["n_replicas"] = int(remc_replicas)
+        if remc_tmin is not None:
+            kwargs["t_min"] = float(remc_tmin)
+        if remc_tmax is not None:
+            kwargs["t_max"] = float(remc_tmax)
+        if remc_exchange is not None:
+            kwargs["exchange_interval"] = int(remc_exchange)
 
     n_steps = int(float(cfg["steps_per_ha"]) * ligand.number_of_heavy_atoms
                   * steps_scale)
@@ -550,6 +614,11 @@ def run_one_job(code, source, mode, cfg_name, cfg, prep_dir, run_dir,
         lig.cnfr2xyz([_cnfr])
         sff = VinaSF(receptor=receptor, ligand=lig, device=device,
                      compile=compile)
+        if final_min_steps:
+            _cnfr = _adam_refine(lig, sff, _cnfr,
+                                 nsteps=int(final_min_steps), lr=0.05)
+            lig.cnfrs_ = [torch.tensor(_cnfr.detach().numpy() * 1.0)]
+            lig.cnfr2xyz(lig.cnfrs_)
         _s = float(sff.scoring().detach().cpu().numpy().ravel()[0])
         rescored.append([_s, _cnfr, lig])
     rescored.sort(key=lambda x: x[0])
@@ -670,7 +739,25 @@ def main():
                         help="valence-angle DOF (default off; --angle-dof to enable)")
     parser.add_argument("--angle-scale", type=float, default=0.26,
                         help="max valence-angle flex in radians (default 0.26)")
+    parser.add_argument("--final-min-steps", type=int, default=None,
+                        help="Adam steps to refine each output pose before the "
+                             "final Vina ranking (default off)")
+    parser.add_argument("--bo-kappa", type=float, default=None,
+                        help="BO UCB exploration weight (default 2.0)")
+    parser.add_argument("--bo-init", type=int, default=None,
+                        help="BO initial random design size")
+    parser.add_argument("--remc-replicas", type=int, default=None,
+                        help="REMC number of temperature replicas (default 8)")
+    parser.add_argument("--remc-tmin", type=float, default=None,
+                        help="REMC coldest temperature (default 0.5)")
+    parser.add_argument("--remc-tmax", type=float, default=None,
+                        help="REMC hottest temperature (default 6.0)")
+    parser.add_argument("--remc-exchange", type=int, default=None,
+                        help="REMC replica swap interval in sweeps (default 10)")
     parser.add_argument("--num-modes", type=int, default=None)
+    parser.add_argument("--cluster-cutoff", type=float, default=None,
+                        help="pose-clustering RMSD cutoff in A (default from "
+                             "conditions.json, 2.0)")
     parser.add_argument("--threads", type=int, default=1)
     parser.add_argument("--seed", type=int, default=2026)
     parser.add_argument("--resume", action="store_true", default=True)
@@ -682,7 +769,8 @@ def main():
     prep_dir = args.prep_dir or os.path.join(default_work_dir(), "prep")
     run_dir = args.run_dir or os.path.join(default_work_dir(), "opendock")
     num_modes = args.num_modes or int(conditions["output"]["num_modes"])
-    cluster_cutoff = float(conditions["output"]["cluster_cutoff"])
+    cluster_cutoff = (float(conditions["output"]["cluster_cutoff"])
+                      if args.cluster_cutoff is None else float(args.cluster_cutoff))
     torch.set_num_threads(args.threads)
     set_seed(args.seed)
 
@@ -749,6 +837,22 @@ def main():
             cond = f"{cond}-ang"
             if args.angle_scale != 0.26:
                 cond = f"{cond}-asc{args.angle_scale:g}"
+        if args.final_min_steps:
+            cond = f"{cond}-fm{args.final_min_steps}"
+        if args.cluster_cutoff is not None and abs(args.cluster_cutoff - 2.0) > 1e-9:
+            cond = f"{cond}-cc{args.cluster_cutoff:g}"
+        if args.bo_kappa is not None:
+            cond = f"{cond}-bok{args.bo_kappa:g}"
+        if args.bo_init is not None:
+            cond = f"{cond}-boi{args.bo_init}"
+        if args.remc_replicas is not None:
+            cond = f"{cond}-rr{args.remc_replicas}"
+        if args.remc_tmin is not None:
+            cond = f"{cond}-rmin{args.remc_tmin:g}"
+        if args.remc_tmax is not None:
+            cond = f"{cond}-rmax{args.remc_tmax:g}"
+        if args.remc_exchange is not None:
+            cond = f"{cond}-rx{args.remc_exchange}"
         if args.steps_scale != 1.0:
             cond = f"{cond}-ss{args.steps_scale:g}"
         try:
@@ -783,7 +887,14 @@ def main():
                                pso_local_social=args.pso_local_social,
                                conformer_pso=args.conformer_pso,
                                angle_dof=args.angle_dof,
-                               angle_scale=args.angle_scale)
+                               angle_scale=args.angle_scale,
+                               final_min_steps=args.final_min_steps,
+                               bo_kappa=args.bo_kappa,
+                               bo_init=args.bo_init,
+                               remc_replicas=args.remc_replicas,
+                               remc_tmin=args.remc_tmin,
+                               remc_tmax=args.remc_tmax,
+                               remc_exchange=args.remc_exchange)
         except Exception as exc:
             log(f"{code} {cond}: FAILED - {exc}")
             mark_failed(run_dir, code, cond, traceback.format_exc())
@@ -856,6 +967,22 @@ def main():
             cond = f"{cond}-ang"
             if args.angle_scale != 0.26:
                 cond = f"{cond}-asc{args.angle_scale:g}"
+        if args.final_min_steps:
+            cond = f"{cond}-fm{args.final_min_steps}"
+        if args.cluster_cutoff is not None and abs(args.cluster_cutoff - 2.0) > 1e-9:
+            cond = f"{cond}-cc{args.cluster_cutoff:g}"
+        if args.bo_kappa is not None:
+            cond = f"{cond}-bok{args.bo_kappa:g}"
+        if args.bo_init is not None:
+            cond = f"{cond}-boi{args.bo_init}"
+        if args.remc_replicas is not None:
+            cond = f"{cond}-rr{args.remc_replicas}"
+        if args.remc_tmin is not None:
+            cond = f"{cond}-rmin{args.remc_tmin:g}"
+        if args.remc_tmax is not None:
+            cond = f"{cond}-rmax{args.remc_tmax:g}"
+        if args.remc_exchange is not None:
+            cond = f"{cond}-rx{args.remc_exchange}"
         if args.steps_scale != 1.0:
             cond = f"{cond}-ss{args.steps_scale:g}"
         if args.resume and job_state(run_dir, args.code, cond) != "pending":

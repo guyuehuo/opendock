@@ -40,7 +40,11 @@ def main():
     ap.add_argument("--n-conformers", type=int, default=5)
     ap.add_argument("--codes", nargs="*", default=None)
     ap.add_argument("--seed", type=int, default=2026)
+    ap.add_argument("--prep-dir", default=PREP,
+                    help="prep tree to update (default work/prep)")
     args = ap.parse_args()
+
+    prep_root = args.prep_dir
 
     prep = importlib.import_module("benchlib") if False else _load_prep_module()
     tools = prep.find_mgltools()
@@ -55,7 +59,7 @@ def main():
 
     n_ok = n_fail = 0
     for code in codes:
-        out_dir = os.path.abspath(os.path.join(PREP, code))
+        out_dir = os.path.abspath(os.path.join(prep_root, code))
         ref_sdf = os.path.join(out_dir, "ref_lig_heavy.sdf")
         if not os.path.exists(ref_sdf):
             print(f"[skip] {code}: no ref_lig_heavy.sdf", flush=True)

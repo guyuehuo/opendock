@@ -5,6 +5,12 @@ work/
 results/*.csv
 results/rmsd.tsv
 results/summary.md
+# cached DeepRMSD re-ranking records / per-config results
+results/rerank/
+results/**/rmsd.tsv
+
+# experiment matrices and configs (local trial artifacts)
+work/exp/
 
 # misc
 *.pyc

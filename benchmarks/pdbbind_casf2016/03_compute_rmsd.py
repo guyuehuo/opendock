@@ -244,6 +244,89 @@ def perceive_pose_bonds(elements, coords, n_ref_bonds=None):
     return best or _pose_bonds_at_tol(elements, radii, d2, 0.4)
 
 
+def _parse_pdbqt_heavy(fpath):
+    """Heavy-atom ``(coords, elements)`` of a PDBQT file, in file order."""
+    coords, elements = [], []
+    for line in open(fpath):
+        if line.startswith("ATOM") or line.startswith("HETATM"):
+            xyz, element, is_h = _coords_and_heavy(line.rstrip("\n"))
+            if xyz is not None and not is_h:
+                coords.append(xyz)
+                elements.append(element)
+    return np.asarray(coords, dtype=float), elements
+
+
+def _perceive_input_graph(coords, elements):
+    """Connectivity of a clean input-ligand geometry (RDKit perceive).
+
+    The input conformer (crystal pose or MMFF-optimised RDKit conformer) has
+    physical bond lengths, so connectivity perception is reliable there even
+    when a docked pose's distorted geometry is not.
+    """
+    from rdkit import Chem
+    from rdkit.Chem import rdDetermineBonds
+    rw = Chem.RWMol()
+    for e in elements:
+        rw.AddAtom(Chem.Atom(e))
+    conf = Chem.Conformer(len(elements))
+    for i, xyz in enumerate(coords):
+        conf.SetAtomPosition(i, tuple(float(v) for v in xyz))
+    mol = rw.GetMol()
+    mol.AddConformer(conf)
+    try:
+        rdDetermineBonds.DetermineBonds(mol, charge=0)
+    except Exception:
+        try:
+            rdDetermineBonds.DetermineConnectivity(mol)
+        except Exception:
+            return None
+    return mol
+
+
+def input_pose_bonds(prep_dir, code, source, ref_elements, ref_bonds):
+    """Reference bond list expressed in the docking input's heavy-atom order.
+
+    The prepared PDBQT atom order differs from ``ref_lig_heavy.sdf`` for many
+    complexes (MGLTools/OpenBabel reorder atoms), so a pose cannot be matched
+    to the reference by element sequence alone. The *input* conformer has a
+    clean geometry whose connectivity is perceived reliably; mapping it to the
+    reference graph by isomorphism yields the reference bonds in the input
+    (== pose) atom order. Returns ``(elements, bonds)`` or ``None``.
+    """
+    pdbqt = os.path.join(prep_dir, code, f"lig_{source}.pdbqt")
+    if not os.path.exists(pdbqt):
+        return None
+    coords, elements = _parse_pdbqt_heavy(pdbqt)
+    if len(elements) != len(ref_elements):
+        return None
+    mol = _perceive_input_graph(coords, elements)
+    if mol is None:
+        return None
+    try:
+        import networkx as nx
+    except ImportError:
+        return None
+    pose_g = nx.Graph()
+    for i, e in enumerate(elements):
+        pose_g.add_node(i, element=e)
+    for b in mol.GetBonds():
+        pose_g.add_edge(b.GetBeginAtomIdx(), b.GetEndAtomIdx())
+    ref_g = nx.Graph()
+    for i, e in enumerate(ref_elements):
+        ref_g.add_node(i, element=e)
+    for i, j in ref_bonds:
+        ref_g.add_edge(i, j)
+    if (pose_g.number_of_edges() != len(ref_bonds)
+            or pose_g.number_of_nodes() != len(ref_elements)):
+        return None
+    gm = nx.algorithms.isomorphism.GraphMatcher(
+        pose_g, ref_g, node_match=lambda a, b: a["element"] == b["element"])
+    for mp in gm.isomorphisms_iter():
+        inv = {v: k for k, v in mp.items()}
+        return elements, [(inv[a], inv[b]) for a, b in ref_bonds]
+    return None
+
+
 def find_dockrmsd():
     """Locate the DockRMSD binary (Bell & Zhang, J. Cheminformatics 2019)."""
     candidates = [os.environ.get("DOCKRMSD_BIN"),
@@ -348,6 +431,7 @@ def main():
         return
 
     tmp_root = tempfile.mkdtemp(prefix="dockrmsd_")
+    input_graph_cache = {}
     header = ["code", "tool", "cfg", "source", "mode", "pose_rank",
               "score", "rmsd_heavy"]
     with open(out_tsv, "w") as out:
@@ -375,6 +459,17 @@ def main():
                 ref_mol2 = os.path.join(tmp_root, f"{code}_ref.mol2")
                 write_mol2(ref_mol2, elements, coords_ref, bonds, name=f"{code}_ref")
 
+            # reference bonds in the docking input's heavy-atom order (the pose
+            # is written in the input order, which often differs from the SDF)
+            cache_key = (code, source)
+            if cache_key not in input_graph_cache:
+                try:
+                    input_graph_cache[cache_key] = input_pose_bonds(
+                        prep_dir, code, source, elements, bonds)
+                except Exception:
+                    input_graph_cache[cache_key] = None
+            cached_input = input_graph_cache[cache_key]
+
             models = parse_output_models(fpath)
             for rank, model in enumerate(models):
                 n_pose = model["coords"].shape[0]
@@ -389,6 +484,13 @@ def main():
                     # identical heavy-atom ordering: reuse the reference graph
                     pose_bonds, pose_atomicnums = bonds, atomicnums
                     pose_ele_out, pose_coords = elements, model["coords"]
+                elif cached_input is not None and pose_ele == cached_input[0]:
+                    # pose follows the prepared input order; use the reference
+                    # graph mapped through the input->reference isomorphism
+                    pose_bonds = cached_input[1]
+                    pose_atomicnums = np.array(
+                        [_ELEMENT_NUM.get(e, 6) for e in pose_ele])
+                    pose_ele_out, pose_coords = pose_ele, model["coords"]
                 else:
                     # reordered atoms: perceive the pose's own bonding network
                     pose_bonds = perceive_pose_bonds(pose_ele, model["coords"],
